@@ -26,6 +26,8 @@ class Vec3:
     def __mul__(self, scalar: float) -> "Vec3":
         return Vec3(self.x * scalar, self.y * scalar, self.z * scalar)
 
+    __rmul__ = __mul__
+
     def dot(self, other: "Vec3") -> float:
         return self.x * other.x + self.y * other.y + self.z * other.z
 
