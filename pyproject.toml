@@ -1,0 +1,11 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "adaptivecad"
+version = "0.1.0"
+authors = [{name="AdaptiveCAD"}]
+description = "Starter modules for AdaptiveCAD"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.22"]
