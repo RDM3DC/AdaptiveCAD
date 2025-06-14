@@ -4,6 +4,12 @@
 Below is a *road‑map of the mathematics* you will actually need if you want to write a modern CAD / CAM system completely from scratch and, at the same time, support your **πₐ (“Adaptive Pi”) non‑Euclidean geometry kernel**.
 The list is intentionally grouped as *“modules you will implement”* so you can turn each block into an internal library or namespace.  After each block I give the key formulas, identities, or algorithms you will code, plus notes on typical numerical pitfalls.
 
+
+## AdaptiveCAD Playground
+A lightweight viewer prototype is included in `adaptivecad.gui.playground`.
+Install `PySide6` and `pythonocc-core` and run `python -m adaptivecad.gui.playground`
+to see a simple 3-D demo.
+
 ---
 
 ## 0. Notation conventions used throughout
