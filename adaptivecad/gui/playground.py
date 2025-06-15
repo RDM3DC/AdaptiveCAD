@@ -26,15 +26,37 @@ Navigation:
 """
 from __future__ import annotations
 
+# Fix Qt plugin paths
+import os
 import sys
+import site
+import pathlib
+
+# Try to locate PySide6 plugins
+potential_plugin_dirs = []
+for site_dir in site.getsitepackages():
+    pyside_plugins = pathlib.Path(site_dir) / "PySide6" / "plugins"
+    if pyside_plugins.exists():
+        potential_plugin_dirs.append(str(pyside_plugins))
+        os.environ["QT_PLUGIN_PATH"] = str(pyside_plugins)
+        platform_path = pyside_plugins / "platforms"
+        if platform_path.exists():
+            os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(platform_path)
+            if sys.platform == "win32":
+                os.add_dll_directory(str(platform_path))
+                os.add_dll_directory(str(pyside_plugins))
+                os.environ["PATH"] = f"{platform_path};{pyside_plugins};{os.environ.get('PATH', '')}"
+
 import math
 import numpy as np
 from math import cos, sin, pi
 from adaptivecad.commands import (
+    BaseCmd,
     NewBoxCmd,
     NewCylCmd,
     ExportStlCmd,
     ExportAmaCmd,
+    ExportGCodeCmd,  # Make sure this is imported
 )
 
 # Try to import anti-aliasing enum if available
@@ -281,20 +303,20 @@ class MainWindow:
             "LMB‑drag = rotate | MMB = pan | Wheel = zoom | Shift+MMB = fit"
         )
 
-        # Add toolbar with primitive commands
-        tb = QToolBar("Primitives", self.win)
+        # Add toolbar with primitive commands        tb = QToolBar("Primitives", self.win)
         self.win.addToolBar(tb)
-
+        
         def _add_action(text, icon_name, cmd_cls):
             act = QAction(QIcon.fromTheme(icon_name), text, self.win)
             tb.addAction(act)
             act.triggered.connect(lambda: self.run_cmd(cmd_cls()))
-
+            
         _add_action("Box", "view-cube", NewBoxCmd)
         _add_action("Cylinder", "media-optical", NewCylCmd)
         tb.addSeparator()
         _add_action("Export STL", "document-save", ExportStlCmd)
         _add_action("Export AMA", "document-save-as", ExportAmaCmd)
+        _add_action("Export G-code", "media-record", ExportGCodeCmd)  # Ensure this line is present and correct
 
         self._build_demo()
 

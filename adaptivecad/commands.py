@@ -11,6 +11,10 @@ from dataclasses import dataclass
 from typing import Any, Dict, List
 
 from adaptivecad.io.ama_writer import write_ama
+from adaptivecad.io.gcode_generator import ama_to_gcode, SimpleMilling
+from OCC.Core.gp import gp_Pnt
+from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder
+from OCC.Core.TopoDS import TopoDS_Shape
 
 # ---------------------------------------------------------------------------
 # Optional GUI helpers
@@ -180,3 +184,83 @@ class ExportAmaCmd(BaseCmd):
 
         write_ama(DOCUMENT, path)
         mw.win.statusBar().showMessage(f"AMA saved ➡ {path}")
+
+
+class ExportGCodeCmd(BaseCmd):
+    title = "Export G-code"
+
+    def run(self, mw) -> None:  # pragma: no cover - runtime GUI path
+        import tempfile
+        import os
+        (
+            QInputDialog,
+            QFileDialog,
+            _,
+            _,
+            _,
+        ) = _require_command_modules()
+
+        if not DOCUMENT:
+            return
+
+        # First, we need to save as AMA temporarily
+        with tempfile.NamedTemporaryFile(suffix=".ama", delete=False) as tmp_ama:
+            tmp_ama_path = tmp_ama.name
+        
+        # Write the current document to the temporary AMA file
+        write_ama(DOCUMENT, tmp_ama_path)
+        
+        # Ask for G-code settings
+        safe_height, ok1 = QInputDialog.getDouble(
+            mw.win, "Safe Height (mm)", "Enter safe height for rapid movements:", 10.0, 1.0, 100.0, 1
+        )
+        if not ok1:
+            os.remove(tmp_ama_path)
+            return
+            
+        cut_depth, ok2 = QInputDialog.getDouble(
+            mw.win, "Cut Depth (mm)", "Enter cutting depth:", 1.0, 0.1, 20.0, 1
+        )
+        if not ok2:
+            os.remove(tmp_ama_path)
+            return
+            
+        feed_rate, ok3 = QInputDialog.getDouble(
+            mw.win, "Feed Rate (mm/min)", "Enter feed rate:", 100.0, 10.0, 1000.0, 1
+        )
+        if not ok3:
+            os.remove(tmp_ama_path)
+            return
+            
+        tool_diameter, ok4 = QInputDialog.getDouble(
+            mw.win, "Tool Diameter (mm)", "Enter tool diameter:", 3.0, 0.1, 20.0, 1
+        )
+        if not ok4:
+            os.remove(tmp_ama_path)
+            return
+
+        # Get the output path for the G-code
+        path, _filter = QFileDialog.getSaveFileName(
+            mw.win, "Save G-code", filter="G-code (*.gcode *.nc)"
+        )
+        if not path:
+            os.remove(tmp_ama_path)
+            return
+        
+        try:
+            # Create milling strategy with user settings
+            strategy = SimpleMilling(
+                safe_height=safe_height,
+                cut_depth=cut_depth,
+                feed_rate=feed_rate,
+                tool_diameter=tool_diameter
+            )
+            
+            # Generate G-code
+            ama_to_gcode(tmp_ama_path, path, strategy)
+            mw.win.statusBar().showMessage(f"G-code saved ➡ {path}")
+        except Exception as e:
+            mw.win.statusBar().showMessage(f"Failed to save G-code: {str(e)}")
+        finally:
+            # Clean up temporary AMA file
+            os.remove(tmp_ama_path)
