@@ -35,7 +35,31 @@ from OCC.Core.BRepBuilderAPI import (
 )
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
 from OCC.Core.gp import gp_Pnt
-from OCC.Core.V3d import V3d_TypeOfAntialiasing as AA
+from OCC.Core.GProp import GProp_GProps
+from OCC.Core.BRepGProp import brepgprop_VolumeProperties
+
+# Try to import anti-aliasing enum if available
+# Try to import anti-aliasing enum if available
+try:
+    from OCC.Core.V3d import V3d_TypeOfAntialiasing as AA
+    AA_AVAILABLE = True
+except ImportError:
+    AA_AVAILABLE = False
+
+
+# Property helper for volume
+class Props:
+    def Volume(self, shp):
+        gp = GProp_GProps()
+        brepgprop_VolumeProperties(shp, gp)
+        return gp.Mass()
+
+AA_AVAILABLE = False
+try:
+    from OCC.Core.V3d import V3d_TypeOfAntialiasing as AA
+    AA_AVAILABLE = True
+except ImportError:
+    pass
 
 
 def _require_gui_modules():
@@ -48,20 +72,18 @@ def _require_gui_modules():
         # Import required UI modules
         from PyQt5.QtWidgets import QApplication, QMainWindow
         from OCC.Display.qtDisplay import qtViewer3d  # type: ignore
-        from OCC.Core.V3d import V3d_TypeOfAntialiasing  # For anti-aliasing
     except ImportError:
         # Show a helpful error message for users
         print("GUI extras not installed. Run:\n   conda install pyside6 pythonocc-core")
         qtViewer3d = None
         QMainWindow = object
         QApplication = lambda x: None
-        V3d_TypeOfAntialiasing = None
         return QApplication, QMainWindow, qtViewer3d
     except Exception as exc:  # pragma: no cover - import error path
         raise RuntimeError(
             "PyQt5 and pythonocc-core are required to run the playground. Error: " + str(exc)
         ) from exc
-    return QApplication, QMainWindow, qtViewer3d, V3d_TypeOfAntialiasing
+    return QApplication, QMainWindow, qtViewer3d
 
 
 def helix_wire(radius=20, pitch=5, height=40, n=250):
@@ -116,20 +138,12 @@ def _demo_primitives(display):
         if helx:  # Only display helix if created successfully
             display.DisplayShape(helx, color="YELLOW")
         
-        # Enable visualization features
-        display.show_triedron()          # XYZ axes in lower left
-        display.enable_grid()            # dotted construction grid
-        display.register_select_callback(on_select)
-        display.SetSelectionModeEdge()   # edges selectable
-        
         # Apply shading for better visualization
-        display.SetShadingMode(3)  # Phong shading
-        
-        # Apply anti-aliasing if available
         try:
-            display.View.SetAntialiasingMode(AA.V3d_MSAA_8X)
+            if hasattr(display, 'SetShadingMode'):
+                display.SetShadingMode(3)  # Phong shading
         except Exception as exc:
-            print(f"Could not enable anti-aliasing: {exc}")
+            print(f"Could not set shading mode: {exc}")
         
         display.FitAll()
     except Exception as exc:
@@ -151,11 +165,11 @@ class MainWindow:
         self.app = None
         self.win = None
         self.view = None
-        
+
         # Get the required GUI modules
         result = _require_gui_modules()
         QApplication, QMainWindow, qtViewer3d = result[:3]
-        
+
         # Check if GUI modules are available
         if qtViewer3d is None:
             print("GUI extras not installed. Run:\n   conda install -c conda-forge pythonocc-core pyside6")
@@ -166,18 +180,92 @@ class MainWindow:
         self.win = QMainWindow()
         self.win.setWindowTitle("AdaptiveCAD – Playground")
         self.view = qtViewer3d(self.win)
-        self.win.setCentralWidget(self.view)
-        
+        self.win.setCentralWidget(self.view)        # Viewport polish - try each enhancement feature
+        try:
+            # Try displaying trihedron (axes)
+            if hasattr(self.view._display, 'DisplayTrihedron'):
+                self.view._display.DisplayTrihedron()
+            elif hasattr(self.view._display, 'display_trihedron'):
+                self.view._display.display_trihedron()
+            else:
+                print("Warning: Trihedron display method not found. Skipping axes display.")
+        except Exception as e:
+            print(f"Warning: Could not display trihedron: {e}")
+            
+        try:
+            # Try enabling grid
+            if hasattr(self.view._display, 'enable_grid'):
+                self.view._display.enable_grid()
+            elif hasattr(self.view._display, 'display_grid'):
+                self.view._display.display_grid()
+            else:
+                print("Warning: Grid enable method not found. Skipping grid display.")
+        except Exception as e:
+            print(f"Warning: Could not enable grid: {e}")
+            
+        # Try setting anti-aliasing
+        if AA_AVAILABLE:
+            try:
+                self.view._display.View.SetAntialiasingMode(AA.V3d_MSAA_8X)
+            except Exception as exc:
+                print(f"Warning: Could not enable anti-aliasing: {exc}")
+                
+        # Try setting background gradient colors
+        try:
+            self.view._display.SetBgGradientColor(0.12, 0.12, 0.12, 0.18, 0.18, 0.18)
+        except Exception as e:
+            print(f"Warning: Could not set background color: {e}")
+            try:
+                # Fallback to any available background color method
+                if hasattr(self.view._display, 'set_bg_gradient_color'):
+                    self.view._display.set_bg_gradient_color(0.12, 0.12, 0.12, 0.18, 0.18, 0.18)
+            except:
+                print("Could not set background color using any known method.")        # Property tool and selection callback
+        try:
+            self.props_tool = Props()
+            
+            def on_select(shape, *k):
+                try:
+                    t = shape.ShapeType()
+                    try:
+                        mass = round(self.props_tool.Volume(shape), 3)
+                    except Exception:
+                        mass = "n/a"
+                    self.win.statusBar().showMessage(f"Selected {t} | volume ≈ {mass} mm³")
+                except Exception as e:
+                    print(f"Selection callback error: {e}")
+            
+            # Try to register selection callback
+            if hasattr(self.view._display, 'register_select_callback'):
+                self.view._display.register_select_callback(on_select)
+            elif hasattr(self.view._display, 'SetSelectionCallBack'):
+                self.view._display.SetSelectionCallBack(on_select)
+            else:
+                print("Warning: Could not register selection callback - method not found")
+                
+            # Try to set selection mode for edges
+            try:
+                if hasattr(self.view._display, 'SetSelectionModeEdge'):
+                    self.view._display.SetSelectionModeEdge()
+                elif hasattr(self.view._display, 'set_selection_mode_edge'):
+                    self.view._display.set_selection_mode_edge()
+                else:
+                    print("Warning: Could not enable edge selection - method not found")
+            except Exception as e:
+                print(f"Warning: Could not set selection mode: {e}")
+        except Exception as e:
+            print(f"Warning: Could not set up selection callback: {e}")
+
         # Create menu bar with reload action
         reload_action = self.win.menuBar().addAction("Reload  (R)")
         reload_action.setShortcut("R")
         reload_action.triggered.connect(self._build_demo)
-        
+
         # Set status bar message with navigation help
         self.win.statusBar().showMessage(
             "LMB‑drag = rotate | MMB = pan | Wheel = zoom | Shift+MMB = fit"
         )
-        
+
         self._build_demo()
 
     def _build_demo(self) -> None:
