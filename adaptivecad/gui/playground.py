@@ -57,10 +57,15 @@ from adaptivecad.commands import (
     ExportStlCmd,
     ExportAmaCmd,
     ExportGCodeCmd,
-    ExportGCodeDirectCmd,  # Added this line
+    ExportGCodeDirectCmd,
+    DOCUMENT, # Added DOCUMENT import
+    rebuild_scene # Added rebuild_scene import
 )
+from adaptivecad.snapping import SnapManager, GridStrategy
+from adaptivecad.push_pull import PushPullFeatureCmd # Added PushPull
 
-# Try to import anti-aliasing enum if available
+from PySide6.QtCore import Qt # Added for Qt.Key_Return etc.
+
 # Try to import anti-aliasing enum if available
 AA_AVAILABLE = False
 try:
@@ -68,6 +73,9 @@ try:
     AA_AVAILABLE = True
 except ImportError:
     pass
+
+from OCC.Core.TopoDS import TopoDS_Face # For type checking selected face
+from OCC.Core.AIS import AIS_Shape # For checking selected object type
 
 
 # Property helper for volume
@@ -188,6 +196,9 @@ def _demo_primitives(display):
 
 
 class MainWindow:
+    def run_cmd(self, cmd: BaseCmd) -> None:
+        """Run a command on the main window."""
+        cmd.run(self)
     """Main Playground window."""
 
     def __init__(self) -> None:
@@ -195,6 +206,10 @@ class MainWindow:
         self.app = None
         self.win = None
         self.view = None
+        self.current_mode = "Navigate" # Navigate, Pick, PushPull, Sketch
+        self.push_pull_cmd: PushPullFeatureCmd | None = None
+        self.initial_drag_pos = None # For PushPull dragging
+        self.Qt = Qt # Store Qt for use in _keyPressEvent
 
         # Get the required GUI modules
         result = _require_gui_modules()
@@ -205,8 +220,9 @@ class MainWindow:
             QAction,
             QIcon,
             QToolBar,
-            QMessageBox,
+            q_message_box, # Renamed to avoid conflict if self.QMessageBox is used elsewhere
         ) = result
+        self.QMessageBox = q_message_box # Store as instance attribute
 
         # Check if GUI modules are available
         if qtViewer3d is None:
@@ -218,7 +234,41 @@ class MainWindow:
         self.win = QMainWindow()
         self.win.setWindowTitle("AdaptiveCAD – Playground")
         self.view = qtViewer3d(self.win)
-        self.win.setCentralWidget(self.view)        # Viewport polish - try each enhancement feature
+        self.win.setCentralWidget(self.view)        # Initialize SnapManager
+        self.snap_manager = SnapManager(self.view._display)
+        self.snap_manager.add_strategy(GridStrategy(self.view._display))
+        
+        # Override mouse events instead of connecting to signals that don't exist
+        # Override the qtViewer3d's mouse event handlers
+        original_mouseMoveEvent = self.view.mouseMoveEvent
+        original_mousePressEvent = self.view.mousePressEvent
+        original_mouseReleaseEvent = self.view.mouseReleaseEvent
+        
+        def mouseMoveEvent_override(event):
+            # Call the original handler first
+            original_mouseMoveEvent(event)
+            # Then call our custom handler
+            self._on_mouse_move(event.pos().x(), event.pos().y())
+            
+        def mousePressEvent_override(event):
+            # Call the original handler first
+            original_mousePressEvent(event)
+            # Then call our custom handler
+            self._on_mouse_press(event.pos().x(), event.pos().y(), event.buttons(), event.modifiers())
+            
+        def mouseReleaseEvent_override(event):
+            # Call the original handler first
+            original_mouseReleaseEvent(event)
+            # Then call our custom handler
+            self._on_mouse_release(event.pos().x(), event.pos().y(), event.buttons(), event.modifiers())
+            
+        # Apply the overrides
+        self.view.mouseMoveEvent = mouseMoveEvent_override
+        self.view.mousePressEvent = mousePressEvent_override
+        self.view.mouseReleaseEvent = mouseReleaseEvent_override
+
+
+        # Viewport polish - try each enhancement feature
         try:
             # Try displaying trihedron (axes)
             if hasattr(self.view._display, 'DisplayTrihedron'):
@@ -299,6 +349,18 @@ class MainWindow:
         reload_action.setShortcut("R")
         reload_action.triggered.connect(self._build_demo)
 
+        # Add Grid Snap toggle action
+        grid_snap_action = QAction("Toggle Grid Snap (G)", self.win)
+        grid_snap_action.setShortcut("G")
+        grid_snap_action.triggered.connect(self.toggle_grid_snap)
+        self.win.addAction(grid_snap_action) # Add to window to catch shortcut
+
+        # Add Push-Pull mode toggle action
+        push_pull_action = QAction("Push-Pull (P)", self.win)
+        push_pull_action.setShortcut("P")
+        push_pull_action.triggered.connect(self.toggle_push_pull_mode)
+        self.win.addAction(push_pull_action)
+
         # Set status bar message with navigation help
         self.win.statusBar().showMessage(
             "LMB‑drag = rotate | MMB = pan | Wheel = zoom | Shift+MMB = fit"
@@ -314,6 +376,11 @@ class MainWindow:
         _add_action("Box", "view-cube", NewBoxCmd)
         _add_action("Cylinder", "media-optical", NewCylCmd)
         tb.addSeparator()
+        # Add Bezier and B-spline curve actions
+        from adaptivecad.commands import NewBezierCmd, NewBSplineCmd
+        _add_action("Bezier Curve", "draw-bezier-curves", NewBezierCmd)
+        _add_action("B-spline Curve", "curve-b-spline", NewBSplineCmd)
+        tb.addSeparator()
         _add_action("Export STL", "document-save", ExportStlCmd)
         _add_action("Export AMA", "document-save-as", ExportAmaCmd)
         _add_action("Export G-code", "media-record", ExportGCodeCmd)
@@ -326,23 +393,183 @@ class MainWindow:
         if hasattr(self, 'view') and self.view is not None and hasattr(self.view, '_display'):
             _demo_primitives(self.view._display)
 
-    def run_cmd(self, cmd) -> None:
-        """Execute a command instance and report errors."""
+    def _on_mouse_press(self, x, y, buttons, modifiers):
+        if self.current_mode == "PushPull" and self.push_pull_cmd:
+            if not self.push_pull_cmd.selected_face: # If no face is selected yet for PP
+                # Try to pick a face
+                selected_objects = self.view._display.GetSelectedObjects()
+                if selected_objects:
+                    # We need to get the TopoDS_Face from the selected AIS_InteractiveObject
+                    # This requires that selection mode is set to faces, or we iterate subshapes.
+                    # For now, assume the first selected object is an AIS_Shape and try to get a face.
+                    # This part needs robust face picking from AIS_InteractiveContext selection.
+                    # Let's assume selection callback `on_select` has stored the last selected AIS_Shape
+                    # and we can check if it's a face or get sub-faces.
+                    # For MVP, we might need to adjust selection mode or how faces are picked.
+                    
+                    # A simpler way for now: use the context to detect what's under the mouse
+                    self.view._display.Select(x,y) # Perform selection at click point
+                    picked_ais = self.view._display.Context.DetectedCurrentShape()
+                    
+                    if picked_ais and isinstance(picked_ais, AIS_Shape):
+                        shape = picked_ais.Shape() # This is the TopoDS_Shape
+                        # We need to find which *face* of this shape was clicked.
+                        # This is non-trivial. AIS_InteractiveContext.DetectedSubShape() or similar is needed.
+                        # For now, let's assume the *first* face of the detected shape if it's a simple solid.
+                        # This is a MAJOR simplification for MVP.
+                        from OCC.Core.TopExp import TopExp_Explorer
+                        from OCC.Core.TopAbs import TopAbs_FACE
+                        
+                        explorer = TopExp_Explorer(shape, TopAbs_FACE)
+                        if explorer.More():
+                            face = explorer.Current() # Take the first face
+                            if isinstance(face, TopoDS_Face):
+                                # Find the parent shape in DOCUMENT that this face belongs to
+                                original_doc_shape = None
+                                for feat in DOCUMENT:
+                                    # Check if `shape` is part of `feat.shape` or is `feat.shape`
+                                    # This check might need to be more robust (e.g. IsSame, or checking subshapes)
+                                    if feat.shape.IsSame(shape) or TopExp_Explorer(feat.shape, TopAbs_FACE).More(): # Basic check
+                                        # This logic is flawed if shape is a subshape. 
+                                        # We need to find the actual TopoDS_Shape from DOCUMENT that `picked_ais` represents.
+                                        # Let's assume picked_ais.Shape() IS the one from DOCUMENT for now.
+                                        original_doc_shape = feat.shape
+                                        break
+                                if original_doc_shape:
+                                    self.push_pull_cmd.pick_face(self, original_doc_shape, face)
+                                    self.initial_drag_pos = (x, y) # Store initial mouse position for dragging
+                                    self.win.statusBar().showMessage("Push-Pull: Face selected. Drag to offset.")
+                                else:
+                                    self.win.statusBar().showMessage("Push-Pull: Could not map selected face to document shape.") 
+                            else:
+                                self.win.statusBar().showMessage("Push-Pull: Selected geometry is not a face.")
+                        else:
+                             self.win.statusBar().showMessage("Push-Pull: No faces found on selected shape.")
+                    else:
+                        self.win.statusBar().showMessage("Push-Pull: No shape selected. Click on a face.")
+                else:
+                    self.win.statusBar().showMessage("Push-Pull: Click on a face to begin.")
+            elif self.push_pull_cmd.selected_face: # Face already selected, this click starts the drag
+                self.initial_drag_pos = (x, y)
+                # print(f"Push-Pull: Drag started from {self.initial_drag_pos}")
+
+    def _on_mouse_move(self, x, y):
+        if self.current_mode == "PushPull" and self.push_pull_cmd and self.push_pull_cmd.selected_face and self.initial_drag_pos:
+            # Calculate drag distance
+            # This needs to be projected onto the face normal in screen space, or use 3D points.
+            # For a simple MVP, let's use vertical mouse movement as a proxy for distance.
+            dy = self.initial_drag_pos[1] - y # Positive dy for upward mouse movement
+            # Scale dy to a reasonable offset distance (e.g., 1 pixel = 0.1 mm)
+            offset_distance = dy * 0.1 
+            self.push_pull_cmd.update_preview(self, offset_distance)
+        elif self.current_mode == "Navigate" or self.current_mode == "Pick": # Only do snapping if not in PP drag
+            self.snap_manager.on_mouse_move(x,y)
+
+    def _on_mouse_release(self, x, y, buttons, modifiers):
+        if self.current_mode == "PushPull" and self.push_pull_cmd and self.push_pull_cmd.selected_face and self.initial_drag_pos:
+            # Drag finished, preview is already updated by mouse_move.
+            # User needs to press Enter to commit or Esc to cancel.
+            # print(f"Push-Pull: Drag ended. Current offset: {self.push_pull_cmd.current_offset_distance}")
+            self.initial_drag_pos = None # Reset drag start position
+            # Status bar already shows instructions from pick_face
+
+    def _on_zoom_changed(self):
+        # This is a placeholder. qtViewer3d doesn't have a direct sig_zoom_changed.
+        # We might need to infer zoom changes from wheel events or view parameters.
+        # For now, let's try to get a magnification factor if available.
         try:
-            cmd.run(self)
-        except Exception as exc:  # pragma: no cover - runtime GUI path
-            QMessageBox.critical(self.win, "Command failed", str(exc))
-    
-    def run(self) -> None:
-        """Run the application main loop."""
-        if self.win is None or self.app is None:
-            print("Cannot run the application: GUI dependencies not available")
-            print("Please install required packages:")
-            print("    conda install -c conda-forge pythonocc-core pyside6")
+            magnification = self.view._display.View().Scale() # This might be it
+            self.snap_manager.update_grid_parameters_from_zoom(magnification)
+        except AttributeError:
+            pass 
+
+    def toggle_grid_snap(self):
+        is_active = self.snap_manager.toggle_grid_snap()
+        status_message = f"Grid Snap: {'ON' if is_active else 'OFF'}"
+        self.win.statusBar().showMessage(status_message, 2000) # Show for 2 seconds
+
+    def enter_push_pull_mode(self):
+        if self.current_mode == "PushPull":
             return
-            
+        self.current_mode = "PushPull"
+        self.push_pull_cmd = PushPullFeatureCmd()
+        # Change cursor, update status bar, etc.
+        self.win.statusBar().showMessage("Push-Pull Mode: Click a face to select, then drag. Press P to exit.")
+        # Set selection mode to faces if possible/needed
+        self.view._display.SetSelectionMode(2) # 2 for AIS_Shape::SelectionMode(SM_Face)
+        # print("Entered Push-Pull mode. SelectionMode set to Face.")
+
+    def exit_push_pull_mode(self):
+        if self.current_mode != "PushPull":
+            return
+        
+        if self.push_pull_cmd and self.push_pull_cmd.preview_shape and self.view._display.Context.IsDisplayed(self.push_pull_cmd.preview_shape):
+            self.view._display.Context.Remove(self.push_pull_cmd.preview_shape, True)
+
+        self.current_mode = "Navigate" # Or "Pick"
+        self.push_pull_cmd = None
+        self.initial_drag_pos = None
+        self.win.statusBar().showMessage("Exited Push-Pull mode. Back to Navigate.", 2000)
+        self.view._display.SetSelectionMode(1) # 1 for AIS_Shape::SelectionMode(SM_Object) or default
+        # print("Exited Push-Pull mode. SelectionMode set to Object.")
+        rebuild_scene(self.view._display) # Ensure scene is correct
+
+    def toggle_push_pull_mode(self):
+        if self.current_mode == "PushPull":
+            if self.push_pull_cmd: # If a command is active, cancel it before exiting mode
+                self.push_pull_cmd.cancel(self)
+            else:
+                self.exit_push_pull_mode()
+        else:
+            self.enter_push_pull_mode()
+
+    def _keyPressEvent(self, event):
+        # Handle global key presses or mode-specific ones
+        if self.current_mode == "PushPull" and self.push_pull_cmd:
+            if event.key() == self.Qt.Key_Return or event.key() == self.Qt.Key_Enter:
+                self.push_pull_cmd.commit(self)
+                return # Event handled
+            elif event.key() == self.Qt.Key_Escape:
+                self.push_pull_cmd.cancel(self)
+                return # Event handled
+        
+        # Allow event to propagate for other shortcuts (R, G, P etc.)
+        # Call the base class's keyPressEvent if not handled
+        # super(QMainWindow, self.win).keyPressEvent(event) # This is one way if self.win is QMainWindow
+        # Or rely on event propagation if this handler doesn't consume it.
+        # For now, simply not consuming it should allow other shortcuts to work.
+        pass
+
+    def run(self):
+        """Run the main window application."""
+        if not self.app or not self.win:
+            print("Error: Application not properly initialized")
+            return
+        
+        # Install event filter to catch key events in main window
+        from PySide6.QtCore import QObject, QEvent
+        class KeyPressFilter(QObject):
+            def __init__(self, main_window):
+                super().__init__()
+                self.main_window = main_window
+            def eventFilter(self, obj, event):
+                if event.type() == QEvent.KeyPress:
+                    self.main_window._keyPressEvent(event)
+                return super().eventFilter(obj, event)
+
+        # Install the filter
+        self.event_filter = KeyPressFilter(self)
+        self.win.installEventFilter(self.event_filter)
+        
+        # Show the window and run the application
         self.win.show()
-        self.app.exec()
+        self.win.setGeometry(100, 100, 1024, 768)  # Set a reasonable default size
+        
+        # Execute the application
+        return self.app.exec()
+        
+
+
 
 
 def main() -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 """Simple command framework for the AdaptiveCAD GUI.
 
 This module defines primitives for creating and manipulating geometry in the
@@ -327,3 +328,88 @@ class ExportGCodeDirectCmd(BaseCmd):
             mw.win.statusBar().showMessage(f"G-code (direct) saved ➡ {path}")
         except Exception as e:
             mw.win.statusBar().showMessage(f"Failed to generate G-code: {str(e)}")
+
+
+# ---------------------------------------------------------------------------
+# Curve commands
+# ---------------------------------------------------------------------------
+
+class NewBezierCmd(BaseCmd):
+    title = "Bezier Curve"
+
+    def run(self, mw) -> None:
+        try:
+            from OCC.Core.Geom import Geom_BezierCurve
+            from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
+            from OCC.Core.TColgp import TColgp_Array1OfPnt
+            from OCC.Core.gp import gp_Pnt
+        except ImportError:
+            mw.win.statusBar().showMessage("Bezier API missing – button disabled")
+            return
+
+        # Simple point picker dialog (replace with snap-assisted dialog for production)
+        from PySide6.QtWidgets import QInputDialog
+        points = []
+        for i in range(3):
+            x, ok = QInputDialog.getDouble(mw.win, f"Bezier Point {i+1}", "X (mm)", 0.0)
+            if not ok:
+                return
+            y, ok = QInputDialog.getDouble(mw.win, f"Bezier Point {i+1}", "Y (mm)", 0.0)
+            if not ok:
+                return
+            z, ok = QInputDialog.getDouble(mw.win, f"Bezier Point {i+1}", "Z (mm)", 0.0)
+            if not ok:
+                return
+            points.append(gp_Pnt(x, y, z))
+
+        arr = TColgp_Array1OfPnt(1, len(points))
+        for i, p in enumerate(points, 1):
+            arr.SetValue(i, p)
+        curve = Geom_BezierCurve(arr)
+        edge = BRepBuilderAPI_MakeEdge(curve).Edge()
+        DOCUMENT.append(Feature("Bezier", {"points": [[p.X(), p.Y(), p.Z()] for p in points]}, edge))
+        rebuild_scene(mw.view._display)
+
+
+class NewBSplineCmd(BaseCmd):
+    title = "B-spline Curve"
+
+    def run(self, mw) -> None:
+        try:
+            from OCC.Core.Geom import Geom_BSplineCurve
+            from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
+            from OCC.Core.TColgp import TColgp_Array1OfPnt
+            from OCC.Core.TColStd import TColStd_Array1OfReal, TColStd_Array1OfInteger
+            from OCC.Core.gp import gp_Pnt
+        except ImportError:
+            mw.win.statusBar().showMessage("BSpline API missing – button disabled")
+            return
+
+        from PySide6.QtWidgets import QInputDialog
+        points = []
+        for i in range(4):
+            x, ok = QInputDialog.getDouble(mw.win, f"B-spline Point {i+1}", "X (mm)", 0.0)
+            if not ok:
+                return
+            y, ok = QInputDialog.getDouble(mw.win, f"B-spline Point {i+1}", "Y (mm)", 0.0)
+            if not ok:
+                return
+            z, ok = QInputDialog.getDouble(mw.win, f"B-spline Point {i+1}", "Z (mm)", 0.0)
+            if not ok:
+                return
+            points.append(gp_Pnt(x, y, z))
+
+        degree = 3
+        arr = TColgp_Array1OfPnt(1, len(points))
+        for i, p in enumerate(points, 1):
+            arr.SetValue(i, p)
+        knots = TColStd_Array1OfReal(1, 2)
+        knots.SetValue(1, 0.0)
+        knots.SetValue(2, 1.0)
+        mults = TColStd_Array1OfInteger(1, 2)
+        mults.SetValue(1, degree+1)
+        mults.SetValue(2, degree+1)
+        curve = Geom_BSplineCurve(arr, knots, mults, degree)
+        edge = BRepBuilderAPI_MakeEdge(curve).Edge()
+        DOCUMENT.append(Feature("BSpline", {"points": [[p.X(), p.Y(), p.Z()] for p in points]}, edge))
+        rebuild_scene(mw.view._display)
