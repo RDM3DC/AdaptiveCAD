@@ -10,6 +10,8 @@ package can be used without installing ``pythonocc-core`` or ``PyQt``.
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
+from adaptivecad.io.ama_writer import write_ama
+
 # ---------------------------------------------------------------------------
 # Optional GUI helpers
 # ---------------------------------------------------------------------------
@@ -176,8 +178,5 @@ class ExportAmaCmd(BaseCmd):
         if not path:
             return
 
-        # Placeholder implementation until AMA writer lands
-        with open(path, "w", encoding="utf-8") as fh:
-            fh.write("# AMA export coming soon\n")
-
+        write_ama(DOCUMENT, path)
         mw.win.statusBar().showMessage(f"AMA saved ➡ {path}")
