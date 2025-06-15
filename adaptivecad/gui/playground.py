@@ -312,8 +312,8 @@ class SettingsDialog:
         # ...existing code...
 class MainWindow:
     def resizeEvent(self, event):
-        if hasattr(self, "viewcube"):
-            self.viewcube.move(self.win.width() - 100, 10)
+        if hasattr(self, "_position_viewcube"):
+            self._position_viewcube()
         super(type(self.win), self.win).resizeEvent(event)
     def add_view_toolbar(self):
         from PySide6.QtGui import QAction
@@ -354,6 +354,17 @@ class MainWindow:
         self.property_dock.setWidget(self.property_widget)
         self.win.addDockWidget(Qt.LeftDockWidgetArea, self.property_dock)
         self.property_dock.setVisible(True)
+
+    def _build_snap_menu(self):
+        snap_menu = self.win.menuBar().addMenu("Snaps")
+        self.snap_actions = {}
+        for _, strat in self.snap_manager.strategies:
+            name = strat.__name__
+            act = QAction(name.replace('_', ' ').title(), self.win, checkable=True)
+            act.setChecked(self.snap_manager.is_enabled(name))
+            act.toggled.connect(lambda checked, n=name: self.snap_manager.enable_strategy(n, checked))
+            snap_menu.addAction(act)
+            self.snap_actions[name] = act
 
     def _show_properties(self, obj):
         from PySide6.QtWidgets import QLabel, QLineEdit, QHBoxLayout
@@ -496,9 +507,17 @@ class MainWindow:
         self.view.show() # Explicitly show the view
 
         # --- Add View Cube overlay ---
-        self.viewcube = ViewCubeWidget(self.view._display, self.win)
-        self.viewcube.move(self.win.width() - 100, 10)
+        self.viewcube = ViewCubeWidget(self.view._display, self.view)
+        self._position_viewcube()
         self.viewcube.show()
+
+        # Reposition cube on view resize
+        original_resize = self.view.resizeEvent
+        def resizeEvent(evt):
+            if original_resize:
+                original_resize(evt)
+            self._position_viewcube()
+        self.view.resizeEvent = resizeEvent
 
         # Add menu toggle for View Cube
         viewcube_action = QAction("Show View Cube", self.win, checkable=True)
@@ -515,18 +534,9 @@ class MainWindow:
         self.snap_manager.register(endpoint_snap, priority=20)
         self.snap_manager.register(grid_snap, priority=10)
         self.current_snap_point = None
-        
-        # Add grid spacing and world coordinate conversion to view
-        self.view.grid_spacing = 10.0  # Default grid spacing
-        self.view.snap_world_tol = 1e-3  # Snap tolerance
-        
-        def world_to_screen(world_pt):
-            # Simple fallback - in real app, use proper view projection
-            return np.array([world_pt[0], world_pt[1]])
-        
-        self.view.world_to_screen = world_to_screen
 
-        # Override mouse events instead of connecting to signals that don't exist        # Override the qtViewer3d's mouse event handlers
+        # Override mouse events instead of connecting to signals that don't exist
+        # Override the qtViewer3d's mouse event handlers
         original_mouseMoveEvent = self.view.mouseMoveEvent
         original_mousePressEvent = self.view.mousePressEvent
         original_mouseReleaseEvent = self.view.mouseReleaseEvent
@@ -755,6 +765,10 @@ class MainWindow:
         if hasattr(self, 'view') and self.view is not None and hasattr(self.view, '_display'):
             _demo_primitives(self.view._display)
 
+    def _position_viewcube(self):
+        if hasattr(self, 'viewcube') and self.viewcube.parent() is self.view:
+            self.viewcube.move(self.view.width() - self.viewcube.width() - 10, 10)
+
     def _on_mouse_press(self, x, y, buttons, modifiers):
         if self.current_mode == "PushPull" and self.push_pull_cmd:
             if not self.push_pull_cmd.selected_face: # If no face is selected yet for PP
@@ -840,8 +854,10 @@ class MainWindow:
         pass # On mouse click: use self.current_snap_point for placement
 
     def toggle_grid_snap(self):
-        self.snap_manager.toggle()
-        status_message = f"Snapping: {'ON' if self.snap_manager.enabled else 'OFF'}"
+        is_on = self.snap_manager.toggle_strategy('grid_snap')
+        if hasattr(self, 'snap_actions') and 'grid_snap' in self.snap_actions:
+            self.snap_actions['grid_snap'].setChecked(is_on)
+        status_message = f"Grid Snap {'ON' if is_on else 'OFF'}"
         self.win.statusBar().showMessage(status_message, 2000)
 
     def enter_push_pull_mode(self):

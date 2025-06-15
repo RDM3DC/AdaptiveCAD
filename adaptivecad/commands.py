@@ -157,6 +157,11 @@ def rebuild_scene(display) -> None:
                 consumed.add(target)
             elif isinstance(target, str) and target.isdigit():
                 consumed.add(int(target))
+            tool = feat.params.get("tool")
+            if isinstance(tool, int):
+                consumed.add(tool)
+            elif isinstance(tool, str) and tool.isdigit():
+                consumed.add(int(tool))
     # Explicitly remove consumed features from OCC display if possible
     for i, feat in enumerate(DOCUMENT):
         if getattr(feat, 'params', {}).get('consumed', False):
