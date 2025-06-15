@@ -30,7 +30,12 @@ import sys
 import math
 import numpy as np
 from math import cos, sin, pi
-from adaptivecad.commands import NewBoxCmd, NewCylCmd, ExportStlCmd
+from adaptivecad.commands import (
+    NewBoxCmd,
+    NewCylCmd,
+    ExportStlCmd,
+    ExportAmaCmd,
+)
 
 # Try to import anti-aliasing enum if available
 # Try to import anti-aliasing enum if available
@@ -289,6 +294,7 @@ class MainWindow:
         _add_action("Cylinder", "media-optical", NewCylCmd)
         tb.addSeparator()
         _add_action("Export STL", "document-save", ExportStlCmd)
+        _add_action("Export AMA", "document-save-as", ExportAmaCmd)
 
         self._build_demo()
 
