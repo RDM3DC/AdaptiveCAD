@@ -56,7 +56,8 @@ from adaptivecad.commands import (
     NewCylCmd,
     ExportStlCmd,
     ExportAmaCmd,
-    ExportGCodeCmd,  # Make sure this is imported
+    ExportGCodeCmd,
+    ExportGCodeDirectCmd,  # Added this line
 )
 
 # Try to import anti-aliasing enum if available
@@ -301,9 +302,8 @@ class MainWindow:
         # Set status bar message with navigation help
         self.win.statusBar().showMessage(
             "LMB‑drag = rotate | MMB = pan | Wheel = zoom | Shift+MMB = fit"
-        )
-
-        # Add toolbar with primitive commands        tb = QToolBar("Primitives", self.win)
+        )        # Add toolbar with primitive commands
+        tb = QToolBar("Primitives", self.win)
         self.win.addToolBar(tb)
         
         def _add_action(text, icon_name, cmd_cls):
@@ -316,7 +316,8 @@ class MainWindow:
         tb.addSeparator()
         _add_action("Export STL", "document-save", ExportStlCmd)
         _add_action("Export AMA", "document-save-as", ExportAmaCmd)
-        _add_action("Export G-code", "media-record", ExportGCodeCmd)  # Ensure this line is present and correct
+        _add_action("Export G-code", "media-record", ExportGCodeCmd)
+        _add_action("Export G-code (CAD)", "text-x-generic", ExportGCodeDirectCmd)
 
         self._build_demo()
 

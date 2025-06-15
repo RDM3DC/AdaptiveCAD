@@ -1,5 +1,7 @@
 # adaptivecad/gcode_generator.py
 import datetime
+from typing import List
+from OCC.Core.TopoDS import TopoDS_Shape # For type hinting
 from .io.ama_reader import read_ama, AMAFile
 
 def generate_gcode_from_ama_data(ama_file: AMAFile, tool_diameter: float = 6.0) -> str:
@@ -88,4 +90,60 @@ def generate_gcode_from_ama_file(ama_file_path: str, output_gcode_path: str = No
             # Still return the gcode_program even if saving fails
     
     return gcode_program
+
+def generate_gcode_from_shape(shape: TopoDS_Shape, shape_name: str = "cad_shape", tool_diameter: float = 6.0) -> str:
+    """
+    Generates G-code directly from a TopoDS_Shape object.
+    This is a placeholder implementation and will produce the same G-code as from AMA.
+    A real implementation would analyze the shape geometry.
+
+    Args:
+        shape (TopoDS_Shape): The CAD shape to process.
+        shape_name (str): Name of the shape for G-code comments.
+        tool_diameter (float): Diameter of the milling tool.
+
+    Returns:
+        str: The generated G-code as a string.
+    """
+    gcode_lines = []
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # In a real implementation, you would analyze the shape here.
+    # For example, extract boundaries, determine milling paths, etc.
+    # For this placeholder, we use a fixed G-code sequence.
+
+    gcode_lines.extend([
+        f"; G-code generated for {shape_name}",
+        "; Generated directly from CAD shape by AdaptiveCAD G-code Generator",
+        f"; Date: {timestamp}",
+        "; ------------------------------------------",
+        "G21       ; Set units to mm",
+        "G28       ; Home all axes",
+        "; ------------------------------------------",
+        f"; Simple milling operation for {shape_name}",
+        f"; Tool diameter: {tool_diameter:.1f}mm"
+    ])
+
+    # Placeholder milling path - a simple square
+    # This would be derived from the shape's geometry in a real version
+    gcode_lines.extend([
+        "G0 Z15.000  ; Move to safe height",
+        "G0 X0.000 Y0.000   ; Move to start position",
+        "; Begin cutting operation",
+        "G1 Z-2.000 F100.0 ; Move to cutting depth",
+        "G1 X50.000 F200.0 ; Cut along X",
+        "G1 Y50.000        ; Cut along Y",
+        "G1 X0.000         ; Cut back along X",
+        "G1 Y0.000         ; Cut back along Y",
+        "G0 Z15.000  ; Move to safe height"
+    ])
+
+    gcode_lines.extend([
+        "; ------------------------------------------",
+        "; End of program",
+        "G28       ; Return to home position",
+        f"; Program {shape_name} completed"
+    ])
+
+    return "\n".join(gcode_lines)
 

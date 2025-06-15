@@ -1,1 +1,1 @@
-from .gcode_generator import generate_gcode_from_ama_file, generate_gcode_from_ama_data
+from .gcode_generator import generate_gcode_from_shape, generate_gcode_from_ama_file, generate_gcode_from_ama_data

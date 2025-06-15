@@ -12,6 +12,7 @@ from typing import Any, Dict, List
 
 from adaptivecad.io.ama_writer import write_ama
 from adaptivecad.io.gcode_generator import ama_to_gcode, SimpleMilling
+from adaptivecad.gcode_generator import generate_gcode_from_shape
 from OCC.Core.gp import gp_Pnt
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder
 from OCC.Core.TopoDS import TopoDS_Shape
@@ -264,3 +265,65 @@ class ExportGCodeCmd(BaseCmd):
         finally:
             # Clean up temporary AMA file
             os.remove(tmp_ama_path)
+
+
+class ExportGCodeDirectCmd(BaseCmd):
+    title = "Export G-code (CAD)"
+
+    def run(self, mw) -> None:  # pragma: no cover - runtime GUI path
+        """Generate G-code directly from the CAD shape without creating an AMA file."""
+        (
+            QInputDialog,
+            QFileDialog,
+            _,
+            _,
+            _,
+        ) = _require_command_modules()
+
+        if not DOCUMENT:
+            mw.win.statusBar().showMessage("No shapes to export!")
+            return
+
+        # Get the last shape in DOCUMENT for this example
+        # In a more complex application, you'd let the user select which shape to export
+        shape = DOCUMENT[-1].shape
+        shape_name = DOCUMENT[-1].name
+
+        # Ask for G-code parameters
+        safe_height, ok1 = QInputDialog.getDouble(
+            mw.win, "Safe Height (mm)", "Enter safe height for rapid movements:", 10.0, 1.0, 100.0, 1
+        )
+        if not ok1:
+            return
+            
+        cut_depth, ok2 = QInputDialog.getDouble(
+            mw.win, "Cut Depth (mm)", "Enter cutting depth:", 1.0, 0.1, 20.0, 1
+        )
+        if not ok2:
+            return
+            
+        tool_diameter, ok3 = QInputDialog.getDouble(
+            mw.win, "Tool Diameter (mm)", "Enter tool diameter:", 6.0, 0.1, 20.0, 1
+        )
+        if not ok3:
+            return
+
+        # Get the output path
+        path, _filter = QFileDialog.getSaveFileName(
+            mw.win, "Save G-code", filter="G-code (*.gcode *.nc)"
+        )
+        if not path:
+            return
+
+        # Generate G-code directly from the shape
+        try:
+            # Generate G-code string
+            gcode = generate_gcode_from_shape(shape, shape_name, tool_diameter)
+            
+            # Save to file
+            with open(path, 'w') as f:
+                f.write(gcode)
+                
+            mw.win.statusBar().showMessage(f"G-code (direct) saved ➡ {path}")
+        except Exception as e:
+            mw.win.statusBar().showMessage(f"Failed to generate G-code: {str(e)}")
