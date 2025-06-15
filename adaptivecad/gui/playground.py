@@ -6,6 +6,54 @@ try:
 except Exception:  # pragma: no cover - optional GUI deps missing
     HAS_GUI = False
 else:
+    import sys
+    import numpy as np
+    from math import pi, cos, sin
+    from adaptivecad import settings
+    from PySide6.QtWidgets import QInputDialog
+    from PySide6.QtCore import Qt
+    from OCC.Core.AIS import AIS_Shape
+    from OCC.Core.TopoDS import TopoDS_Face
+    from adaptivecad.push_pull import PushPullFeatureCmd
+    from adaptivecad.gui.viewcube_widget import ViewCubeWidget
+    from adaptivecad.commands import (
+        NewBoxCmd, NewCylCmd, ExportStlCmd, ExportAmaCmd, ExportGCodeCmd, ExportGCodeDirectCmd,
+        MoveCmd, UnionCmd, CutCmd, NewNDBoxCmd, NewNDFieldCmd, NewBezierCmd, NewBSplineCmd,
+        rebuild_scene, DOCUMENT
+    )
+    # Optional anti-aliasing support
+    try:
+        from OCC.Core.V3d import V3d_View
+        from OCC.Core.Graphic3d import Graphic3d_RenderingParams
+        AA_AVAILABLE = True
+        class AA:
+            V3d_MSAA_8X = 8
+    except Exception:
+        AA_AVAILABLE = False
+
+    # Minimal Props class for volume calculation
+    class Props:
+        def Volume(self, shape):
+            try:
+                from OCC.Core.GProp import GProp_GProps
+                from OCC.Core.BRepGProp import brepgprop_VolumeProperties
+                props = GProp_GProps()
+                brepgprop_VolumeProperties(shape, props)
+                return props.Mass()
+            except Exception:                return 0.0
+
+    # Stub classes for missing NDField components
+    def plot_nd_slice(data):
+        """Stub function for plotting ND slices."""
+        print(f"plot_nd_slice called with data shape: {getattr(data, 'shape', 'unknown')}")
+
+    class NDSliceWidget:
+        """Stub widget for ND field slicing."""
+        def __init__(self, ndfield, callback):
+            self.ndfield = ndfield
+            self.callback = callback
+            print(f"NDSliceWidget initialized with ndfield: {ndfield}")
+
     HAS_GUI = True
 
 
@@ -22,12 +70,36 @@ else:
     # for testing without GUI dependencies.
     from PySide6.QtWidgets import QApplication, QMainWindow  # type: ignore
 
+    def _require_gui_modules():
+        """Import optional GUI modules required for GUI execution."""
+        try:
+            from PySide6.QtWidgets import QApplication, QMainWindow, QToolBar, QMessageBox, QLabel
+            from PySide6.QtGui import QIcon, QAction
+            from OCC.Display import backend
+            backend.load_backend("pyside6")
+            from OCC.Display.qtDisplay import qtViewer3d
+        except Exception as exc:  # pragma: no cover - import error path
+            raise RuntimeError(
+                "GUI extras not installed. Run:\n   conda install -c conda-forge pythonocc-core pyside6"
+            ) from exc
+
+        return (
+            QApplication,
+            QMainWindow,
+            qtViewer3d,
+            QAction,
+            QIcon,
+            QToolBar,
+            QMessageBox,
+            QLabel,
+        )
+
     class MainWindow:
         def __init__(self) -> None:
             self.app = QApplication([])
             self.win = QMainWindow()
 
-<<<<<<< HEAD
+
 
 def helix_wire(radius=20, pitch=5, height=40, n=250):
     """Create a helix wire shape."""
@@ -288,6 +360,7 @@ class MainWindow:
             ndfield = NDField(grid_shape, values)
             self.show_ndfield_slicer(ndfield)
         ndfield_action.triggered.connect(launch_ndfield_demo)
+    from adaptivecad.commands import BaseCmd
     def run_cmd(self, cmd: BaseCmd) -> None:
         """Run a command on the main window."""
         cmd.run(self)
@@ -300,8 +373,9 @@ class MainWindow:
         self.view = None
         self.current_mode = "Navigate" # Navigate, Pick, PushPull, Sketch
         self.push_pull_cmd: PushPullFeatureCmd | None = None
-        self.initial_drag_pos = None # For PushPull dragging
-        self.Qt = Qt # Store Qt for use in _keyPressEvent        # Get the required GUI modules
+        self.initial_drag_pos = None # For PushPull dragging        self.Qt = Qt # Store Qt for use in _keyPressEvent
+        
+        # Get the required GUI modules
         result = _require_gui_modules()
         (
             QApplication,
@@ -311,8 +385,18 @@ class MainWindow:
             QIcon,
             QToolBar,
             q_message_box, # Renamed to avoid conflict if self.QMessageBox is used elsewhere
+            QLabel,
         ) = result
         self.QMessageBox = q_message_box # Store as instance attribute
+        
+        # Store GUI classes as instance attributes for use throughout the class
+        self.QApplication = QApplication
+        self.QMainWindow = QMainWindow
+        self.qtViewer3d = qtViewer3d
+        self.QAction = QAction
+        self.QIcon = QIcon
+        self.QToolBar = QToolBar
+        self.QLabel = QLabel
 
         # Check if GUI modules are available
         if qtViewer3d is None:
@@ -804,7 +888,3 @@ def main() -> None:
 
 if __name__ == "__main__":  # pragma: no cover - manual execution only
     main()
-=======
-    def _require_gui_modules():
-        return QApplication, QMainWindow
->>>>>>> 03eaca40f8f07a7d2af56067fe99d2fb95770f51

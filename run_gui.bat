@@ -1,10 +1,17 @@
 @echo off
 :: Set the environment variables for Qt plugins
-for /f "delims=" %%i in ('pip show pyside6 ^| findstr "Location"') do set PY_SITE_PKG=%%i
-set PY_SITE_PKG=%PY_SITE_PKG:~10%
+call D:\Mconda\Scripts\activate.bat adaptivecad
+:: Get the correct Python site-packages path
+for /f "delims=" %%i in ('python -c "import site; print(site.getsitepackages()[0])"') do set PY_SITE_PKG=%%i
+:: Set Qt environment variables correctly
 set QT_PLUGIN_PATH=%PY_SITE_PKG%\PySide6\plugins
 set QT_QPA_PLATFORM_PLUGIN_PATH=%PY_SITE_PKG%\PySide6\plugins\platforms
-set PATH=%PY_SITE_PKG%\PySide6\plugins\platforms;%PATH%
+:: Force Qt to use the Windows platform plugin
+set QT_QPA_PLATFORM=windows
+:: Add both PySide6 directories to PATH
+set PATH=%PY_SITE_PKG%\PySide6;%PY_SITE_PKG%\PySide6\plugins\platforms;%PATH%
+:: Make sure we have Visual C++ redistributable DLLs in the path
+set PATH=D:\Mconda\envs\adaptivecad\Library\bin;%PATH%
 
 echo Starting AdaptiveCAD Playground GUI...
 echo.
@@ -15,6 +22,9 @@ echo   Mouse wheel: Zoom view
 echo   Shift + Middle mouse: Fit all geometry to view
 echo   Press 'R': Reload the scene during development
 echo.
-call D:\Mconda\Scripts\activate.bat adaptivecad
+:: No need to activate again, already done above
+echo Qt plugin paths:
+echo QT_PLUGIN_PATH=%QT_PLUGIN_PATH%
+echo QT_QPA_PLATFORM_PLUGIN_PATH=%QT_QPA_PLATFORM_PLUGIN_PATH%
 python -m adaptivecad.gui.playground
 pause
