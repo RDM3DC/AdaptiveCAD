@@ -1,0 +1,8 @@
+name: adaptivecad
+channels: [conda-forge]
+dependencies:
+  - python=3.10
+  - numpy
+  - pytest
+  - pyside6        # GUI
+  - pythonocc-core # kernel viewer

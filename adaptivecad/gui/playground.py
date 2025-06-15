@@ -19,11 +19,16 @@ import sys
 def _require_gui_modules():
     """Import optional GUI modules, raising RuntimeError if unavailable."""
     try:
-        from PySide6.QtWidgets import QApplication, QMainWindow  # type: ignore
+        # Initialize the Qt backend before importing the OCC Display modules
+        from OCC.Display import backend
+        backend.load_backend("qt-pyqt5")  # Use PyQt5 backend instead
+        
+        # Import required UI modules
+        from PyQt5.QtWidgets import QApplication, QMainWindow
         from OCC.Display.qtDisplay import qtViewer3d  # type: ignore
     except Exception as exc:  # pragma: no cover - import error path
         raise RuntimeError(
-            "PySide6 and pythonocc-core are required to run the playground"
+            "PyQt5 and pythonocc-core are required to run the playground. Error: " + str(exc)
         ) from exc
     return QApplication, QMainWindow, qtViewer3d
 
@@ -32,7 +37,10 @@ def _demo_primitives(display):
     """Create a demo scene using simple primitives."""
     try:
         from adaptivecad import geom, linalg
-    except Exception:  # pragma: no cover - should not happen
+        from OCC.Core.gp import gp_Pnt
+        from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeVertex
+    except Exception as exc:  # pragma: no cover - should not happen
+        print(f"Error loading modules: {exc}")
         return
 
     # Simple demo primitive: a Bezier curve extruded as points
@@ -43,7 +51,10 @@ def _demo_primitives(display):
     ])
     pts = [curve.evaluate(u / 20.0) for u in range(21)]
     for p in pts:
-        display.DisplayShape((p.x, p.y, p.z))
+        # Create a proper OCC shape (vertex) from the point
+        point = gp_Pnt(p.x, p.y, p.z)
+        vertex = BRepBuilderAPI_MakeVertex(point).Shape()
+        display.DisplayShape(vertex)
     display.FitAll()
 
 

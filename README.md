@@ -10,6 +10,44 @@ A lightweight viewer prototype is included in `adaptivecad.gui.playground`.
 Install `PySide6` and `pythonocc-core` and run `python -m adaptivecad.gui.playground`
 to see a simple 3-D demo.
 
+## Environment Setup
+
+### Using Conda (recommended)
+```powershell
+# Create and activate the conda environment
+conda env create -f environment.yml
+conda activate adaptivecad
+
+# Run tests to verify setup
+python -m pytest
+
+# Run the example script
+python example_script.py
+```
+
+## Contributing and Development
+
+### GitHub Repository
+This project is version-controlled using Git. To clone the repository:
+
+```powershell
+# Clone the repository
+git clone https://github.com/yourusername/AdaptiveCAD.git
+
+# Navigate to the project directory
+cd AdaptiveCAD
+
+# Set up the environment
+conda env create -f environment.yml
+conda activate adaptivecad
+```
+
+### Development Workflow
+1. Create a feature branch: `git checkout -b feature/your-feature-name`
+2. Make your changes and commit them: `git commit -am "Add your feature description"`
+3. Push to your branch: `git push origin feature/your-feature-name`
+4. Submit a pull request on GitHub
+
 ---
 
 ## 0. Notation conventions used throughout
