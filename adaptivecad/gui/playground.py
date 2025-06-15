@@ -30,36 +30,27 @@ import sys
 import math
 import numpy as np
 from math import cos, sin, pi
-from OCC.Core.BRepBuilderAPI import (
-    BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire,
-)
-from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
-from OCC.Core.gp import gp_Pnt
-from OCC.Core.GProp import GProp_GProps
-from OCC.Core.BRepGProp import brepgprop_VolumeProperties
+from adaptivecad.commands import NewBoxCmd, NewCylCmd, ExportStlCmd
 
 # Try to import anti-aliasing enum if available
 # Try to import anti-aliasing enum if available
-try:
-    from OCC.Core.V3d import V3d_TypeOfAntialiasing as AA
-    AA_AVAILABLE = True
-except ImportError:
-    AA_AVAILABLE = False
-
-
-# Property helper for volume
-class Props:
-    def Volume(self, shp):
-        gp = GProp_GProps()
-        brepgprop_VolumeProperties(shp, gp)
-        return gp.Mass()
-
 AA_AVAILABLE = False
 try:
     from OCC.Core.V3d import V3d_TypeOfAntialiasing as AA
     AA_AVAILABLE = True
 except ImportError:
     pass
+
+
+# Property helper for volume
+class Props:
+    def Volume(self, shp):
+        from OCC.Core.GProp import GProp_GProps
+        from OCC.Core.BRepGProp import brepgprop_VolumeProperties
+
+        gp = GProp_GProps()
+        brepgprop_VolumeProperties(shp, gp)
+        return gp.Mass()
 
 
 def _require_gui_modules():
@@ -70,25 +61,35 @@ def _require_gui_modules():
         backend.load_backend("qt-pyqt5")  # Use PyQt5 backend instead
         
         # Import required UI modules
-        from PyQt5.QtWidgets import QApplication, QMainWindow
+        from PyQt5.QtWidgets import (
+            QApplication,
+            QMainWindow,
+            QToolBar,
+            QMessageBox,
+        )
+        from PyQt5.QtGui import QAction, QIcon
         from OCC.Display.qtDisplay import qtViewer3d  # type: ignore
     except ImportError:
         # Show a helpful error message for users
         print("GUI extras not installed. Run:\n   conda install pyside6 pythonocc-core")
-        qtViewer3d = None
-        QMainWindow = object
-        QApplication = lambda x: None
-        return QApplication, QMainWindow, qtViewer3d
+        raise RuntimeError(
+            "PyQt5 and pythonocc-core are required to run the playground"
+        )
     except Exception as exc:  # pragma: no cover - import error path
         raise RuntimeError(
             "PyQt5 and pythonocc-core are required to run the playground. Error: " + str(exc)
         ) from exc
-    return QApplication, QMainWindow, qtViewer3d
+    return QApplication, QMainWindow, qtViewer3d, QAction, QIcon, QToolBar, QMessageBox
 
 
 def helix_wire(radius=20, pitch=5, height=40, n=250):
     """Create a helix wire shape."""
     try:
+        from OCC.Core.BRepBuilderAPI import (
+            BRepBuilderAPI_MakeEdge,
+            BRepBuilderAPI_MakeWire,
+        )
+        from OCC.Core.gp import gp_Pnt
         ts = np.linspace(0, 2 * pi * height / pitch, n)
         pts = [gp_Pnt(radius * cos(t), radius * sin(t), pitch * t / (2 * pi)) for t in ts]
         wire = BRepBuilderAPI_MakeWire()
@@ -116,6 +117,7 @@ def _demo_primitives(display):
         
     try:
         from adaptivecad import geom, linalg
+        from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
     except ImportError as exc:
         print(f"Error loading modules: {exc}")
         print("Make sure pythonocc-core and PySide6 are installed:")
@@ -168,7 +170,15 @@ class MainWindow:
 
         # Get the required GUI modules
         result = _require_gui_modules()
-        QApplication, QMainWindow, qtViewer3d = result[:3]
+        (
+            QApplication,
+            QMainWindow,
+            qtViewer3d,
+            QAction,
+            QIcon,
+            QToolBar,
+            QMessageBox,
+        ) = result
 
         # Check if GUI modules are available
         if qtViewer3d is None:
@@ -266,12 +276,33 @@ class MainWindow:
             "LMB‑drag = rotate | MMB = pan | Wheel = zoom | Shift+MMB = fit"
         )
 
+        # Add toolbar with primitive commands
+        tb = QToolBar("Primitives", self.win)
+        self.win.addToolBar(tb)
+
+        def _add_action(text, icon_name, cmd_cls):
+            act = QAction(QIcon.fromTheme(icon_name), text, self.win)
+            tb.addAction(act)
+            act.triggered.connect(lambda: self.run_cmd(cmd_cls()))
+
+        _add_action("Box", "view-cube", NewBoxCmd)
+        _add_action("Cylinder", "media-optical", NewCylCmd)
+        tb.addSeparator()
+        _add_action("Export STL", "document-save", ExportStlCmd)
+
         self._build_demo()
 
     def _build_demo(self) -> None:
         """Build or rebuild the demo scene."""
         if hasattr(self, 'view') and self.view is not None and hasattr(self.view, '_display'):
             _demo_primitives(self.view._display)
+
+    def run_cmd(self, cmd) -> None:
+        """Execute a command instance and report errors."""
+        try:
+            cmd.run(self)
+        except Exception as exc:  # pragma: no cover - runtime GUI path
+            QMessageBox.critical(self.win, "Command failed", str(exc))
     
     def run(self) -> None:
         """Run the application main loop."""
