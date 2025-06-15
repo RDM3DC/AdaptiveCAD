@@ -168,6 +168,7 @@ class MainWindow:
         self.property_dock.setWidget(self.property_widget)
         self.win.addDockWidget(Qt.LeftDockWidgetArea, self.property_dock)
         self.property_dock.setVisible(True)
+        self.selected_feature = None  # Track the currently selected feature
 
     def _build_snap_menu(self):
         snap_menu = self.win.menuBar().addMenu("Snaps")
@@ -259,6 +260,13 @@ class MainWindow:
             else:
                 row.addWidget(QLabel(str(val)))
             self.property_layout.addLayout(row)
+
+        # Track the selected feature for deletion
+        from adaptivecad.commands import Feature
+        if isinstance(obj, Feature):
+            self.selected_feature = obj
+        else:
+            self.selected_feature = None
 
 
     def show_ndfield_slicer(self, ndfield):
@@ -534,6 +542,26 @@ class MainWindow:
             act.setIconText(text)
             self.tb.addAction(act)
             act.triggered.connect(lambda: self.run_cmd(cmd_cls()))
+
+        # Add Delete button
+        from PySide6.QtWidgets import QMessageBox
+        delete_action = QAction(QIcon.fromTheme("edit-delete"), "Delete", self.win)
+        delete_action.setToolTip("Delete selected object")
+        def on_delete():
+            if self.selected_feature is not None:
+                from adaptivecad.gui.delete_utils import delete_selected_feature
+                deleted = delete_selected_feature(self.selected_feature)
+                if deleted:
+                    self.selected_feature = None
+                    self.clear_property_panel()
+                    rebuild_scene(self.view._display)
+                    self.win.statusBar().showMessage("Object deleted.", 2000)
+                else:
+                    self.win.statusBar().showMessage("Could not delete object.", 2000)
+            else:
+                QMessageBox.information(self.win, "Delete", "No object selected for deletion.")
+        delete_action.triggered.connect(on_delete)
+        self.tb.addAction(delete_action)
 
         # Add Clear Selection button
         clear_sel_action = QAction("Clear Selection", self.win)
