@@ -30,6 +30,12 @@ import sys
 import math
 import numpy as np
 from math import cos, sin, pi
+from OCC.Core.BRepBuilderAPI import (
+    BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire,
+)
+from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
+from OCC.Core.gp import gp_Pnt
+from OCC.Core.V3d import V3d_TypeOfAntialiasing as AA
 
 
 def _require_gui_modules():
@@ -58,24 +64,27 @@ def _require_gui_modules():
     return QApplication, QMainWindow, qtViewer3d, V3d_TypeOfAntialiasing
 
 
-def helix_wire(radius=20, pitch=5, height=40, n=200):
+def helix_wire(radius=20, pitch=5, height=40, n=250):
     """Create a helix wire shape."""
-    # Import needed modules inside the function to handle cases where OCC is not available
     try:
-        from OCC.Core.gp import gp_Pnt
-        from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeWire, BRepBuilderAPI_MakeEdge
-    except ImportError:
-        print("OCC modules not available - cannot create helix")
+        ts = np.linspace(0, 2 * pi * height / pitch, n)
+        pts = [gp_Pnt(radius * cos(t), radius * sin(t), pitch * t / (2 * pi)) for t in ts]
+        wire = BRepBuilderAPI_MakeWire()
+        for a, b in zip(pts[:-1], pts[1:]):
+            wire.Add(BRepBuilderAPI_MakeEdge(a, b).Edge())
+        return wire.Wire()
+    except Exception as exc:
+        print(f"Error creating helix: {exc}")
         return None
-        
-    pts = [gp_Pnt(radius * cos(t), radius * sin(t), pitch * t / (2*pi))
-           for t in np.linspace(0, 2*pi*height/pitch, n)]
-    edges = [BRepBuilderAPI_MakeEdge(pts[i], pts[i+1]).Edge()
-             for i in range(len(pts)-1)]
-    wire = BRepBuilderAPI_MakeWire()
-    for e in edges:
-        wire.Add(e)
-    return wire.Wire()
+
+
+def on_select(shape, *k):
+    """Selection callback for interactive shape selection."""
+    try:
+        t = shape.ShapeType()
+        print("Selected", t, "-", shape)
+    except Exception as exc:
+        print(f"Selection error: {exc}")
 
 
 def _demo_primitives(display):
@@ -85,7 +94,6 @@ def _demo_primitives(display):
         
     try:
         from adaptivecad import geom, linalg
-        from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
     except ImportError as exc:
         print(f"Error loading modules: {exc}")
         print("Make sure pythonocc-core and PySide6 are installed:")
@@ -96,22 +104,32 @@ def _demo_primitives(display):
         return
 
     try:
+        # Clear previous demo if any
+        display.EraseAll()
+        
         # Create a box and a helix
-        wire = helix_wire()
         box = BRepPrimAPI_MakeBox(50, 50, 10).Shape()
+        helx = helix_wire()
         
         # Display the shapes
-        display.DisplayShape(box, update=False)
-        if wire:  # Only display wire if created successfully
-            display.DisplayShape(wire, color="YELLOW")
+        display.DisplayShape(box, update=False, transparency=0.2)
+        if helx:  # Only display helix if created successfully
+            display.DisplayShape(helx, color="YELLOW")
         
         # Enable visualization features
         display.show_triedron()          # XYZ axes in lower left
         display.enable_grid()            # dotted construction grid
-        display.register_select_callback(lambda shp, ctx: print(shp))
+        display.register_select_callback(on_select)
+        display.SetSelectionModeEdge()   # edges selectable
         
         # Apply shading for better visualization
         display.SetShadingMode(3)  # Phong shading
+        
+        # Apply anti-aliasing if available
+        try:
+            display.View.SetAntialiasingMode(AA.V3d_MSAA_8X)
+        except Exception as exc:
+            print(f"Could not enable anti-aliasing: {exc}")
         
         display.FitAll()
     except Exception as exc:
@@ -121,22 +139,26 @@ def _demo_primitives(display):
             simple_shape = BRepPrimAPI_MakeBox(100, 100, 100).Shape()
             display.DisplayShape(simple_shape)
             display.FitAll()
-        except:
-            print("Failed to create even a simple demo shape.")
+        except Exception as e:
+            print(f"Failed to create even a simple demo shape: {e}")
 
 
 class MainWindow:
     """Main Playground window."""
 
     def __init__(self) -> None:
+        # Initialize attributes
+        self.app = None
+        self.win = None
+        self.view = None
+        
         # Get the required GUI modules
         result = _require_gui_modules()
         QApplication, QMainWindow, qtViewer3d = result[:3]
-        V3d_TypeOfAntialiasing = result[3] if len(result) > 3 else None
         
         # Check if GUI modules are available
         if qtViewer3d is None:
-            print("GUI extras not installed. Run:\n   conda install pyside6 pythonocc-core")
+            print("GUI extras not installed. Run:\n   conda install -c conda-forge pythonocc-core pyside6")
             return
 
         # Set up the application
@@ -147,30 +169,30 @@ class MainWindow:
         self.win.setCentralWidget(self.view)
         
         # Create menu bar with reload action
-        reload_act = self.win.menuBar().addAction("Reload (R)")
-        reload_act.setShortcut("R")
-        reload_act.triggered.connect(self._rebuild_scene)
+        reload_action = self.win.menuBar().addAction("Reload  (R)")
+        reload_action.setShortcut("R")
+        reload_action.triggered.connect(self._build_demo)
         
         # Set status bar message with navigation help
-        self.win.statusBar().showMessage("LMB‑drag = rotate | MMB = pan | Wheel = zoom")
+        self.win.statusBar().showMessage(
+            "LMB‑drag = rotate | MMB = pan | Wheel = zoom | Shift+MMB = fit"
+        )
         
-        # Enable anti-aliasing if available
-        if V3d_TypeOfAntialiasing:
-            self.view._display.View.SetAntialiasingMode(V3d_TypeOfAntialiasing.V3d_MSAA_8X)
-        
-        self._setup_demo()
+        self._build_demo()
 
-    def _setup_demo(self) -> None:
-        """Set up the initial demo scene."""
-        _demo_primitives(self.view._display)
+    def _build_demo(self) -> None:
+        """Build or rebuild the demo scene."""
+        if hasattr(self, 'view') and self.view is not None and hasattr(self.view, '_display'):
+            _demo_primitives(self.view._display)
     
-    def _rebuild_scene(self) -> None:
-        """Rebuild the scene for hot-reloading."""
-        self.view._display.EraseAll()
-        self._setup_demo()
-
     def run(self) -> None:
         """Run the application main loop."""
+        if self.win is None or self.app is None:
+            print("Cannot run the application: GUI dependencies not available")
+            print("Please install required packages:")
+            print("    conda install -c conda-forge pythonocc-core pyside6")
+            return
+            
         self.win.show()
         self.app.exec()
 

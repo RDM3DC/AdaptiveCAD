@@ -18,10 +18,16 @@ python -m adaptivecad.gui.playground
 ```
 
 The playground provides an interactive 3D view with the following features:
-- Shaded box and yellow helix wire for geometric visualization
-- XYZ axes trihedron and grid for orientation
-- Interactive navigation (rotate, pan, zoom)
-- Press 'R' to reload the scene during development
+- Proper CAD geometry: translucent box and yellow helix wire
+- XYZ axes trihedron and construction grid for orientation
+- Interactive navigation:
+  - Left mouse drag: Rotate view
+  - Middle mouse drag: Pan view
+  - Mouse wheel: Zoom view
+  - Shift + Middle mouse: Fit all geometry to view
+- Interactive selection: Click on edges to select and identify shapes
+- Press 'R' to reload the scene during development (useful for quick iterations)
+- Anti-aliased rendering for crisp, clear lines
 
 ## Environment Setup
 
