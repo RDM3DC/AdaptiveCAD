@@ -4,6 +4,23 @@
 Below is a *road‑map of the mathematics* you will actually need if you want to write a modern CAD / CAM system completely from scratch and, at the same time, support your **πₐ (“Adaptive Pi”) non‑Euclidean geometry kernel**.
 The list is intentionally grouped as *“modules you will implement”* so you can turn each block into an internal library or namespace.  After each block I give the key formulas, identities, or algorithms you will code, plus notes on typical numerical pitfalls.
 
+## Repository Overview
+
+This repository contains a minimal Python implementation of key CAD/CAM
+building blocks.  The modules are intentionally lightweight so you can run the
+examples and unit tests without a large toolchain.  Current features include:
+
+- `adaptivecad.linalg` – simple vectors, matrices and quaternions
+- `adaptivecad.geom` – Bézier and B‑spline curves plus hyperbolic helpers
+- `adaptivecad.io` – AMA reader/writer utilities
+- `adaptivecad.gcode_generator` – placeholder G‑code generation routines
+- `adaptivecad.gui.playground` – PySide6 viewer with a toolbar for Box,
+  Cylinder, Bézier and B‑spline curves, push‑pull editing and export commands
+  (STL, AMA and G‑code)
+- Command‑line tools `ama_to_gcode_converter.py` and `ama2gcode.py`
+- Example script `example_script.py` demonstrating curve evaluation
+- Unit tests in the `tests` folder (`python -m pytest`)
+
 
 ## AdaptiveCAD Playground
 A lightweight viewer prototype is included in `adaptivecad.gui.playground`.
@@ -28,7 +45,8 @@ The playground provides an interactive 3D view with the following features:
 - Interactive selection: Click on edges to select and identify shapes
 - Press 'R' to reload the scene during development (useful for quick iterations)
 - Anti-aliased rendering for crisp, clear lines
- - Toolbar with Box, Cylinder and STL/AMA export commands
+- Toolbar with Box, Cylinder, Bézier and B‑spline curve creation,
+  push‑pull editing, and export commands (STL, AMA and G‑code)
 
 ## Environment Setup
 
