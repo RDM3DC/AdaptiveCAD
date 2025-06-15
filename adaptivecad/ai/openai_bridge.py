@@ -24,6 +24,14 @@ you MUST reply ONLY with valid JSON matching this schema:
   "parameters": { ... }
 }
 No extra keys, no comments.
+For every numeric parameter, wrap it in an object:
+{
+  "value": <number>,          // required
+  "min":  <number>,           // optional, slider lower limit
+  "max":  <number>,           // optional, slider upper limit
+  "step": <number>            // optional, slider tick size
+}
+If you don't want ranges, plain numbers are fine and the UI will use ±∞.
 If the request is ambiguous, ask for clarification in JSON:
 { "need_clarification": "...question..." }
 """
