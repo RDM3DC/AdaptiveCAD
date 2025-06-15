@@ -48,6 +48,7 @@ The playground provides an interactive 3D view with the following features:
 - Anti-aliased rendering for crisp, clear lines
 - Toolbar with Box, Cylinder, Bézier and B‑spline curve creation,
   push‑pull editing, and export commands (STL, AMA and G‑code)
+- View mode toolbar to toggle Shaded, Wireframe and Hidden‑Line views
 
 ### Live parameter editing
 After the first AI generation, drag the sliders in the dialog to resize or
