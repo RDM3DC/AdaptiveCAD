@@ -58,26 +58,26 @@ def _require_gui_modules():
     try:
         # Initialize the Qt backend before importing the OCC Display modules
         from OCC.Display import backend
-        backend.load_backend("qt-pyqt5")  # Use PyQt5 backend instead
+        backend.load_backend("pyside6")  # Use PySide6 backend
         
         # Import required UI modules
-        from PyQt5.QtWidgets import (
+        from PySide6.QtWidgets import (
             QApplication,
             QMainWindow,
             QToolBar,
             QMessageBox,
         )
-        from PyQt5.QtGui import QAction, QIcon
+        from PySide6.QtGui import QAction, QIcon
         from OCC.Display.qtDisplay import qtViewer3d  # type: ignore
     except ImportError:
         # Show a helpful error message for users
-        print("GUI extras not installed. Run:\n   conda install pyside6 pythonocc-core")
+        print("GUI extras not installed. Run:\\n   conda install pyside6 pythonocc-core")
         raise RuntimeError(
-            "PyQt5 and pythonocc-core are required to run the playground"
+            "PySide6 and pythonocc-core are required to run the playground"
         )
     except Exception as exc:  # pragma: no cover - import error path
         raise RuntimeError(
-            "PyQt5 and pythonocc-core are required to run the playground. Error: " + str(exc)
+            "PySide6 and pythonocc-core are required to run the playground. Error: " + str(exc)
         ) from exc
     return QApplication, QMainWindow, qtViewer3d, QAction, QIcon, QToolBar, QMessageBox
 
