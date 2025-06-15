@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 from typing import Iterable, List
+import numpy as np
 
 
 @dataclass
@@ -114,3 +115,50 @@ def polar_decompose(m: Matrix4) -> tuple[Matrix4, Matrix4]:
     rot = Matrix4([list(R[i]) + [0.0] for i in range(3)] + [[0.0, 0.0, 0.0, 1.0]])
     stretch = Matrix4([list(S[i]) + [0.0] for i in range(3)] + [[0.0, 0.0, 0.0, 1.0]])
     return rot, stretch
+
+
+class VecN:
+    """Simple N-dimensional vector built on NumPy arrays."""
+
+    def __init__(self, coords: Iterable[float]):
+        self.coords = np.asarray(list(coords), dtype=float)
+
+    def __repr__(self) -> str:
+        return f"VecN({self.coords.tolist()})"
+
+    def __len__(self) -> int:
+        return int(self.coords.size)
+
+    def __iter__(self):
+        return iter(self.coords)
+
+    def __add__(self, other: "VecN") -> "VecN":
+        if self.coords.size != other.coords.size:
+            raise ValueError("Dimension mismatch")
+        return VecN(self.coords + other.coords)
+
+    def __sub__(self, other: "VecN") -> "VecN":
+        if self.coords.size != other.coords.size:
+            raise ValueError("Dimension mismatch")
+        return VecN(self.coords - other.coords)
+
+    def __mul__(self, scalar: float) -> "VecN":
+        return VecN(self.coords * scalar)
+
+    __rmul__ = __mul__
+
+    def dot(self, other: "VecN") -> float:
+        if self.coords.size != other.coords.size:
+            raise ValueError("Dimension mismatch")
+        return float(np.dot(self.coords, other.coords))
+
+    def norm(self) -> float:
+        return float(np.linalg.norm(self.coords))
+
+    def dist(self, other: "VecN") -> float:
+        if self.coords.size != other.coords.size:
+            raise ValueError("Dimension mismatch")
+        return float(np.linalg.norm(self.coords - other.coords))
+
+    def dim(self) -> int:
+        return int(self.coords.size)

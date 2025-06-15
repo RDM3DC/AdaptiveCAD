@@ -11,12 +11,19 @@ package can be used without installing ``pythonocc-core`` or ``PyQt``.
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
-from adaptivecad.io.ama_writer import write_ama
 from adaptivecad.io.gcode_generator import ama_to_gcode, SimpleMilling
 from adaptivecad.gcode_generator import generate_gcode_from_shape
-from OCC.Core.gp import gp_Pnt
-from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder
-from OCC.Core.TopoDS import TopoDS_Shape
+
+# Optional OCC imports for geometry creation
+try:
+    from OCC.Core.gp import gp_Pnt
+    from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder
+    from OCC.Core.TopoDS import TopoDS_Shape
+except Exception:  # pragma: no cover - OCC not installed
+    gp_Pnt = None
+    BRepPrimAPI_MakeBox = None
+    BRepPrimAPI_MakeCylinder = None
+    TopoDS_Shape = object
 
 # ---------------------------------------------------------------------------
 # Optional GUI helpers
@@ -184,6 +191,8 @@ class ExportAmaCmd(BaseCmd):
         if not path:
             return
 
+        from adaptivecad.io.ama_writer import write_ama  # lazy import
+
         write_ama(DOCUMENT, path)
         mw.win.statusBar().showMessage(f"AMA saved ➡ {path}")
 
@@ -208,8 +217,10 @@ class ExportGCodeCmd(BaseCmd):
         # First, we need to save as AMA temporarily
         with tempfile.NamedTemporaryFile(suffix=".ama", delete=False) as tmp_ama:
             tmp_ama_path = tmp_ama.name
-        
+
         # Write the current document to the temporary AMA file
+        from adaptivecad.io.ama_writer import write_ama  # lazy import
+
         write_ama(DOCUMENT, tmp_ama_path)
         
         # Ask for G-code settings

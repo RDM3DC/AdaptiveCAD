@@ -64,7 +64,7 @@ from adaptivecad.commands import (
 from adaptivecad.snapping import SnapManager, GridStrategy
 from adaptivecad.push_pull import PushPullFeatureCmd # Added PushPull
 
-from PySide6.QtCore import Qt # Added for Qt.Key_Return etc.
+# Qt and OCC imports are optional and loaded lazily
 
 # Try to import anti-aliasing enum if available
 AA_AVAILABLE = False
@@ -74,8 +74,11 @@ try:
 except ImportError:
     pass
 
-from OCC.Core.TopoDS import TopoDS_Face # For type checking selected face
-from OCC.Core.AIS import AIS_Shape # For checking selected object type
+try:
+    from OCC.Core.TopoDS import TopoDS_Face  # For type checking selected face
+    from OCC.Core.AIS import AIS_Shape  # For checking selected object type
+except Exception:  # pragma: no cover - OCC optional
+    TopoDS_Face = AIS_Shape = object  # type: ignore
 
 
 # Property helper for volume

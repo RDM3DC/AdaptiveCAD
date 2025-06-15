@@ -1,6 +1,13 @@
-from OCC.Core.gp import gp_Pnt
-from OCC.Core.AIS import AIS_Point
-from OCC.Display.OCCViewer import Viewer3d
+from typing import Any
+
+try:
+    from OCC.Core.gp import gp_Pnt
+    from OCC.Core.AIS import AIS_Point
+    from OCC.Display.OCCViewer import Viewer3d
+except Exception:  # pragma: no cover - OCC not installed
+    gp_Pnt = Any  # type: ignore
+    AIS_Point = Any  # type: ignore
+    Viewer3d = Any  # type: ignore
 
 class SnapStrategy:
     def __init__(self, viewer_display):

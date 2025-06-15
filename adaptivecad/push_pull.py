@@ -1,15 +1,26 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
-from OCC.Core.BRepOffsetAPI import BRepOffsetAPI_MakeOffsetShape
-from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism
-from OCC.Core.TopoDS import TopoDS_Face, TopoDS_Shape
-from OCC.Core.gp import gp_Vec, gp_Dir
-from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse, BRepAlgoAPI_Cut
-from OCC.Core.TopExp import TopExp_Explorer
-from OCC.Core.TopAbs import TopAbs_FACE
-from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
-from OCC.Core.GeomAbs import GeomAbs_Plane, GeomAbs_Cylinder
+try:
+    from OCC.Core.BRepOffsetAPI import BRepOffsetAPI_MakeOffsetShape
+    from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism
+    from OCC.Core.TopoDS import TopoDS_Face, TopoDS_Shape
+    from OCC.Core.gp import gp_Vec, gp_Dir
+    from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse, BRepAlgoAPI_Cut
+    from OCC.Core.TopExp import TopExp_Explorer
+    from OCC.Core.TopAbs import TopAbs_FACE
+    from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
+    from OCC.Core.GeomAbs import GeomAbs_Plane, GeomAbs_Cylinder
+except Exception:  # pragma: no cover - OCC optional
+    BRepOffsetAPI_MakeOffsetShape = None
+    BRepPrimAPI_MakePrism = None
+    TopoDS_Face = TopoDS_Shape = object  # type: ignore
+    gp_Vec = gp_Dir = None
+    BRepAlgoAPI_Fuse = BRepAlgoAPI_Cut = None
+    TopExp_Explorer = None
+    TopAbs_FACE = None
+    BRepAdaptor_Surface = None
+    GeomAbs_Plane = GeomAbs_Cylinder = None
 
 from adaptivecad.commands import BaseCmd, Feature, DOCUMENT, rebuild_scene
 
