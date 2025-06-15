@@ -1,3 +1,85 @@
+
+from PySide6.QtWidgets import QDockWidget, QSlider, QWidget, QVBoxLayout, QLabel
+from PySide6.QtCore import Qt
+
+
+# --- NDField Slicer Dock and Plotter ---
+class NDSliceWidget(QDockWidget):
+    def __init__(self, ndfield, on_slice_update):
+        super().__init__("ND Field Slicer")
+        self.ndfield = ndfield
+        self.on_slice_update = on_slice_update
+        self.sliders = []
+        self.slice_indices = [None] * ndfield.ndim
+        widget = QWidget()
+        layout = QVBoxLayout()
+        for i, sz in enumerate(ndfield.grid_shape):
+            lbl = QLabel(f"Axis {i}: (slice or view all)")
+            sld = QSlider(Qt.Horizontal)
+            sld.setMinimum(-1)  # -1 means 'all'
+            sld.setMaximum(sz-1)
+            sld.setValue(-1)
+            def make_cb(ax):
+                return lambda val: self._update_index(ax, val)
+            sld.valueChanged.connect(make_cb(i))
+            layout.addWidget(lbl)
+            layout.addWidget(sld)
+            self.sliders.append(sld)
+        widget.setLayout(layout)
+        self.setWidget(widget)
+
+    def _update_index(self, axis, val):
+        self.slice_indices[axis] = None if val == -1 else val
+        self.on_slice_update(self.slice_indices)
+
+def plot_nd_slice(data):
+    import matplotlib.pyplot as plt
+    if data.ndim == 2:
+        plt.imshow(data, cmap="jet", interpolation="nearest")
+        plt.colorbar()
+        plt.title("NDField Slice")
+        plt.show()
+    else:
+        print(f"Cannot plot {data.ndim}D data directly")
+from PySide6.QtWidgets import QSlider
+class NDSliceWidget(QDockWidget):
+    def __init__(self, ndfield, on_slice_update):
+        super().__init__("ND Field Slicer")
+        self.ndfield = ndfield
+        self.on_slice_update = on_slice_update
+        self.sliders = []
+        self.slice_indices = [None] * ndfield.ndim
+        widget = QWidget()
+        layout = QVBoxLayout()
+        for i, sz in enumerate(ndfield.grid_shape):
+            lbl = QLabel(f"Axis {i}: (slice or view all)")
+            sld = QSlider(Qt.Horizontal)
+            sld.setMinimum(-1)  # -1 means 'all'
+            sld.setMaximum(sz-1)
+            sld.setValue(-1)
+            def make_cb(ax):
+                return lambda val: self._update_index(ax, val)
+            sld.valueChanged.connect(make_cb(i))
+            layout.addWidget(lbl)
+            layout.addWidget(sld)
+            self.sliders.append(sld)
+        widget.setLayout(layout)
+        self.setWidget(widget)
+
+    def _update_index(self, axis, val):
+        self.slice_indices[axis] = None if val == -1 else val
+        self.on_slice_update(self.slice_indices)
+
+def plot_nd_slice(data):
+    import matplotlib.pyplot as plt
+    if data.ndim == 2:
+        plt.imshow(data, cmap="jet", interpolation="nearest")
+        plt.colorbar()
+        plt.title("NDField Slice")
+        plt.show()
+    else:
+        print(f"Cannot plot {data.ndim}D data directly")
+
 """Minimal PySide6 + pythonOCC viewer prototype.
 
 This module provides the ``AdaptiveCAD Playground`` application described in
@@ -24,7 +106,6 @@ Navigation:
     - Shift + Right mouse: Dynamic zoom
     - Press 'R': Reload the demo scene
 """
-from __future__ import annotations
 
 # Fix Qt plugin paths
 import os
@@ -63,8 +144,14 @@ from adaptivecad.commands import (
 )
 from adaptivecad.snapping import SnapManager, GridStrategy
 from adaptivecad.push_pull import PushPullFeatureCmd # Added PushPull
+from adaptivecad import settings
 
 from PySide6.QtCore import Qt # Added for Qt.Key_Return etc.
+from PySide6.QtWidgets import (
+    QInputDialog, QToolBar, QLabel, QLineEdit, QWidget, QVBoxLayout, QFormLayout, QPushButton
+)
+from PySide6.QtWidgets import QDockWidget
+from PySide6.QtGui import QAction, QIcon
 
 # Try to import anti-aliasing enum if available
 AA_AVAILABLE = False
@@ -76,6 +163,8 @@ except ImportError:
 
 from OCC.Core.TopoDS import TopoDS_Face # For type checking selected face
 from OCC.Core.AIS import AIS_Shape # For checking selected object type
+from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
+from adaptivecad.settings import MESH_DEFLECTION, MESH_ANGLE
 
 
 # Property helper for volume
@@ -195,7 +284,103 @@ def _demo_primitives(display):
             print(f"Failed to create even a simple demo shape: {e}")
 
 
+class SettingsDialog:
+    @staticmethod
+    def show(parent):
+        defl = settings.MESH_DEFLECTION
+        angle = settings.MESH_ANGLE
+        defl, ok = QInputDialog.getDouble(parent, "Mesh Deflection", "Deflection (mm, lower=smoother):", defl, 0.001, 1.0, 3)
+        if not ok:
+            return
+        angle, ok = QInputDialog.getDouble(parent, "Mesh Angle", "Angle (radians, lower=smoother):", angle, 0.001, 1.0, 3)
+        if not ok:
+            return
+        settings.MESH_DEFLECTION = defl
+        settings.MESH_ANGLE = angle
+
+
 class MainWindow:
+    def clear_property_panel(self):
+        # Clear all widgets from the property panel
+        for i in reversed(range(self.property_layout.count())):
+            widget = self.property_layout.itemAt(i).widget()
+            if widget:
+                widget.setParent(None)
+        self.property_layout.addWidget(QLabel("No selection."))
+
+    def _init_property_panel(self):
+        from PySide6.QtWidgets import QDockWidget, QWidget, QVBoxLayout, QLabel
+        self.property_dock = QDockWidget("Properties", self.win)
+        self.property_widget = QWidget()
+        self.property_layout = QVBoxLayout()
+        self.property_widget.setLayout(self.property_layout)
+        self.property_dock.setWidget(self.property_widget)
+        self.win.addDockWidget(Qt.LeftDockWidgetArea, self.property_dock)
+        self.property_dock.setVisible(True)
+
+    def _show_properties(self, obj):
+        from PySide6.QtWidgets import QLabel, QLineEdit, QHBoxLayout
+        # Clear previous
+        for i in reversed(range(self.property_layout.count())):
+            widget = self.property_layout.itemAt(i).widget()
+            if widget:
+                widget.setParent(None)
+        self.property_layout.addWidget(QLabel(f"Type: {type(obj).__name__}"))
+        # Show editable attributes (simple, non-callable, non-private)
+        def is_editable(val):
+            return isinstance(val, (int, float, str, bool))
+        for attr in dir(obj):
+            if attr.startswith('_') or callable(getattr(obj, attr)):
+                continue
+            val = getattr(obj, attr)
+            row = QHBoxLayout()
+            row.addWidget(QLabel(f"{attr}: "))
+            if is_editable(val):
+                editor = QLineEdit(str(val))
+                def make_setter(attr_name, typ):
+                    def setter():
+                        text = editor.text()
+                        try:
+                            if typ is bool:
+                                new_val = text.lower() in ("1", "true", "yes", "on")
+                            else:
+                                new_val = typ(text)
+                            setattr(obj, attr_name, new_val)
+                            # Trigger viewer update after edit
+                            if hasattr(self, 'view') and hasattr(self.view, '_display'):
+                                try:
+                                    rebuild_scene(self.view._display)
+                                except Exception:
+                                    pass
+                        except Exception as e:
+                            editor.setText(str(getattr(obj, attr_name)))  # revert
+                    return setter
+                editor.editingFinished.connect(make_setter(attr, type(val)))
+                row.addWidget(editor)
+            else:
+                row.addWidget(QLabel(str(val)))
+            self.property_layout.addLayout(row)
+
+
+    def show_ndfield_slicer(self, ndfield):
+        """Show the NDField slicer dock for a given NDField object."""
+        def on_slice_update(slice_indices):
+            data = ndfield.get_slice(slice_indices)
+            plot_nd_slice(data)
+        self.ndfield_slicer = NDSliceWidget(ndfield, on_slice_update)
+        self.win.addDockWidget(Qt.RightDockWidgetArea, self.ndfield_slicer)
+
+        # Add NDField Slicer demo action to menu
+        ndfield_action = self.win.menuBar().addAction("NDField Slicer Demo")
+        def launch_ndfield_demo():
+            import numpy as np
+            from adaptivecad.ndfield import NDField
+            # Example: 4D field, shape (8,8,8,8)
+            grid_shape = [8,8,8,8]
+            values = np.random.rand(*grid_shape)
+            ndfield = NDField(grid_shape, values)
+            self.show_ndfield_slicer(ndfield)
+        ndfield_action.triggered.connect(launch_ndfield_demo)
     def run_cmd(self, cmd: BaseCmd) -> None:
         """Run a command on the main window."""
         cmd.run(self)
@@ -229,14 +414,25 @@ class MainWindow:
             print("GUI extras not installed. Run:\n   conda install -c conda-forge pythonocc-core pyside6")
             return
 
+
         # Set up the application
         self.app = QApplication(sys.argv)
         self.win = QMainWindow()
         self.win.setWindowTitle("AdaptiveCAD – Playground")
         self.view = qtViewer3d(self.win)
-        self.win.setCentralWidget(self.view)        # Initialize SnapManager
+        self.win.setCentralWidget(self.view)
+        self.view.show() # Explicitly show the view
+        self._init_property_panel()
+
+        # Initialize SnapManager
         self.snap_manager = SnapManager(self.view._display)
         self.snap_manager.add_strategy(GridStrategy(self.view._display))
+        # Side panel removed for simplicity. Only 3D view and toolbar remain.
+
+    # _show_properties removed with side panel
+
+    # _apply_property_changes removed with side panel
+
         
         # Override mouse events instead of connecting to signals that don't exist
         # Override the qtViewer3d's mouse event handlers
@@ -309,12 +505,17 @@ class MainWindow:
                     self.view._display.set_bg_gradient_color(0.12, 0.12, 0.12, 0.18, 0.18, 0.18)
             except:
                 print("Could not set background color using any known method.")        # Property tool and selection callback
+
         try:
             self.props_tool = Props()
-            
+
+
             def on_select(shape, *k):
+                # If selection is a list, unwrap it
+                if isinstance(shape, list) and shape:
+                    shape = shape[0]
                 try:
-                    t = shape.ShapeType()
+                    t = shape.ShapeType() if hasattr(shape, 'ShapeType') else type(shape).__name__
                     try:
                         mass = round(self.props_tool.Volume(shape), 3)
                     except Exception:
@@ -322,7 +523,31 @@ class MainWindow:
                     self.win.statusBar().showMessage(f"Selected {t} | volume ≈ {mass} mm³")
                 except Exception as e:
                     print(f"Selection callback error: {e}")
-            
+
+                # --- Show properties in side panel if shape is a Feature or NDField ---
+                from adaptivecad.commands import DOCUMENT
+                found = None
+                for feat in DOCUMENT:
+                    if hasattr(feat, 'shape') and hasattr(shape, 'IsEqual'):
+                        try:
+                            if shape.IsEqual(feat.shape):
+                                found = feat
+                                break
+                        except Exception:
+                            continue
+                if found is not None:
+                    self._show_properties(found)
+                else:
+                    # Try NDField: look for .shape or .values attribute
+                    from adaptivecad.ndfield import NDField
+                    for obj in DOCUMENT:
+                        if isinstance(obj, NDField):
+                            self._show_properties(obj)
+                            break
+                    else:
+                        # Fallback: show the shape itself
+                        self._show_properties(shape)
+
             # Try to register selection callback
             if hasattr(self.view._display, 'register_select_callback'):
                 self.view._display.register_select_callback(on_select)
@@ -330,7 +555,7 @@ class MainWindow:
                 self.view._display.SetSelectionCallBack(on_select)
             else:
                 print("Warning: Could not register selection callback - method not found")
-                
+
             # Try to set selection mode for edges
             try:
                 if hasattr(self.view._display, 'SetSelectionModeEdge'):
@@ -361,40 +586,64 @@ class MainWindow:
         push_pull_action.triggered.connect(self.toggle_push_pull_mode)
         self.win.addAction(push_pull_action)
 
-        # Set status bar message with navigation help
+        # Add Settings action to menu
+        settings_action = self.win.menuBar().addAction("Settings")
+        settings_action.triggered.connect(lambda: (SettingsDialog.show(self.win), self._build_demo()))        # Set status bar message with navigation help
         self.win.statusBar().showMessage(
             "LMB‑drag = rotate | MMB = pan | Wheel = zoom | Shift+MMB = fit"
-        )        # Add toolbar with primitive commands
-        tb = QToolBar("Primitives", self.win)
-        self.win.addToolBar(tb)
+        )
         
+        # Add toolbar with primitive commands
+        self.tb = QToolBar("Primitives", self.win)
+        self.tb.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)  # Always show text under icon
+        self.win.addToolBar(Qt.TopToolBarArea, self.tb)  # Force toolbar to top
+        self.tb.setVisible(True)
+
         def _add_action(text, icon_name, cmd_cls):
             act = QAction(QIcon.fromTheme(icon_name), text, self.win)
-            tb.addAction(act)
+            act.setToolTip(text)
+            act.setIconText(text)
+            self.tb.addAction(act)
             act.triggered.connect(lambda: self.run_cmd(cmd_cls()))
-            
+
+        # Add Clear Selection button
+        clear_sel_action = QAction("Clear Selection", self.win)
+        clear_sel_action.setToolTip("Clear property panel selection")
+        clear_sel_action.triggered.connect(self.clear_property_panel)
+        self.tb.addAction(clear_sel_action)
+        
         _add_action("Box", "view-cube", NewBoxCmd)
         _add_action("Cylinder", "media-optical", NewCylCmd)
-        tb.addSeparator()
+        self.tb.addSeparator()
+        
         # Add Bezier and B-spline curve actions
         from adaptivecad.commands import NewBezierCmd, NewBSplineCmd
         _add_action("Bezier Curve", "draw-bezier-curves", NewBezierCmd)
         _add_action("B-spline Curve", "curve-b-spline", NewBSplineCmd)
-        tb.addSeparator()
+        self.tb.addSeparator()
         _add_action("Export STL", "document-save", ExportStlCmd)
         _add_action("Export AMA", "document-save-as", ExportAmaCmd)
         _add_action("Export G-code", "media-record", ExportGCodeCmd)
         _add_action("Export G-code (CAD)", "text-x-generic", ExportGCodeDirectCmd)
-        tb.addSeparator()
+        self.tb.addSeparator()
         from adaptivecad.commands import MoveCmd
         _add_action("Move", "transform-move", MoveCmd)
-        tb.addSeparator()
+        self.tb.addSeparator()
+        
         from adaptivecad.commands import UnionCmd, CutCmd
         _add_action("Union", "list-add", UnionCmd)
         _add_action("Cut", "edit-cut", CutCmd)
-        tb.addSeparator()
-
-        self._build_demo()
+        self.tb.addSeparator()
+        
+        from adaptivecad.commands import NewNDBoxCmd, NewNDFieldCmd
+        _add_action("ND Box", "view-list-details", NewNDBoxCmd)
+        _add_action("ND Field", "view-list-tree", NewNDFieldCmd)
+        self.tb.addSeparator()
+        
+        from adaptivecad.commands import NewBallCmd, NewTorusCmd
+        _add_action("Ball", "media-playback-stop", NewBallCmd)
+        _add_action("Torus", "format-rotate", NewTorusCmd)
+        self.tb.addSeparator()
 
     def _build_demo(self) -> None:
         """Build or rebuild the demo scene."""
@@ -572,6 +821,7 @@ class MainWindow:
         # Show the window and run the application
         self.win.show()
         self.win.setGeometry(100, 100, 1024, 768)  # Set a reasonable default size
+        self._build_demo() # Build demo scene AFTER window is shown
         
         # Execute the application
         return self.app.exec()

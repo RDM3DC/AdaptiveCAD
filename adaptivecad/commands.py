@@ -17,6 +17,7 @@ from adaptivecad.gcode_generator import generate_gcode_from_shape
 from OCC.Core.gp import gp_Pnt
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder
 from OCC.Core.TopoDS import TopoDS_Shape
+from adaptivecad.nd_math import identityN
 
 # ---------------------------------------------------------------------------
 # Optional GUI helpers
@@ -53,9 +54,55 @@ def _require_command_modules():
 class Feature:
     """Record for a model feature."""
 
+
     name: str
     params: Dict[str, Any]
     shape: Any  # OCC TopoDS_Shape
+    local_transform: Any = None
+    dim: int = None
+    parent: 'Feature' = None  # Parent feature for hierarchy
+    children: list = None
+
+
+    def __post_init__(self):
+        # Set dim from params if not provided
+        if self.dim is None:
+            self.dim = self.params.get('dim', 3)
+        # Set local_transform to identity if not provided
+        if self.local_transform is None:
+            self.local_transform = identityN(self.dim)
+        else:
+            import numpy as np
+            self.local_transform = np.asarray(self.local_transform)
+        if self.children is None:
+            self.children = []
+
+    def set_parent(self, parent):
+        if self.parent is not None and self in self.parent.children:
+            self.parent.children.remove(self)
+        self.parent = parent
+        if parent is not None and self not in parent.children:
+            parent.children.append(self)
+
+    def world_transform(self):
+        import numpy as np
+        t = np.array(self.local_transform)
+        p = self.parent
+        while p is not None:
+            t = np.dot(p.local_transform, t)
+            p = p.parent
+        return t
+
+
+    def as_dict(self):
+        d = dict(
+            name=self.name,
+            params=self.params,
+            dim=self.dim,
+            local_transform=self.local_transform.tolist(),
+            parent=self.parent.name if self.parent else None
+        )
+        return d
 
 
 # Global in-memory document tree
@@ -64,6 +111,7 @@ DOCUMENT: List[Feature] = []
 
 def rebuild_scene(display) -> None:
     """Re-display only active shapes in the document (hide consumed ones)."""
+    from adaptivecad.display_utils import smoother_display
     display.EraseAll()
     # Find all consumed targets (by Move/Boolean features)
     consumed = set()
@@ -77,7 +125,7 @@ def rebuild_scene(display) -> None:
     # Only display features not consumed by a later feature
     for i, feat in enumerate(DOCUMENT):
         if i not in consumed:
-            display.DisplayShape(feat.shape, update=False)
+            smoother_display(display, feat.shape)
     display.FitAll()
 
 
@@ -512,4 +560,96 @@ class CutCmd(BaseCmd):
         from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Cut
         cut = BRepAlgoAPI_Cut(a, b).Shape()
         DOCUMENT.append(Feature("Cut", {"target": i1, "tool": i2}, cut))
+        rebuild_scene(mw.view._display)
+
+
+# ---------------------------------------------------------------------------
+# NDBox and NDField commands
+# ---------------------------------------------------------------------------
+
+class NewNDBoxCmd(BaseCmd):
+    title = "ND Box"
+    def run(self, mw) -> None:
+        from PySide6.QtWidgets import QInputDialog
+        from adaptivecad.ndbox import NDBox
+        # Ask for dimension
+        dim, ok = QInputDialog.getInt(mw.win, "ND Box", "Dimension (N):", 3, 1)
+        if not ok:
+            return
+        # Ask for center and size as comma-separated
+        center_str, ok = QInputDialog.getText(mw.win, "ND Box", f"Center (comma-separated, {dim} values):", text=','.join(['0']*dim))
+        if not ok:
+            return
+        size_str, ok = QInputDialog.getText(mw.win, "ND Box", f"Size (comma-separated, {dim} values):", text=','.join(['10']*dim))
+        if not ok:
+            return
+        center = [float(x) for x in center_str.split(',')]
+        size = [float(x) for x in size_str.split(',')]
+        box = NDBox(center, size)
+        DOCUMENT.append(Feature("NDBox", {"center": center, "size": size, "dim": dim}, box))
+        rebuild_scene(mw.view._display)
+
+class NewNDFieldCmd(BaseCmd):
+    title = "ND Field"
+    def run(self, mw) -> None:
+        from PySide6.QtWidgets import QInputDialog
+        from adaptivecad.ndfield import NDField
+        # Ask for dimension
+        dim, ok = QInputDialog.getInt(mw.win, "ND Field", "Dimension (N):", 3, 1)
+        if not ok:
+            return
+        # Ask for grid shape as comma-separated
+        grid_str, ok = QInputDialog.getText(mw.win, "ND Field", f"Grid shape (comma-separated, {dim} values):", text=','.join(['2']*dim))
+        if not ok:
+            return
+        grid_shape = [int(x) for x in grid_str.split(',')]
+        num_vals = 1
+        for n in grid_shape:
+            num_vals *= n
+        # Ask for values as comma-separated (default: zeros)
+        values_str, ok = QInputDialog.getText(mw.win, "ND Field", f"Values (comma-separated, {num_vals} values):", text=','.join(['0']*num_vals))
+        if not ok:
+            return
+        values = [float(x) for x in values_str.split(',')]
+        field = NDField(grid_shape, values)
+        DOCUMENT.append(Feature("NDField", {"grid_shape": grid_shape, "values": values, "dim": dim}, field))
+        rebuild_scene(mw.view._display)
+
+
+# ---------------------------------------------------------------------------
+# Ball and Torus commands
+# ---------------------------------------------------------------------------
+from adaptivecad.primitives import make_ball, make_torus
+
+class NewBallCmd(BaseCmd):
+    title = "Ball"
+    def run(self, mw):
+        from PySide6.QtWidgets import QInputDialog
+        center_str, ok = QInputDialog.getText(mw.win, "Ball Center", "Center (x,y,z):", text="0,0,0")
+        if not ok:
+            return
+        center = [float(x) for x in center_str.split(",")]
+        radius, ok = QInputDialog.getDouble(mw.win, "Ball Radius", "Radius:", 10.0)
+        if not ok:
+            return
+        shape = make_ball(center, radius)
+        DOCUMENT.append(Feature("Ball", dict(center=center, radius=radius), shape))
+        rebuild_scene(mw.view._display)
+
+class NewTorusCmd(BaseCmd):
+    title = "Torus"
+    def run(self, mw):
+        from PySide6.QtWidgets import QInputDialog
+        center_str, ok = QInputDialog.getText(mw.win, "Torus Center", "Center (x,y,z):", text="0,0,0")
+        if not ok:
+            return
+        center = [float(x) for x in center_str.split(",")]
+        maj, ok = QInputDialog.getDouble(mw.win, "Major Radius", "Major radius:", 30.0)
+        if not ok:
+            return
+        minr, ok = QInputDialog.getDouble(mw.win, "Minor Radius", "Minor radius:", 7.0)
+        if not ok:
+            return
+        shape = make_torus(center, maj, minr)
+        DOCUMENT.append(Feature("Torus", dict(center=center, major_radius=maj, minor_radius=minr), shape))
         rebuild_scene(mw.view._display)

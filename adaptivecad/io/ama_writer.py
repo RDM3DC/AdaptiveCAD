@@ -42,17 +42,38 @@ def write_ama(document, path, units="mm", defl=0.05):
     (tmp / "meta" / "manifest.json").write_text(json.dumps(manifest, indent=2))
 
     # 2. write simple feature graph JSON (one node per Feature, linear)
+    import numpy as np
     graph = []
+    (tmp / "model").mkdir(exist_ok=True)
+    (tmp / "fields").mkdir(exist_ok=True)
     for idx, feat in enumerate(document):
         node = {
             "id": f"f{idx:03d}",
             "type": feat.name,
             "params": feat.params,
+            "dim": getattr(feat, 'dim', None) or feat.params.get('dim'),
             "geom": f"s{idx:03d}.brep",
             "inputs": [f"f{idx-1:03d}"] if idx else [],
         }
+        # Export local_transform if present
+        if hasattr(feat, 'local_transform') and feat.local_transform is not None:
+            import numpy as np
+            node["local_transform"] = np.asarray(feat.local_transform).tolist()
+        # NDField data export (optional)
+        if feat.name == "NDField":
+            # Try to get the values array from the feature
+            values = getattr(feat, 'values', None)
+            if values is None and hasattr(feat, 'shape') and hasattr(feat.shape, 'values'):
+                values = feat.shape.values
+            if values is not None:
+                np.save(tmp / "fields" / f"f{idx:03d}_field.npy", values)
+                node["fields"] = {"values": f"fields/f{idx:03d}_field.npy"}
+            # Export NDField grid info
+            for attr in ("origin", "axes", "spacing"):
+                val = getattr(feat, attr, None)
+                if val is not None:
+                    node["params"][attr] = np.asarray(val).tolist()
         graph.append(node)
-    (tmp / "model").mkdir()
     (tmp / "model" / "graph.json").write_text(json.dumps(graph, indent=2))
 
     # 3. dump each TopoDS_Shape to /geom/*.brep
