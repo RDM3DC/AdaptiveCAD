@@ -7,8 +7,21 @@ The list is intentionally grouped as *“modules you will implement”* so you c
 
 ## AdaptiveCAD Playground
 A lightweight viewer prototype is included in `adaptivecad.gui.playground`.
-Install `PySide6` and `pythonocc-core` and run `python -m adaptivecad.gui.playground`
-to see a simple 3-D demo.
+Install the GUI dependencies and run the playground to see a 3-D demo:
+
+```bash
+# Install required GUI dependencies
+conda install -c conda-forge pythonocc-core pyside6
+
+# Run the GUI playground
+python -m adaptivecad.gui.playground
+```
+
+The playground provides an interactive 3D view with the following features:
+- Shaded box and yellow helix wire for geometric visualization
+- XYZ axes trihedron and grid for orientation
+- Interactive navigation (rotate, pan, zoom)
+- Press 'R' to reload the scene during development
 
 ## Environment Setup
 
