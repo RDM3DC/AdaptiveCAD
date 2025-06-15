@@ -385,6 +385,14 @@ class MainWindow:
         _add_action("Export AMA", "document-save-as", ExportAmaCmd)
         _add_action("Export G-code", "media-record", ExportGCodeCmd)
         _add_action("Export G-code (CAD)", "text-x-generic", ExportGCodeDirectCmd)
+        tb.addSeparator()
+        from adaptivecad.commands import MoveCmd
+        _add_action("Move", "transform-move", MoveCmd)
+        tb.addSeparator()
+        from adaptivecad.commands import UnionCmd, CutCmd
+        _add_action("Union", "list-add", UnionCmd)
+        _add_action("Cut", "edit-cut", CutCmd)
+        tb.addSeparator()
 
         self._build_demo()
 

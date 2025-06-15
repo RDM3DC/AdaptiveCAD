@@ -63,10 +63,21 @@ DOCUMENT: List[Feature] = []
 
 
 def rebuild_scene(display) -> None:
-    """Re-display all shapes in the document."""
+    """Re-display only active shapes in the document (hide consumed ones)."""
     display.EraseAll()
-    for feat in DOCUMENT:
-        display.DisplayShape(feat.shape, update=False)
+    # Find all consumed targets (by Move/Boolean features)
+    consumed = set()
+    for i, feat in enumerate(DOCUMENT):
+        if feat.name in ("Move", "Cut", "Union", "Intersect"):
+            target = feat.params.get("target")
+            if isinstance(target, int):
+                consumed.add(target)
+            elif isinstance(target, str) and target.isdigit():
+                consumed.add(int(target))
+    # Only display features not consumed by a later feature
+    for i, feat in enumerate(DOCUMENT):
+        if i not in consumed:
+            display.DisplayShape(feat.shape, update=False)
     display.FitAll()
 
 
@@ -412,4 +423,93 @@ class NewBSplineCmd(BaseCmd):
         curve = Geom_BSplineCurve(arr, knots, mults, degree)
         edge = BRepBuilderAPI_MakeEdge(curve).Edge()
         DOCUMENT.append(Feature("BSpline", {"points": [[p.X(), p.Y(), p.Z()] for p in points]}, edge))
+        rebuild_scene(mw.view._display)
+
+
+# ---------------------------------------------------------------------------
+# Move/Transform command
+# ---------------------------------------------------------------------------
+
+class MoveCmd(BaseCmd):
+    title = "Move"
+
+    def run(self, mw) -> None:
+        if not DOCUMENT:
+            mw.win.statusBar().showMessage("No shapes to move!")
+            return
+        # Let user select a shape by index (simple for now)
+        from PySide6.QtWidgets import QInputDialog
+        items = [f"{i}: {feat.name}" for i, feat in enumerate(DOCUMENT)]
+        idx, ok = QInputDialog.getItem(mw.win, "Select Shape to Move", "Shape:", items, 0, False)
+        if not ok:
+            return
+        shape_idx = int(idx.split(":")[0])
+        shape = DOCUMENT[shape_idx].shape
+        # Get translation values
+        dx, ok = QInputDialog.getDouble(mw.win, "Move", "dx (mm)", 10.0)
+        if not ok:
+            return
+        dy, ok = QInputDialog.getDouble(mw.win, "Move", "dy (mm)", 0.0)
+        if not ok:
+            return
+        dz, ok = QInputDialog.getDouble(mw.win, "Move", "dz (mm)", 0.0)
+        if not ok:
+            return
+        # Apply translation
+        from OCC.Core.gp import gp_Trsf, gp_Vec
+        from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
+        trsf = gp_Trsf(); trsf.SetTranslation(gp_Vec(dx, dy, dz))
+        moved_shape = BRepBuilderAPI_Transform(shape, trsf, True).Shape()
+        DOCUMENT.append(Feature("Move", {"target": shape_idx, "dx": dx, "dy": dy, "dz": dz}, moved_shape))
+        rebuild_scene(mw.view._display)
+
+
+# ---------------------------------------------------------------------------
+# Boolean (Union, Cut) commands
+# ---------------------------------------------------------------------------
+
+class UnionCmd(BaseCmd):
+    title = "Union"
+    def run(self, mw) -> None:
+        if len(DOCUMENT) < 2:
+            mw.win.statusBar().showMessage("Need at least two shapes for Union!")
+            return
+        from PySide6.QtWidgets import QInputDialog
+        items = [f"{i}: {feat.name}" for i, feat in enumerate(DOCUMENT)]
+        idx1, ok = QInputDialog.getItem(mw.win, "Select Target (A)", "Target:", items, 0, False)
+        if not ok:
+            return
+        idx2, ok = QInputDialog.getItem(mw.win, "Select Tool (B)", "Tool:", items, 1, False)
+        if not ok:
+            return
+        i1 = int(idx1.split(":")[0])
+        i2 = int(idx2.split(":")[0])
+        a = DOCUMENT[i1].shape
+        b = DOCUMENT[i2].shape
+        from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse
+        fused = BRepAlgoAPI_Fuse(a, b).Shape()
+        DOCUMENT.append(Feature("Union", {"target": i1, "tool": i2}, fused))
+        rebuild_scene(mw.view._display)
+
+class CutCmd(BaseCmd):
+    title = "Cut"
+    def run(self, mw) -> None:
+        if len(DOCUMENT) < 2:
+            mw.win.statusBar().showMessage("Need at least two shapes for Cut!")
+            return
+        from PySide6.QtWidgets import QInputDialog
+        items = [f"{i}: {feat.name}" for i, feat in enumerate(DOCUMENT)]
+        idx1, ok = QInputDialog.getItem(mw.win, "Select Target (A)", "Target:", items, 0, False)
+        if not ok:
+            return
+        idx2, ok = QInputDialog.getItem(mw.win, "Select Tool (B)", "Tool:", items, 1, False)
+        if not ok:
+            return
+        i1 = int(idx1.split(":")[0])
+        i2 = int(idx2.split(":")[0])
+        a = DOCUMENT[i1].shape
+        b = DOCUMENT[i2].shape
+        from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Cut
+        cut = BRepAlgoAPI_Cut(a, b).Shape()
+        DOCUMENT.append(Feature("Cut", {"target": i1, "tool": i2}, cut))
         rebuild_scene(mw.view._display)
