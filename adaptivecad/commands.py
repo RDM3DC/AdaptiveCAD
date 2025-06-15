@@ -11,6 +11,8 @@ package can be used without installing ``pythonocc-core`` or ``PyQt``.
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
+from adaptivecad.params import ParamEnv
+
 from adaptivecad.gcode_generator import generate_gcode_from_shape
 
 try:  # Optional OCC dependency
@@ -83,6 +85,19 @@ class Feature:
             self.local_transform = np.asarray(self.local_transform)
         if self.children is None:
             self.children = []
+
+    def eval_param(self, key, env: 'ParamEnv'):
+        """Evaluate a parameter as a possible expression using ``env``."""
+        val = self.params.get(key)
+        if isinstance(val, (int, float)):
+            return val
+        if isinstance(val, str):
+            try:
+                return env.eval(val)
+            except Exception:
+                print(f"Error evaluating param {key}: {val}")
+                return 0
+        return val
 
     def set_parent(self, parent):
         if self.parent is not None and self in self.parent.children:
