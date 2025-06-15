@@ -10,6 +10,15 @@ from adaptivecad.geom.bspline import BSplineCurve
 from adaptivecad.linalg import Vec3
 
 
+def _num(val: Any) -> float:
+    """Extract a numeric value from plain numbers or {'value': n} objects."""
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, dict) and "value" in val:
+        return float(val["value"])
+    raise TypeError(f"Expected numeric value, got {val!r}")
+
+
 class ImplicitSurface:
     """Minimal implicit surface placeholder."""
 
@@ -39,19 +48,19 @@ def build_geometry(spec: Dict[str, Any]) -> Any:
 
     if kind == "curve" and prim == "bspline":
         cps = [Vec3(*pt) for pt in params["control_pts"]]
-        degree = int(params.get("degree", 3))
+        degree = int(_num(params.get("degree", 3)))
         knots = params.get("knots")
         return BSplineCurve(cps, degree, knots)
 
     if kind == "surface" and prim == "implicit":
         eqn = params["equation"]
         domain = params.get("domain", {})
-        iso_level = float(params.get("iso_level", 0.0))
+        iso_level = _num(params.get("iso_level", 0.0))
         return ImplicitSurface(eqn, domain, iso_level)
 
     if kind == "solid" and prim == "extrude":
         profile = build_geometry(params["profile"])
-        height = float(params["height"])
+        height = _num(params["height"])
         return ExtrudedSolid(profile, height)
 
     raise ValueError(f"Unsupported spec {kind}/{prim}")

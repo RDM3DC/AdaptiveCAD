@@ -48,6 +48,11 @@ The playground provides an interactive 3D view with the following features:
 - Toolbar with Box, Cylinder, Bézier and B‑spline curve creation,
   push‑pull editing, and export commands (STL, AMA and G‑code)
 
+### Live parameter editing
+After the first AI generation, drag the sliders in the dialog to resize or
+tune α/μ without re‑prompting OpenAI. Every change re‑solves constraints and
+updates the body in real time.
+
 ## Environment Setup
 
 ### Using Conda (recommended)
