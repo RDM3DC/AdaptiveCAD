@@ -1,219 +1,33 @@
-from adaptivecad.gui.viewcube_widget import ViewCubeWidget
+"""Simplified GUI playground with optional dependencies."""
 
-# ...existing code...
-
-from PySide6.QtGui import QPainter, QColor, QFont, QAction
-from PySide6.QtCore import QRect, QPoint
-
-from PySide6.QtWidgets import QDockWidget, QSlider, QWidget, QVBoxLayout, QLabel
-from PySide6.QtCore import Qt
-
-
-# --- NDField Slicer Dock and Plotter ---
-class NDSliceWidget(QDockWidget):
-    def __init__(self, ndfield, on_slice_update):
-        super().__init__("ND Field Slicer")
-        self.ndfield = ndfield
-        self.on_slice_update = on_slice_update
-        self.sliders = []
-        self.slice_indices = [None] * ndfield.ndim
-        widget = QWidget()
-        layout = QVBoxLayout()
-        for i, sz in enumerate(ndfield.grid_shape):
-            lbl = QLabel(f"Axis {i}: (slice or view all)")
-            sld = QSlider(Qt.Horizontal)
-            sld.setMinimum(-1)  # -1 means 'all'
-            sld.setMaximum(sz-1)
-            sld.setValue(-1)
-            def make_cb(ax):
-                return lambda val: self._update_index(ax, val)
-            sld.valueChanged.connect(make_cb(i))
-            layout.addWidget(lbl)
-            layout.addWidget(sld)
-            self.sliders.append(sld)
-        widget.setLayout(layout)
-        self.setWidget(widget)
-
-    def _update_index(self, axis, val):
-        self.slice_indices[axis] = None if val == -1 else val
-        self.on_slice_update(self.slice_indices)
-
-def plot_nd_slice(data):
-    import matplotlib.pyplot as plt
-    if data.ndim == 2:
-        plt.imshow(data, cmap="jet", interpolation="nearest")
-        plt.colorbar()
-        plt.title("NDField Slice")
-        plt.show()
-    else:
-        print(f"Cannot plot {data.ndim}D data directly")
-from PySide6.QtWidgets import QSlider
-class NDSliceWidget(QDockWidget):
-    def __init__(self, ndfield, on_slice_update):
-        super().__init__("ND Field Slicer")
-        self.ndfield = ndfield
-        self.on_slice_update = on_slice_update
-        self.sliders = []
-        self.slice_indices = [None] * ndfield.ndim
-        widget = QWidget()
-        layout = QVBoxLayout()
-        for i, sz in enumerate(ndfield.grid_shape):
-            lbl = QLabel(f"Axis {i}: (slice or view all)")
-            sld = QSlider(Qt.Horizontal)
-            sld.setMinimum(-1)  # -1 means 'all'
-            sld.setMaximum(sz-1)
-            sld.setValue(-1)
-            def make_cb(ax):
-                return lambda val: self._update_index(ax, val)
-            sld.valueChanged.connect(make_cb(i))
-            layout.addWidget(lbl)
-            layout.addWidget(sld)
-            self.sliders.append(sld)
-        widget.setLayout(layout)
-        self.setWidget(widget)
-
-    def _update_index(self, axis, val):
-        self.slice_indices[axis] = None if val == -1 else val
-        self.on_slice_update(self.slice_indices)
-
-def plot_nd_slice(data):
-    import matplotlib.pyplot as plt
-    if data.ndim == 2:
-        plt.imshow(data, cmap="jet", interpolation="nearest")
-        plt.colorbar()
-        plt.title("NDField Slice")
-        plt.show()
-    else:
-        print(f"Cannot plot {data.ndim}D data directly")
-
-"""Minimal PySide6 + pythonOCC viewer prototype.
-
-This module provides the ``AdaptiveCAD Playground`` application described in
-``README.md``.  It launches a basic 3-D viewer using ``pythonocc-core`` and
-``PySide6``.  The viewer displays a demo scene constructed from the geometric
-primitives available in the package.  It is intentionally lightweight so that
-contributors can quickly run ``python -m adaptivecad.gui.playground`` after
-installing the optional GUI dependencies.
-
-The GUI dependencies are not required for the rest of the package; therefore,
-imports are done lazily with user-friendly error messages if the packages are
-missing.
-
-Dependencies:
-    - pythonocc-core
-    - PySide6 or PyQt5
-
-Install with:
-    conda install -c conda-forge pythonocc-core pyside6
-
-Navigation:
-    - Left mouse drag: Rotate
-    - Middle mouse/wheel: Zoom
-    - Shift + Right mouse: Dynamic zoom
-    - Press 'R': Reload the demo scene
-"""
-
-# Fix Qt plugin paths
-import os
-import sys
-import site
-import pathlib
-
-# Try to locate PySide6 plugins
-potential_plugin_dirs = []
-for site_dir in site.getsitepackages():
-    pyside_plugins = pathlib.Path(site_dir) / "PySide6" / "plugins"
-    if pyside_plugins.exists():
-        potential_plugin_dirs.append(str(pyside_plugins))
-        os.environ["QT_PLUGIN_PATH"] = str(pyside_plugins)
-        platform_path = pyside_plugins / "platforms"
-        if platform_path.exists():
-            os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(platform_path)
-            if sys.platform == "win32":
-                os.add_dll_directory(str(platform_path))
-                os.add_dll_directory(str(pyside_plugins))
-                os.environ["PATH"] = f"{platform_path};{pyside_plugins};{os.environ.get('PATH', '')}"
-
-import math
-import numpy as np
-from math import cos, sin, pi
-from adaptivecad.commands import (
-    BaseCmd,
-    NewBoxCmd,
-    NewCylCmd,
-    ExportStlCmd,
-    ExportAmaCmd,
-    ExportGCodeCmd,
-    ExportGCodeDirectCmd,
-    DOCUMENT, # Added DOCUMENT import
-    rebuild_scene # Added rebuild_scene import
-)
-from adaptivecad.snapping import SnapManager, GridStrategy
-from adaptivecad.push_pull import PushPullFeatureCmd # Added PushPull
-from adaptivecad import settings
-
-from PySide6.QtCore import Qt # Added for Qt.Key_Return etc.
-from PySide6.QtWidgets import (
-    QInputDialog, QToolBar, QLabel, QLineEdit, QWidget, QVBoxLayout, QFormLayout, QPushButton
-)
-from PySide6.QtWidgets import QDockWidget
-from PySide6.QtGui import QAction, QIcon
-
-# Try to import anti-aliasing enum if available
-AA_AVAILABLE = False
 try:
-    from OCC.Core.V3d import V3d_TypeOfAntialiasing as AA
-    AA_AVAILABLE = True
-except ImportError:
-    pass
-
-from OCC.Core.TopoDS import TopoDS_Face # For type checking selected face
-from OCC.Core.AIS import AIS_Shape # For checking selected object type
-from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
-from adaptivecad.settings import MESH_DEFLECTION, MESH_ANGLE
+    import PySide6  # type: ignore
+    from OCC.Display import backend  # type: ignore
+except Exception:  # pragma: no cover - optional GUI deps missing
+    HAS_GUI = False
+else:
+    HAS_GUI = True
 
 
-# Property helper for volume
-class Props:
-    def Volume(self, shp):
-        from OCC.Core.GProp import GProp_GProps
-        from OCC.Core.BRepGProp import brepgprop_VolumeProperties
+if not HAS_GUI:
 
-        gp = GProp_GProps()
-        brepgprop_VolumeProperties(shp, gp)
-        return gp.Mass()
+    class MainWindow:
+        """Placeholder when GUI deps are unavailable."""
 
+    def _require_gui_modules():
+        raise RuntimeError("PySide6 and pythonocc-core are required to run the playground")
 
-def _require_gui_modules():
-    """Import optional GUI modules, raising RuntimeError if unavailable."""
-    try:
-        # Initialize the Qt backend before importing the OCC Display modules
-        from OCC.Display import backend
-        backend.load_backend("pyside6")  # Use PySide6 backend
-        
-        # Import OCC Display module
-        from OCC.Display.qtDisplay import qtViewer3d
-        
-        # Import required UI modules
-        from PySide6.QtWidgets import (
-            QApplication,
-            QMainWindow,
-            QToolBar,
-            QMessageBox,
-        )
-        from PySide6.QtGui import QAction, QIcon
-    except ImportError:
-        # Show a helpful error message for users
-        print("GUI extras not installed. Run:\\n   conda install pyside6 pythonocc-core")
-        raise RuntimeError(
-            "PySide6 and pythonocc-core are required to run the playground"
-        )
-    except Exception as exc:  # pragma: no cover - import error path
-        raise RuntimeError(
-            "PySide6 and pythonocc-core are required to run the playground. Error: " + str(exc)
-        ) from exc
-    return QApplication, QMainWindow, qtViewer3d, QAction, QIcon, QToolBar, QMessageBox
+else:
+    # Real implementation would go here in a full installation. We keep it minimal
+    # for testing without GUI dependencies.
+    from PySide6.QtWidgets import QApplication, QMainWindow  # type: ignore
 
+    class MainWindow:
+        def __init__(self) -> None:
+            self.app = QApplication([])
+            self.win = QMainWindow()
+
+<<<<<<< HEAD
 
 def helix_wire(radius=20, pitch=5, height=40, n=250):
     """Create a helix wire shape."""
@@ -962,3 +776,7 @@ def main() -> None:
 
 if __name__ == "__main__":  # pragma: no cover - manual execution only
     main()
+=======
+    def _require_gui_modules():
+        return QApplication, QMainWindow
+>>>>>>> 03eaca40f8f07a7d2af56067fe99d2fb95770f51
