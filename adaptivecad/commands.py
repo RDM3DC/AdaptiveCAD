@@ -104,6 +104,41 @@ class Feature:
         )
         return d
 
+    def get_reference_point(self):
+        # Try OCC shape center of mass
+        if hasattr(self, 'shape') and hasattr(self.shape, 'CenterOfMass'):
+            return self.shape.CenterOfMass()
+        # Try stored param
+        if hasattr(self, 'params') and "center" in self.params:
+            return self.params["center"]
+        # Fallback: first vertex or origin
+        if hasattr(self, 'vertices') and self.vertices:
+            return self.vertices[0]
+        return [0.0] * self.dim
+
+    def all_snap_points(self):
+        # For a box: corners; for a sphere: center; for curve: endpoints
+        points = []
+        # Example: collect vertices if present
+        if hasattr(self, 'vertices') and self.vertices:
+            points.extend(self.vertices)
+        # Example: add center if present
+        if hasattr(self, 'center'):
+            points.append(self.center)
+        # Add more as needed for your shape types
+        # Fallback: reference point
+        if not points:
+            points.append(self.get_reference_point())
+        return points
+
+    def apply_translation(self, delta):
+        from adaptivecad.nd_math import translationN
+        import numpy as np
+        if hasattr(self, 'local_transform') and self.local_transform is not None:
+            self.local_transform = np.dot(translationN(delta), self.local_transform)
+        # For OCC shapes, you may need to rebuild the shape at the new position
+        # ...add OCC-specific logic if needed...
+
 
 # Global in-memory document tree
 DOCUMENT: List[Feature] = []
@@ -122,9 +157,19 @@ def rebuild_scene(display) -> None:
                 consumed.add(target)
             elif isinstance(target, str) and target.isdigit():
                 consumed.add(int(target))
-    # Only display features not consumed by a later feature
+    # Explicitly remove consumed features from OCC display if possible
     for i, feat in enumerate(DOCUMENT):
-        if i not in consumed:
+        if getattr(feat, 'params', {}).get('consumed', False):
+            print(f"[rebuild_scene] Feature '{feat.name}' (index {i}) is consumed. Attempting to remove from display.") # DEBUG
+            try:
+                if hasattr(display, 'Context') and hasattr(feat, 'shape') and feat.shape is not None:
+                    if display.Context.IsDisplayed(feat.shape):
+                        display.Context.Remove(feat.shape, True)
+            except Exception:
+                pass
+    # Only display features not consumed by a later feature and not marked as consumed
+    for i, feat in enumerate(DOCUMENT):
+        if i not in consumed and not getattr(feat, 'params', {}).get('consumed', False):
             smoother_display(display, feat.shape)
     display.FitAll()
 
@@ -559,6 +604,10 @@ class CutCmd(BaseCmd):
         b = DOCUMENT[i2].shape
         from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Cut
         cut = BRepAlgoAPI_Cut(a, b).Shape()
+        # Mark the target as consumed (hidden)
+        if hasattr(DOCUMENT[i1], 'params'):
+            DOCUMENT[i1].params['consumed'] = True
+            print(f"[CutCmd] Feature '{DOCUMENT[i1].name}' (index {i1}) marked as consumed: {DOCUMENT[i1].params}") # DEBUG
         DOCUMENT.append(Feature("Cut", {"target": i1, "tool": i2}, cut))
         rebuild_scene(mw.view._display)
 

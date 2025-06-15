@@ -508,26 +508,44 @@ class MainWindow:
         viewcube_action.triggered.connect(toggle_cube)
         self.win.menuBar().addAction(viewcube_action)
 
-        self._init_property_panel()
-
-        # Initialize SnapManager
+        self._init_property_panel()        # Initialize SnapManager
         from adaptivecad.snap import SnapManager
         from adaptivecad.snap_strategies import grid_snap, endpoint_snap
         self.snap_manager = SnapManager()
         self.snap_manager.register(endpoint_snap, priority=20)
         self.snap_manager.register(grid_snap, priority=10)
         self.current_snap_point = None
+        
+        # Add grid spacing and world coordinate conversion to view
+        self.view.grid_spacing = 10.0  # Default grid spacing
+        self.view.snap_world_tol = 1e-3  # Snap tolerance
+        
+        def world_to_screen(world_pt):
+            # Simple fallback - in real app, use proper view projection
+            return np.array([world_pt[0], world_pt[1]])
+        
+        self.view.world_to_screen = world_to_screen
 
-        # Override mouse events instead of connecting to signals that don't exist
-        # Override the qtViewer3d's mouse event handlers
+        # Override mouse events instead of connecting to signals that don't exist        # Override the qtViewer3d's mouse event handlers
         original_mouseMoveEvent = self.view.mouseMoveEvent
         original_mousePressEvent = self.view.mousePressEvent
         original_mouseReleaseEvent = self.view.mouseReleaseEvent
-        
         def mouseMoveEvent_override(event):
             # Call the original handler first
             original_mouseMoveEvent(event)
-            world_pt = self.view._display.ConvertToGrid(event.pos().x(), event.pos().y())
+            # Fix: Use a valid method to convert screen to world coordinates
+            try:
+                if hasattr(self.view._display, 'View') and hasattr(self.view._display.View, 'ConvertToGrid'):
+                    world_pt = self.view._display.View.ConvertToGrid(event.pos().x(), event.pos().y())
+                elif hasattr(self.view._display, 'ConvertToPoint'):
+                    world_pt = self.view._display.ConvertToPoint(event.pos().x(), event.pos().y())
+                elif hasattr(self.view._display, 'convertToPoint'):
+                    world_pt = self.view._display.convertToPoint(event.pos().x(), event.pos().y())
+                else:
+                    # Fallback: just use zeros or the event position as a placeholder
+                    world_pt = [0.0, 0.0, 0.0]
+            except:                # Fallback if any conversion fails
+                world_pt = [0.0, 0.0, 0.0]
             self._on_mouse_move(world_pt)
             
         def mousePressEvent_override(event):
@@ -749,7 +767,6 @@ class MainWindow:
                     # This part needs robust face picking from AIS_InteractiveContext selection.
                     # Let's assume selection callback `on_select` has stored the last selected AIS_Shape
                     # and we can check if it's a face or get sub-faces.
-                    # For MVP, we might need to adjust selection mode or how faces are picked.
                     
                     # A simpler way for now: use the context to detect what's under the mouse
                     self.view._display.Select(x,y) # Perform selection at click point
