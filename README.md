@@ -28,7 +28,7 @@ The playground provides an interactive 3D view with the following features:
 - Interactive selection: Click on edges to select and identify shapes
 - Press 'R' to reload the scene during development (useful for quick iterations)
 - Anti-aliased rendering for crisp, clear lines
-- Toolbar with Box, Cylinder and STL export commands
+ - Toolbar with Box, Cylinder and STL/AMA export commands
 
 ## Environment Setup
 

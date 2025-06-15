@@ -17,15 +17,24 @@ from typing import Any, Dict, List
 def _require_command_modules():
     """Import optional GUI modules required for command execution."""
     try:
-        from PyQt5.QtWidgets import QInputDialog, QFileDialog
-        from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder
+        from PySide6.QtWidgets import QInputDialog, QFileDialog
+        from OCC.Core.BRepPrimAPI import (
+            BRepPrimAPI_MakeBox,
+            BRepPrimAPI_MakeCylinder,
+        )
         from OCC.Core.StlAPI import StlAPI_Writer
     except Exception as exc:  # pragma: no cover - import error path
         raise RuntimeError(
             "GUI extras not installed. Run:\n   conda install -c conda-forge pythonocc-core pyside6"
         ) from exc
 
-    return QInputDialog, QFileDialog, BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder, StlAPI_Writer
+    return (
+        QInputDialog,
+        QFileDialog,
+        BRepPrimAPI_MakeBox,
+        BRepPrimAPI_MakeCylinder,
+        StlAPI_Writer,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -144,3 +153,31 @@ class ExportStlCmd(BaseCmd):
             mw.win.statusBar().showMessage(f"STL saved ➡ {path}")
         else:
             mw.win.statusBar().showMessage("Failed to save STL")
+
+
+class ExportAmaCmd(BaseCmd):
+    title = "Export AMA"
+
+    def run(self, mw) -> None:  # pragma: no cover - runtime GUI path
+        (
+            _,
+            QFileDialog,
+            _,
+            _,
+            _,
+        ) = _require_command_modules()
+
+        if not DOCUMENT:
+            return
+
+        path, _filter = QFileDialog.getSaveFileName(
+            mw.win, "Save AMA", filter="AMA (*.ama)"
+        )
+        if not path:
+            return
+
+        # Placeholder implementation until AMA writer lands
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("# AMA export coming soon\n")
+
+        mw.win.statusBar().showMessage(f"AMA saved ➡ {path}")
