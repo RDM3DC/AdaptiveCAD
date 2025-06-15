@@ -122,6 +122,11 @@ def rebuild_scene(display) -> None:
                 consumed.add(target)
             elif isinstance(target, str) and target.isdigit():
                 consumed.add(int(target))
+            tool = feat.params.get("tool")
+            if isinstance(tool, int):
+                consumed.add(tool)
+            elif isinstance(tool, str) and tool.isdigit():
+                consumed.add(int(tool))
     # Only display features not consumed by a later feature
     for i, feat in enumerate(DOCUMENT):
         if i not in consumed:
