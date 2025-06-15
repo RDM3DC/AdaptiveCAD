@@ -19,6 +19,7 @@ else:
     from adaptivecad.commands import (
         NewBoxCmd, NewCylCmd, ExportStlCmd, ExportAmaCmd, ExportGCodeCmd, ExportGCodeDirectCmd,
         MoveCmd, UnionCmd, CutCmd, NewNDBoxCmd, NewNDFieldCmd, NewBezierCmd, NewBSplineCmd,
+        NewBallCmd, NewTorusCmd, NewConeCmd,
         rebuild_scene, DOCUMENT
     )
     # Optional anti-aliasing support
@@ -223,13 +224,14 @@ class MainWindow:
             act.triggered.connect(make_slot(fn))
             tb.addAction(act)
         self.views_toolbar = tb
-    def clear_property_panel(self):
-        # Clear all widgets from the property panel
+    def clear_property_panel(self, show_placeholder=True):
+        """Remove all widgets from the property panel."""
         for i in reversed(range(self.property_layout.count())):
             widget = self.property_layout.itemAt(i).widget()
             if widget:
                 widget.setParent(None)
-        self.property_layout.addWidget(QLabel("No selection."))
+        if show_placeholder:
+            self.property_layout.addWidget(QLabel("No selection."))
 
     def _init_property_panel(self):
         from PySide6.QtWidgets import QDockWidget, QWidget, QVBoxLayout, QLabel
@@ -256,11 +258,8 @@ class MainWindow:
 
     def _show_properties(self, obj):
         from PySide6.QtWidgets import QLabel, QLineEdit, QHBoxLayout
-        # Clear previous
-        for i in reversed(range(self.property_layout.count())):
-            widget = self.property_layout.itemAt(i).widget()
-            if widget:
-                widget.setParent(None)
+        # Clear previous widgets
+        self.clear_property_panel(show_placeholder=False)
         self.property_layout.addWidget(QLabel(f"Type: {type(obj).__name__}"))
         # Show editable attributes (simple, non-callable, non-private)
         def is_editable(val):
@@ -631,7 +630,9 @@ class MainWindow:
         add_shape_action("B-spline Curve", "curve-b-spline", NewBSplineCmd)
         add_shape_action("ND Box", "view-list-details", NewNDBoxCmd)
         add_shape_action("ND Field", "view-list-tree", NewNDFieldCmd)
-        # (Ball and Torus omitted for now)
+        add_shape_action("Ball", "media-record", NewBallCmd)
+        add_shape_action("Torus", "preferences-desktop-theme", NewTorusCmd)
+        add_shape_action("Cone", "media-eject", NewConeCmd)
         shapes_btn = QToolButton(self.win)
         shapes_btn.setText("Shapes")
         shapes_btn.setIcon(QIcon.fromTheme("view-cube"))
@@ -690,6 +691,7 @@ class MainWindow:
         """Build or rebuild the demo scene."""
         if hasattr(self, 'view') and self.view is not None and hasattr(self.view, '_display'):
             _demo_primitives(self.view._display)
+        self.clear_property_panel()
 
     def _position_viewcube(self):
         if hasattr(self, 'viewcube') and self.viewcube.parent() is self.view:

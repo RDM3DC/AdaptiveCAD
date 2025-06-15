@@ -718,3 +718,26 @@ class NewTorusCmd(BaseCmd):
         shape = make_torus(center, maj, minr)
         DOCUMENT.append(Feature("Torus", dict(center=center, major_radius=maj, minor_radius=minr), shape))
         rebuild_scene(mw.view._display)
+
+class NewConeCmd(BaseCmd):
+    title = "Cone"
+
+    def run(self, mw):
+        from PySide6.QtWidgets import QInputDialog
+        from adaptivecad.primitives import make_cone
+        center_str, ok = QInputDialog.getText(mw.win, "Cone Center", "Center (x,y,z):", text="0,0,0")
+        if not ok:
+            return
+        center = [float(x) for x in center_str.split(",")]
+        r1, ok = QInputDialog.getDouble(mw.win, "Base Radius", "Base radius:", 10.0)
+        if not ok:
+            return
+        r2, ok = QInputDialog.getDouble(mw.win, "Top Radius", "Top radius:", 0.0)
+        if not ok:
+            return
+        height, ok = QInputDialog.getDouble(mw.win, "Height", "Height:", 20.0)
+        if not ok:
+            return
+        shape = make_cone(center, r1, r2, height)
+        DOCUMENT.append(Feature("Cone", dict(center=center, base_radius=r1, top_radius=r2, height=height), shape))
+        rebuild_scene(mw.view._display)
