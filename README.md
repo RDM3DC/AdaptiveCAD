@@ -54,6 +54,23 @@ After the first AI generation, drag the sliders in the dialog to resize or
 tune α/μ without re‑prompting OpenAI. Every change re‑solves constraints and
 updates the body in real time.
 
+## Parametric Dimensions
+AdaptiveCAD now includes a lightweight parameter system. Define variables in a
+``ParamEnv`` and use them in feature parameters:
+
+```python
+from adaptivecad import ParamEnv
+
+env = ParamEnv()
+env.set('x', 20)
+env.set('theta', 45)
+
+box = Feature("Box", {"l": "x", "w": "10+5*sin(theta)", "h": 30}, shape=None)
+length = box.eval_param('l', env)
+```
+
+Expressions may reference standard ``math`` functions and ``numpy`` via ``np``.
+
 ## Environment Setup
 
 ### Using Conda (recommended)

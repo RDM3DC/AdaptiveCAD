@@ -4,7 +4,10 @@ __all__ = [
     "generate_gcode_from_shape",
     "generate_gcode_from_ama_file",
     "generate_gcode_from_ama_data",
+    "ParamEnv",
 ]
+
+from .params import ParamEnv
 
 
 def generate_gcode_from_shape(*args, **kwargs):
