@@ -14,6 +14,7 @@ examples and unit tests without a large toolchain.  Current features include:
 - `adaptivecad.geom` – Bézier and B‑spline curves plus hyperbolic helpers
 - `adaptivecad.io` – AMA reader/writer utilities
 - `adaptivecad.gcode_generator` – placeholder G‑code generation routines
+- `adaptivecad.analytic_slicer` – helper for analytic B‑rep slicing
 - `adaptivecad.gui.playground` – PySide6 viewer with a toolbar for Box,
   Cylinder, Bézier and B‑spline curves, push‑pull editing and export commands
   (STL, AMA and G‑code)
