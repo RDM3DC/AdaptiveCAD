@@ -233,6 +233,7 @@ class MainWindow:
 
     def _init_property_panel(self):
         from PySide6.QtWidgets import QDockWidget, QWidget, QVBoxLayout, QLabel
+        from PySide6.QtCore import Qt
         self.property_dock = QDockWidget("Properties", self.win)
         self.property_widget = QWidget()
         self.property_layout = QVBoxLayout()
@@ -432,14 +433,14 @@ class MainWindow:
             self.viewcube.setVisible(checked)
         viewcube_action.triggered.connect(toggle_cube)
         self.win.menuBar().addAction(viewcube_action)
-
         self._init_property_panel()        # Initialize SnapManager
         from adaptivecad.snap import SnapManager
-        from adaptivecad.snap_strategies import grid_snap, endpoint_snap
+        from adaptivecad.snap_strategies import grid_snap, endpoint_snap        
         self.snap_manager = SnapManager()
         self.snap_manager.register(endpoint_snap, priority=20)
         self.snap_manager.register(grid_snap, priority=10)
         self.current_snap_point = None
+          # Note: Snap tolerance slider will be added in the run method
 
         # Override mouse events instead of connecting to signals that don't exist
         # Override the qtViewer3d's mouse event handlers
@@ -611,26 +612,43 @@ class MainWindow:
             "LMB‑drag = rotate | MMB = pan | Wheel = zoom | Shift+MMB = fit"
         )
         
-        # Add toolbar with primitive commands
-        self.tb = QToolBar("Primitives", self.win)
-        self.tb.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)  # Always show text under icon
-        self.win.addToolBar(Qt.TopToolBarArea, self.tb)  # Force toolbar to top
-        self.tb.setVisible(True)
 
-        # Add Views toolbar
-        self.add_view_toolbar()
+        # --- SINGLE TOOLBAR WITH MENU BUTTONS ---
+        from PySide6.QtWidgets import QToolButton, QMenu, QMessageBox
+        self.main_toolbar = QToolBar("Main", self.win)
+        self.main_toolbar.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+        self.win.addToolBar(Qt.TopToolBarArea, self.main_toolbar)
 
-        def _add_action(text, icon_name, cmd_cls):
+        # Shapes menu
+        shapes_menu = QMenu("Shapes", self.win)
+        def add_shape_action(text, icon_name, cmd_cls):
             act = QAction(QIcon.fromTheme(icon_name), text, self.win)
-            act.setToolTip(text)
-            act.setIconText(text)
-            self.tb.addAction(act)
             act.triggered.connect(lambda: self.run_cmd(cmd_cls()))
+            shapes_menu.addAction(act)
+        add_shape_action("Box", "view-cube", NewBoxCmd)
+        add_shape_action("Cylinder", "media-optical", NewCylCmd)
+        add_shape_action("Bezier Curve", "draw-bezier-curves", NewBezierCmd)
+        add_shape_action("B-spline Curve", "curve-b-spline", NewBSplineCmd)
+        add_shape_action("ND Box", "view-list-details", NewNDBoxCmd)
+        add_shape_action("ND Field", "view-list-tree", NewNDFieldCmd)
+        # (Ball and Torus omitted for now)
+        shapes_btn = QToolButton(self.win)
+        shapes_btn.setText("Shapes")
+        shapes_btn.setIcon(QIcon.fromTheme("view-cube"))
+        shapes_btn.setPopupMode(QToolButton.InstantPopup)
+        shapes_btn.setMenu(shapes_menu)
+        self.main_toolbar.addWidget(shapes_btn)
 
-        # Add Delete button
-        from PySide6.QtWidgets import QMessageBox
-        delete_action = QAction(QIcon.fromTheme("edit-delete"), "Delete", self.win)
-        delete_action.setToolTip("Delete selected object")
+        # Tools menu
+        tools_menu = QMenu("Tools", self.win)
+        def add_tool_action(text, icon_name, handler):
+            act = QAction(QIcon.fromTheme(icon_name), text, self.win)
+            act.triggered.connect(handler)
+            tools_menu.addAction(act)
+        add_tool_action("Move", "transform-move", lambda: self.enter_move_mode())
+        add_tool_action("Push-Pull", "transform-scale", lambda: self.enter_push_pull_mode())
+        add_tool_action("Union", "list-add", lambda: self.run_cmd(UnionCmd()))
+        add_tool_action("Cut", "edit-cut", lambda: self.run_cmd(CutCmd()))
         def on_delete():
             if self.selected_feature is not None:
                 from adaptivecad.gui.delete_utils import delete_selected_feature
@@ -644,47 +662,29 @@ class MainWindow:
                     self.win.statusBar().showMessage("Could not delete object.", 2000)
             else:
                 QMessageBox.information(self.win, "Delete", "No object selected for deletion.")
-        delete_action.triggered.connect(on_delete)
-        self.tb.addAction(delete_action)
+        add_tool_action("Delete", "edit-delete", on_delete)
+        add_tool_action("Clear Selection", "edit-clear", self.clear_property_panel)
+        tools_btn = QToolButton(self.win)
+        tools_btn.setText("Tools")
+        tools_btn.setIcon(QIcon.fromTheme("transform-move"))
+        tools_btn.setPopupMode(QToolButton.InstantPopup)
+        tools_btn.setMenu(tools_menu)
+        self.main_toolbar.addWidget(tools_btn)
 
-        # Add Clear Selection button
-        clear_sel_action = QAction("Clear Selection", self.win)
-        clear_sel_action.setToolTip("Clear property panel selection")
-        clear_sel_action.triggered.connect(self.clear_property_panel)
-        self.tb.addAction(clear_sel_action)
-        
-        _add_action("Box", "view-cube", NewBoxCmd)
-        _add_action("Cylinder", "media-optical", NewCylCmd)
-        self.tb.addSeparator()
-        
-        # Add Bezier and B-spline curve actions
-        from adaptivecad.commands import NewBezierCmd, NewBSplineCmd
-        _add_action("Bezier Curve", "draw-bezier-curves", NewBezierCmd)
-        _add_action("B-spline Curve", "curve-b-spline", NewBSplineCmd)
-        self.tb.addSeparator()
-        _add_action("Export STL", "document-save", ExportStlCmd)
-        _add_action("Export AMA", "document-save-as", ExportAmaCmd)
-        _add_action("Export G-code", "media-record", ExportGCodeCmd)
-        _add_action("Export G-code (CAD)", "text-x-generic", ExportGCodeDirectCmd)
-        self.tb.addSeparator()
-        from adaptivecad.commands import MoveCmd
-        _add_action("Move", "transform-move", MoveCmd)
-        self.tb.addSeparator()
-        
-        from adaptivecad.commands import UnionCmd, CutCmd
-        _add_action("Union", "list-add", UnionCmd)
-        _add_action("Cut", "edit-cut", CutCmd)
-        self.tb.addSeparator()
-        
-        from adaptivecad.commands import NewNDBoxCmd, NewNDFieldCmd
-        _add_action("ND Box", "view-list-details", NewNDBoxCmd)
-        _add_action("ND Field", "view-list-tree", NewNDFieldCmd)
-        self.tb.addSeparator()
-        
-        from adaptivecad.commands import NewBallCmd, NewTorusCmd
-        _add_action("Ball", "media-playback-stop", NewBallCmd)
-        _add_action("Torus", "format-rotate", NewTorusCmd)
-        self.tb.addSeparator()
+        # Settings menu (single action)
+        settings_btn = QToolButton(self.win)
+        settings_btn.setText("Settings")
+        settings_btn.setIcon(QIcon.fromTheme("preferences-system"))
+        settings_btn.setPopupMode(QToolButton.InstantPopup)
+        settings_menu = QMenu("Settings", self.win)
+        settings_action = QAction("Settings", self.win)
+        settings_action.triggered.connect(lambda: (SettingsDialog.show(self.win), self._build_demo()))
+        settings_menu.addAction(settings_action)
+        settings_btn.setMenu(settings_menu)
+        self.main_toolbar.addWidget(settings_btn)
+
+        # Add Views toolbar (unchanged)
+        self.add_view_toolbar()
 
     def _build_demo(self) -> None:
         """Build or rebuild the demo scene."""
@@ -754,9 +754,37 @@ class MainWindow:
                 self.initial_drag_pos = (x, y)
                 # print(f"Push-Pull: Drag started from {self.initial_drag_pos}")
 
+        if self.current_mode == "Move" and self.selected_feature:
+            self.move_dragging = True
+            self.move_start_pos = (x, y)
+            self.move_orig_ref = self.selected_feature.get_reference_point()
+
     def _on_mouse_move(self, world_pt):
         if self.current_mode == "PushPull" and self.push_pull_cmd and self.push_pull_cmd.selected_face and self.initial_drag_pos:
-            pass # (PushPull logic unchanged for brevity)
+            # Get initial and current mouse positions in screen coordinates
+            x0, y0 = self.initial_drag_pos
+            from PySide6.QtGui import QCursor
+            x1 = self.view.mapFromGlobal(QCursor.pos()).x()
+            y1 = self.view.mapFromGlobal(QCursor.pos()).y()
+            # Compute offset along face normal
+            offset = compute_offset((x0, y0), (x1, y1), self.push_pull_cmd.face_normal_or_axis, self.view)
+            # Live preview update
+            self.push_pull_cmd.update_preview(self, offset)
+            return
+        if self.current_mode == "Move" and self.move_dragging and self.move_feature:
+            # Snap or free move
+            snapped, label = self.snap_manager.snap(world_pt, self.view)
+            preview_pt = snapped if snapped is not None else world_pt
+            orig = self.move_orig_ref
+            delta = np.array(preview_pt) - np.array(orig)
+            # Apply translation as preview (not committed)
+            self.move_feature.apply_translation(delta)
+            self.rebuild_scene()
+            # Optionally show a marker or label
+            if snapped is not None:
+                self.show_snap_marker(snapped, label)
+            else:
+                self.hide_snap_marker()
         else:
             snapped, label = self.snap_manager.snap(world_pt, self.view)
             if snapped is not None:
@@ -766,15 +794,37 @@ class MainWindow:
                 self.hide_snap_marker()
                 self.current_snap_point = world_pt
 
-    def show_snap_marker(self, point, label):
-        if hasattr(self, "snap_marker"):
-            self.view._display.Erase(self.snap_marker)
-        self.snap_marker = self.view._display.DisplayShape(point, update=False, color="CYAN")
+    def _on_mouse_release(self, x, y, buttons, modifiers):
+        if self.current_mode == "Move" and self.move_dragging and self.move_feature:
+            # Commit the move
+            self.move_dragging = False
+            self.move_start_pos = None
+            self.move_orig_ref = None
+            self.move_feature = None
+            self.rebuild_scene()
+        # ...existing code for PushPull and other modes...
 
-    def hide_snap_marker(self):
-        if hasattr(self, "snap_marker"):
-            self.view._display.Erase(self.snap_marker)
-            del self.snap_marker
+    def add_snap_tolerance_slider(self):
+        """Add a slider to control snap tolerance to the property panel"""
+        from PySide6.QtWidgets import QSlider, QLabel, QHBoxLayout
+        from PySide6.QtCore import Qt
+        
+        slider_layout = QHBoxLayout()
+        label = QLabel(f"Snap Tolerance: {self.snap_manager.tol_px} px")
+        slider = QSlider(Qt.Horizontal)
+        slider.setMinimum(2)
+        slider.setMaximum(32)
+        slider.setValue(self.snap_manager.tol_px)
+        slider.valueChanged.connect(lambda val: self._on_snap_tolerance_changed(val, label))
+        slider_layout.addWidget(label)
+        slider_layout.addWidget(slider)
+        self.property_layout.addLayout(slider_layout)
+
+    def _on_snap_tolerance_changed(self, value, label):
+        """Update snap tolerance when the slider is moved"""
+        self.snap_manager.set_tolerance(value)
+        label.setText(f"Snap Tolerance: {value} px")
+        self.win.statusBar().showMessage(f"Snap tolerance set to {value} pixels", 2000)
 
     def _on_mouse_press(self, world_pt, *args, **kwargs):
         pass # On mouse click: use self.current_snap_point for placement
@@ -821,6 +871,14 @@ class MainWindow:
         else:
             self.enter_push_pull_mode()
 
+    def enter_move_mode(self):
+        """Enter Move mode: drag selected object with free move + snap."""
+        self.current_mode = "Move"
+        self.move_dragging = False
+        self.move_start_pos = None
+        self.move_orig_ref = None
+        self.move_feature = self.selected_feature
+
     def _keyPressEvent(self, event):
         # Handle global key presses or mode-specific ones
         vk = event.key()
@@ -844,6 +902,14 @@ class MainWindow:
                 return # Event handled
             elif vk == self.Qt.Key_Escape:
                 self.push_pull_cmd.cancel(self)
+                return # Event handled
+        if self.current_mode == "Move":
+            if vk == self.Qt.Key_Escape:
+                # Cancel move mode on Escape
+                self.current_mode = "Navigate"
+                self.move_dragging = False
+                self.move_feature = None
+                self.win.statusBar().showMessage("Move mode canceled.", 2000)
                 return # Event handled
         # Allow event to propagate for other shortcuts (R, G, P etc.)
         # For now, simply not consuming it should allow other shortcuts to work.
@@ -869,11 +935,16 @@ class MainWindow:
         # Install the filter
         self.event_filter = KeyPressFilter(self)
         self.win.installEventFilter(self.event_filter)
-        
-        # Show the window and run the application
+          # Show the window and run the application
         self.win.show()
         self.win.setGeometry(100, 100, 1024, 768)  # Set a reasonable default size
         self._build_demo() # Build demo scene AFTER window is shown
+        
+        try:
+            # Add snap tolerance slider to property panel after window is shown
+            self.add_snap_tolerance_slider()
+        except Exception as e:
+            print(f"Could not add snap tolerance slider: {e}")
         
         # Execute the application
         return self.app.exec()
@@ -888,3 +959,12 @@ def main() -> None:
 
 if __name__ == "__main__":  # pragma: no cover - manual execution only
     main()
+
+def compute_offset(mouse_start, mouse_current, face_normal, view):
+    """Project drag vector onto face normal to get signed offset for Push-Pull."""
+    pt_start = view._display.ConvertToGrid(*mouse_start)
+    pt_curr = view._display.ConvertToGrid(*mouse_current)
+    v = np.array([pt_curr.X() - pt_start.X(), pt_curr.Y() - pt_start.Y(), pt_curr.Z() - pt_start.Z()])
+    n = np.array([face_normal.X(), face_normal.Y(), face_normal.Z()])
+    offset = np.dot(v, n)
+    return offset

@@ -7,6 +7,10 @@ class SnapManager:
         self.tol_px = tol_px  # screen-space tolerance (pixels)
         self.enabled = True   # master snap toggle
 
+    def set_tolerance(self, pixels):
+        """Set the snap tolerance in pixels."""
+        self.tol_px = pixels
+
     def register(self, strategy, priority=0):
         self.strategies.append((priority, strategy))
         self.strategies.sort(reverse=True)
