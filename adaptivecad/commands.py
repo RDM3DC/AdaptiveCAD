@@ -11,12 +11,19 @@ package can be used without installing ``pythonocc-core`` or ``PyQt``.
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
-from adaptivecad.io.ama_writer import write_ama
-from adaptivecad.io.gcode_generator import ama_to_gcode, SimpleMilling
 from adaptivecad.gcode_generator import generate_gcode_from_shape
-from OCC.Core.gp import gp_Pnt
-from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder
-from OCC.Core.TopoDS import TopoDS_Shape
+
+try:  # Optional OCC dependency
+    from OCC.Core.gp import gp_Pnt  # type: ignore
+    from OCC.Core.BRepPrimAPI import (  # type: ignore
+        BRepPrimAPI_MakeBox,
+        BRepPrimAPI_MakeCylinder,
+    )
+    from OCC.Core.TopoDS import TopoDS_Shape  # type: ignore
+except Exception:  # pragma: no cover - optional dependency missing
+    gp_Pnt = None  # type: ignore
+    BRepPrimAPI_MakeBox = BRepPrimAPI_MakeCylinder = None  # type: ignore
+    TopoDS_Shape = object  # type: ignore
 from adaptivecad.nd_math import identityN
 
 # ---------------------------------------------------------------------------
@@ -248,6 +255,7 @@ class ExportAmaCmd(BaseCmd):
         if not path:
             return
 
+        from adaptivecad.io.ama_writer import write_ama
         write_ama(DOCUMENT, path)
         mw.win.statusBar().showMessage(f"AMA saved ➡ {path}")
 
@@ -274,6 +282,7 @@ class ExportGCodeCmd(BaseCmd):
             tmp_ama_path = tmp_ama.name
         
         # Write the current document to the temporary AMA file
+        from adaptivecad.io.ama_writer import write_ama
         write_ama(DOCUMENT, tmp_ama_path)
         
         # Ask for G-code settings
@@ -315,13 +324,14 @@ class ExportGCodeCmd(BaseCmd):
         
         try:
             # Create milling strategy with user settings
+            from adaptivecad.io.gcode_generator import SimpleMilling, ama_to_gcode
             strategy = SimpleMilling(
                 safe_height=safe_height,
                 cut_depth=cut_depth,
                 feed_rate=feed_rate,
                 tool_diameter=tool_diameter
             )
-            
+
             # Generate G-code
             ama_to_gcode(tmp_ama_path, path, strategy)
             mw.win.statusBar().showMessage(f"G-code saved ➡ {path}")
@@ -624,12 +634,12 @@ class NewNDFieldCmd(BaseCmd):
 # ---------------------------------------------------------------------------
 # Ball and Torus commands
 # ---------------------------------------------------------------------------
-from adaptivecad.primitives import make_ball, make_torus
 
 class NewBallCmd(BaseCmd):
     title = "Ball"
     def run(self, mw):
         from PySide6.QtWidgets import QInputDialog
+        from adaptivecad.primitives import make_ball
         center_str, ok = QInputDialog.getText(mw.win, "Ball Center", "Center (x,y,z):", text="0,0,0")
         if not ok:
             return
@@ -645,6 +655,7 @@ class NewTorusCmd(BaseCmd):
     title = "Torus"
     def run(self, mw):
         from PySide6.QtWidgets import QInputDialog
+        from adaptivecad.primitives import make_torus
         center_str, ok = QInputDialog.getText(mw.win, "Torus Center", "Center (x,y,z):", text="0,0,0")
         if not ok:
             return
