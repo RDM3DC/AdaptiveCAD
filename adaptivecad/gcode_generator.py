@@ -1,7 +1,10 @@
 # adaptivecad/gcode_generator.py
 import datetime
 from typing import List
-from OCC.Core.TopoDS import TopoDS_Shape # For type hinting
+try:
+    from OCC.Core.TopoDS import TopoDS_Shape  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    TopoDS_Shape = object  # type: ignore
 from .io.ama_reader import read_ama, AMAFile
 
 def generate_gcode_from_ama_data(ama_file: AMAFile, tool_diameter: float = 6.0) -> str:
