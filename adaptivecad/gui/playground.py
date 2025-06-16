@@ -33,6 +33,7 @@ else:
         NewBallCmd,
         NewTorusCmd,
         NewConeCmd,
+        ScaleCmd,
         rebuild_scene,
         DOCUMENT,
     )
@@ -304,16 +305,10 @@ class MainWindow:
         ctx = self.view._display.Context
         for ais in ctx.DisplayedObjects():
             try:
-                ctx.SetDisplayMode(ais, mode, False)
+                ctx.SetDisplayMode(ais, mode, True)
             except Exception:
                 pass
-        # Force a full scene rebuild to update all shapes and remove duplicates
-        if hasattr(self, 'view') and hasattr(self.view, '_display'):
-            try:
-                rebuild_scene(self.view._display)
-            except Exception:
-                pass
-        self.view._display.View.Update()
+        ctx.UpdateCurrentViewer()
 
     def clear_property_panel(self, show_placeholder=True):
         """Remove all widgets from the property panel."""
@@ -816,6 +811,7 @@ class MainWindow:
             tools_menu.addAction(act)
 
         add_tool_action("Move", "transform-move", lambda: self.enter_move_mode())
+        add_tool_action("Scale", "zoom-in", lambda: self.run_cmd(ScaleCmd()))
         add_tool_action(
             "Push-Pull", "transform-scale", lambda: self.enter_push_pull_mode()
         )

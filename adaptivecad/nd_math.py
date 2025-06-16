@@ -35,6 +35,20 @@ def translationN(offset):
     T[:-1, -1] = offset
     return T
 
+def scalingN(factor, dim):
+    """Return an N-dimensional scaling matrix."""
+    import numpy as np
+    if np.isscalar(factor):
+        factors = [factor] * dim
+    else:
+        factors = list(factor)
+        if len(factors) != dim:
+            raise ValueError("Scaling factors length must match dimension")
+    S = identityN(dim)
+    for i, f in enumerate(factors):
+        S[i, i] = f
+    return S
+
 def apply_transformN(pt, mat):
     vec = np.append(pt, 1)
     return (mat @ vec)[:-1]
