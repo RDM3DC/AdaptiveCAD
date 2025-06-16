@@ -11,3 +11,12 @@ __all__ = [
     "rotate_cmd",
     "pi_a_over_pi",
 ]
+from .hyperbolic import geodesic_distance, move_towards, HyperbolicConstraint
+
+__all__.extend(
+    [
+        "geodesic_distance",
+        "move_towards",
+        "HyperbolicConstraint",
+    ]
+)

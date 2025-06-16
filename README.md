@@ -50,10 +50,11 @@ The playground provides an interactive 3D view with the following features:
   push‑pull editing, and export commands (STL, AMA and G‑code)
 - View mode toolbar to toggle Shaded, Wireframe and Hidden‑Line views
 
+### πₐ Viewer and geodesic tools
+Run `python -m adaptivecad.gui.pi_a_viewer` for a read‑only demonstration of the πₐ metric. This mode disables editing commands so you can inspect imported shapes. Geometry queries use `adaptivecad.geom.geodesic_distance` to measure hyperbolic separation. Higher level algorithms can move points toward targets via `HyperbolicConstraint` for constraint‑driven updates.
+
 ### Live parameter editing
-After the first AI generation, drag the sliders in the dialog to resize or
-tune α/μ without re‑prompting OpenAI. Every change re‑solves constraints and
-updates the body in real time.
+After the first AI generation, drag the sliders in the dialog to resize or tune α/μ without re‑prompting OpenAI. Every change re‑solves constraints and updates the body in real time.
 
 ## Parametric Dimensions
 AdaptiveCAD now includes a lightweight parameter system. Define variables in a
