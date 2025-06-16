@@ -218,6 +218,46 @@ else:
     # Real implementation would go here in a full installation. We keep it minimal
     # for testing without GUI dependencies.
     from PySide6.QtWidgets import QApplication, QMainWindow  # type: ignore
+    from adaptivecad.commands import ImportConformalCmd
+        # --- Add Import πₐ (Conformal Import) to File menu and main toolbar ---
+        from PySide6.QtWidgets import QToolButton, QMenu, QMessageBox
+        from PySide6.QtGui import QIcon, QAction
+
+        # Ensure main_toolbar exists
+        if not hasattr(self, 'main_toolbar'):
+            self.main_toolbar = self.QToolBar("Main", self.win)
+            self.win.addToolBar(self.main_toolbar)
+
+        # File menu (create if not present)
+        file_menu = None
+        for action in self.win.menuBar().actions():
+            if action.text() == "File":
+                file_menu = action.menu()
+                break
+        if file_menu is None:
+            file_menu = QMenu("File", self.win)
+            self.win.menuBar().addMenu(file_menu)
+
+        def do_pia_import():
+            try:
+                ImportConformalCmd().run(self)
+                self.win.statusBar().showMessage("πₐ Import process started.", 3000)
+            except Exception as e:
+                self.win.statusBar().showMessage(f"πₐ Import failed: {e}", 5000)
+                QMessageBox.critical(self.win, "πₐ Import Error", str(e))
+
+        # Add to File menu
+        pia_action = QAction(QIcon.fromTheme("document-open"), "Import πₐ Conformal", self.win)
+        pia_action.triggered.connect(do_pia_import)
+        file_menu.addAction(pia_action)
+
+        # Add dedicated button to toolbar
+        import_pia_btn = QToolButton(self.win)
+        import_pia_btn.setText("Import πₐ")
+        import_pia_btn.setIcon(QIcon.fromTheme("document-open"))
+        import_pia_btn.setToolTip("Import file and apply πₐ conformation (prompts for κ)")
+        import_pia_btn.clicked.connect(do_pia_import)
+        self.main_toolbar.addWidget(import_pia_btn)
 
     def _require_gui_modules():
         """Import optional GUI modules required for GUI execution."""
