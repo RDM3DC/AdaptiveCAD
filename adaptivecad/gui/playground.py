@@ -722,6 +722,8 @@ class MainWindow:
         )
 
         self.snap_manager = SnapManager()
+        # world-space tolerance for snap strategies
+        self.snap_world_tol = 0.5
         self.snap_manager.register(endpoint_snap, priority=20)
         self.snap_manager.register(midpoint_snap, priority=15)
         self.snap_manager.register(center_snap, priority=15)
