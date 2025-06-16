@@ -307,14 +307,30 @@ class MainWindow:
                 ctx.SetDisplayMode(ais, mode, False)
             except Exception:
                 pass
+        # Force a full scene rebuild to update all shapes and remove duplicates
+        if hasattr(self, 'view') and hasattr(self.view, '_display'):
+            try:
+                rebuild_scene(self.view._display)
+            except Exception:
+                pass
         self.view._display.View.Update()
 
     def clear_property_panel(self, show_placeholder=True):
         """Remove all widgets from the property panel."""
-        for i in reversed(range(self.property_layout.count())):
-            widget = self.property_layout.itemAt(i).widget()
+        from PySide6.QtWidgets import QLabel
+        # Remove all widgets and layouts from the property panel
+        while self.property_layout.count():
+            item = self.property_layout.takeAt(0)
+            widget = item.widget()
             if widget:
-                widget.setParent(None)
+                widget.deleteLater()
+            layout = item.layout()
+            if layout:
+                while layout.count():
+                    subitem = layout.takeAt(0)
+                    subwidget = subitem.widget()
+                    if subwidget:
+                        subwidget.deleteLater()
         if show_placeholder:
             self.property_layout.addWidget(QLabel("No selection."))
 
@@ -361,44 +377,45 @@ class MainWindow:
         )
         params = obj.params if is_feature else None
         shown_attrs = set()
+        param_editors = {}
         if params:
             for key, val in params.items():
                 row = QHBoxLayout()
                 row.addWidget(QLabel(f"{key}: "))
                 if is_editable(val):
                     editor = QLineEdit(str(val))
-
-                    def make_param_setter(param_key, typ):
-                        def setter():
-                            text = editor.text()
-                            try:
-                                if typ is bool:
-                                    new_val = text.lower() in ("1", "true", "yes", "on")
-                                else:
-                                    new_val = typ(text)
-                                obj.params[param_key] = new_val
-                                # If the feature has a rebuild/update method, call it
-                                if hasattr(obj, "rebuild") and callable(obj.rebuild):
-                                    obj.rebuild()
-                                # Always update the viewer
-                                if hasattr(self, "view") and hasattr(
-                                    self.view, "_display"
-                                ):
-                                    try:
-                                        rebuild_scene(self.view._display)
-                                    except Exception:
-                                        pass
-                            except Exception as e:
-                                editor.setText(str(obj.params[param_key]))  # revert
-
-                        return setter
-
-                    editor.editingFinished.connect(make_param_setter(key, type(val)))
+                    param_editors[key] = (editor, type(val))
                     row.addWidget(editor)
                 else:
                     row.addWidget(QLabel(str(val)))
                 self.property_layout.addLayout(row)
                 shown_attrs.add(key)
+
+            # Add Apply button for param updates
+            from PySide6.QtWidgets import QPushButton
+            apply_btn = QPushButton("Apply")
+            def on_apply():
+                for k, (editor, typ) in param_editors.items():
+                    text = editor.text()
+                    try:
+                        if typ is bool:
+                            new_val = text.lower() in ("1", "true", "yes", "on")
+                        else:
+                            new_val = typ(text)
+                        obj.params[k] = new_val
+                    except Exception:
+                        editor.setText(str(obj.params[k]))  # revert
+                # If the feature has a rebuild/update method, call it
+                if hasattr(obj, "rebuild") and callable(obj.rebuild):
+                    obj.rebuild()
+                # Always update the viewer
+                if hasattr(self, "view") and hasattr(self.view, "_display"):
+                    try:
+                        rebuild_scene(self.view._display)
+                    except Exception:
+                        pass
+            apply_btn.clicked.connect(on_apply)
+            self.property_layout.addWidget(apply_btn)
         # Show other attributes as before
         for attr in dir(obj):
             if (

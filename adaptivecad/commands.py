@@ -61,6 +61,26 @@ def _require_command_modules():
 
 @dataclass
 class Feature:
+
+    def rebuild(self):
+        """Regenerate the OCC shape from current parameters for basic primitives."""
+        try:
+            # Box
+            if self.name == "Box":
+                from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
+                l = float(self.params.get("l", 50))
+                w = float(self.params.get("w", 50))
+                h = float(self.params.get("h", 20))
+                self.shape = BRepPrimAPI_MakeBox(l, w, h).Shape()
+            # Cylinder
+            elif self.name == "Cyl":
+                from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeCylinder
+                r = float(self.params.get("r", 10))
+                h = float(self.params.get("h", 40))
+                self.shape = BRepPrimAPI_MakeCylinder(r, h).Shape()
+            # Add more primitives as needed
+        except Exception as e:
+            print(f"[Feature.rebuild] Error rebuilding {self.name}: {e}")
     """Record for a model feature."""
 
 
