@@ -85,6 +85,21 @@ else:
 if not HAS_GUI:
 
     class MainWindow:
+        # File menu (for export/save)
+        file_menu = QMenu("File", self.win)
+        def add_file_action(text, icon_name, cmd_cls):
+            act = QAction(QIcon.fromTheme(icon_name), text, self.win)
+            act.triggered.connect(lambda: self.run_cmd(cmd_cls()))
+            file_menu.addAction(act)
+        add_file_action("Export STL", "document-save", ExportStlCmd)
+        add_file_action("Export AMA", "document-save", ExportAmaCmd)
+        add_file_action("Export GCode", "document-save", ExportGCodeCmd)
+        file_btn = QToolButton(self.win)
+        file_btn.setText("File")
+        file_btn.setIcon(QIcon.fromTheme("document-save"))
+        file_btn.setPopupMode(QToolButton.InstantPopup)
+        file_btn.setMenu(file_menu)
+        self.main_toolbar.addWidget(file_btn)
         """Placeholder when GUI deps are unavailable."""
 
     def _require_gui_modules():
@@ -778,14 +793,29 @@ class MainWindow:
         self.main_toolbar.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
         self.win.addToolBar(Qt.TopToolBarArea, self.main_toolbar)
 
+
+        # File menu (for export/save)
+        file_menu = QMenu("File", self.win)
+        def add_file_action(text, icon_name, cmd_cls):
+            act = QAction(QIcon.fromTheme(icon_name), text, self.win)
+            act.triggered.connect(lambda: self.run_cmd(cmd_cls()))
+            file_menu.addAction(act)
+        add_file_action("Export STL", "document-save", ExportStlCmd)
+        add_file_action("Export AMA", "document-save", ExportAmaCmd)
+        add_file_action("Export GCode", "document-save", ExportGCodeCmd)
+        file_btn = QToolButton(self.win)
+        file_btn.setText("File")
+        file_btn.setIcon(QIcon.fromTheme("document-save"))
+        file_btn.setPopupMode(QToolButton.InstantPopup)
+        file_btn.setMenu(file_menu)
+        self.main_toolbar.addWidget(file_btn)
+
         # Shapes menu
         shapes_menu = QMenu("Shapes", self.win)
-
         def add_shape_action(text, icon_name, cmd_cls):
             act = QAction(QIcon.fromTheme(icon_name), text, self.win)
             act.triggered.connect(lambda: self.run_cmd(cmd_cls()))
             shapes_menu.addAction(act)
-
         add_shape_action("Box", "view-cube", NewBoxCmd)
         add_shape_action("Cylinder", "media-optical", NewCylCmd)
         add_shape_action("Bezier Curve", "draw-bezier-curves", NewBezierCmd)
@@ -810,7 +840,7 @@ class MainWindow:
             act.triggered.connect(handler)
             tools_menu.addAction(act)
 
-        add_tool_action("Move", "transform-move", lambda: self.enter_move_mode())
+        add_tool_action("Move", "transform-move", lambda: self.run_cmd(MoveCmd()))
         add_tool_action("Scale", "zoom-in", lambda: self.run_cmd(ScaleCmd()))
         add_tool_action(
             "Push-Pull", "transform-scale", lambda: self.enter_push_pull_mode()
