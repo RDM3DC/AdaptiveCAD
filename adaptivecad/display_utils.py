@@ -7,7 +7,12 @@ def smoother_display(display, shape, deflection=None, angle=None, color=None):
         deflection = MESH_DEFLECTION
     if angle is None:
         angle = MESH_ANGLE
-    BRepMesh_IncrementalMesh(shape, deflection, False, angle, True)
+    # Ensure correct types for OCC
+    deflection = float(deflection)
+    angle = float(angle)
+    isRelative = bool(False)
+    parallel = bool(True)
+    BRepMesh_IncrementalMesh(shape, deflection, isRelative, angle, parallel)
     display.DisplayShape(shape, color=color)
 
 def display_with_high_res(display, shape, color=None):

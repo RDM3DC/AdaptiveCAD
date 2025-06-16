@@ -11,7 +11,7 @@ from OCC.Core.TopAbs import TopAbs_FACE
 from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
 from OCC.Core.GeomAbs import GeomAbs_Plane, GeomAbs_Cylinder
 
-from adaptivecad.commands import BaseCmd, Feature, DOCUMENT, rebuild_scene
+from adaptivecad.command_defs import BaseCmd, Feature, DOCUMENT, rebuild_scene
 
 if TYPE_CHECKING:
     from adaptivecad.gui.playground import MainWindow # To avoid circular import

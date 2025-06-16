@@ -13,7 +13,7 @@ class SnapManager:
 
     def register(self, strategy, priority=0):
         self.strategies.append((priority, strategy))
-        self.strategies.sort(reverse=True)
+        self.strategies.sort(key=lambda x: x[0], reverse=True)
         self.strategy_enabled[strategy.__name__] = True
 
     def enable_strategy(self, name: str, enabled: bool = True) -> None:

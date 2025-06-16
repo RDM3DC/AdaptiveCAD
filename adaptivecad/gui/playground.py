@@ -6,17 +6,20 @@ try:
 except Exception:  # pragma: no cover - optional GUI deps missing
     HAS_GUI = False
 else:
+    HAS_GUI = True  # Ensure HAS_GUI is set to True here
     import sys
     import numpy as np
     from math import pi, cos, sin
     from adaptivecad import settings
-    from PySide6.QtWidgets import QInputDialog
-    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QInputDialog, QMessageBox, QCheckBox  # Original import
+    from PySide6.QtGui import QAction  # Added import for QAction
+    from PySide6.QtCore import Qt  # Original import
     from OCC.Core.AIS import AIS_Shape
     from OCC.Core.TopoDS import TopoDS_Face
     from adaptivecad.push_pull import PushPullFeatureCmd
     from adaptivecad.gui.viewcube_widget import ViewCubeWidget
-    from adaptivecad.commands import (
+    # Ensure this block is indented
+    from adaptivecad.command_defs import (
         NewBoxCmd,
         NewCylCmd,
         ExportStlCmd,
@@ -33,12 +36,16 @@ else:
         NewBallCmd,
         NewTorusCmd,
         NewConeCmd,
+        RevolveCmd,
         ScaleCmd,
         rebuild_scene,
         DOCUMENT,
     )
+    # Ensure PiSquareCmd import is here and indented
+    from adaptivecad.commands.pi_square_cmd import PiSquareCmd
+    from adaptivecad.commands.draped_sheet_cmd import DrapedSheetCmd # Add this import
 
-    # Optional anti-aliasing support
+    # Optional anti-aliasing support (this and subsequent code should now be correctly aligned)
     try:
         from OCC.Core.V3d import V3d_View
         from OCC.Core.Graphic3d import Graphic3d_RenderingParams
@@ -71,9 +78,8 @@ else:
             f"plot_nd_slice called with data shape: {getattr(data, 'shape', 'unknown')}"
         )
 
-
+    #QtWidgets import for NDSliceWidget etc. (Qt import was duplicated and removed from here)
     from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QComboBox, QPushButton
-    from PySide6.QtCore import Qt
 
     class NDSliceWidget(QWidget):
         """Widget for interactively slicing ND fields."""
@@ -115,22 +121,92 @@ else:
 
 if not HAS_GUI:
 
+
     class MainWindow:
-        # File menu (for export/save)
-        file_menu = QMenu("File", self.win)
-        def add_file_action(text, icon_name, cmd_cls):
-            act = QAction(QIcon.fromTheme(icon_name), text, self.win)
-            act.triggered.connect(lambda: self.run_cmd(cmd_cls()))
-            file_menu.addAction(act)
-        add_file_action("Export STL", "document-save", ExportStlCmd)
-        add_file_action("Export AMA", "document-save", ExportAmaCmd)
-        add_file_action("Export GCode", "document-save", ExportGCodeCmd)
-        file_btn = QToolButton(self.win)
-        file_btn.setText("File")
-        file_btn.setIcon(QIcon.fromTheme("document-save"))
-        file_btn.setPopupMode(QToolButton.InstantPopup)
-        file_btn.setMenu(file_menu)
-        self.main_toolbar.addWidget(file_btn)
+        """Placeholder when GUI deps are unavailable."""
+        pass
+
+    def start_snap_workflow(self):
+        self.snap_phase = None
+        self.active_snap = None
+        self.target_snap = None
+        self.snap_ref_marker = None
+        self.snap_target_marker = None
+        self.clear_snap_markers()
+        self.win.statusBar().showMessage("Select object and snap point to use as reference.")
+
+    def _on_mouse_press_snap(self, x, y, buttons, modifiers):
+        # --- SNAP WORKFLOW ---
+        if getattr(self, "snap_phase", None) is None:
+            # Check if a feature is selected
+            if self.selected_feature:
+                self.show_snap_points(self.selected_feature)
+                self.snap_phase = "reference"
+                self.win.statusBar().showMessage("Click a snap marker to pick reference point.")
+            return True
+        elif self.snap_phase == "reference":
+            # Check if a snap marker was clicked
+            marker = self._find_snap_marker_near(x, y)
+            if marker:
+                marker_obj, pt, snap_type, feature = marker
+                self.active_snap = {"feature": feature, "point": pt, "type": snap_type}
+                self.snap_ref_marker = marker_obj
+                self.highlight_snap_marker(marker_obj)
+                self.win.statusBar().showMessage(f"Reference snap: {snap_type}. Now select target object.")
+                self.snap_phase = "target_select"
+                self.clear_snap_markers()
+            return True
+        elif self.snap_phase == "target_select":
+            # Wait for user to select a target feature
+            if self.selected_feature and self.selected_feature != self.active_snap["feature"]:
+                self.show_snap_points(self.selected_feature)
+                self.snap_phase = "target"
+                self.win.statusBar().showMessage("Click a snap marker on target object.")
+            return True
+        elif self.snap_phase == "target":
+            marker = self._find_snap_marker_near(x, y)
+            if marker:
+                marker_obj, pt, snap_type, feature = marker
+                self.target_snap = {"feature": feature, "point": pt, "type": snap_type}
+                self.snap_target_marker = marker_obj
+                self.highlight_snap_marker(marker_obj)
+                # Move feature
+                self.move_feature_to_snap(self.active_snap["feature"], self.active_snap["point"], pt)
+                self.clear_snap_markers()
+                self.snap_phase = None
+                self.win.statusBar().showMessage("Snapped! Press ESC to cancel or start again.")
+            return True
+        return False
+
+    def _find_snap_marker_near(self, x, y, tol=12):
+        # Find a snap marker near the mouse click (screen coords)
+        if not hasattr(self, "snap_markers"):
+            return None
+        for marker, pt, snap_type, feature in self.snap_markers:
+            # Project marker to screen
+            try:
+                screen_pt = self.view._display.View.Project(marker.Component().X(), marker.Component().Y(), marker.Component().Z())
+                if abs(screen_pt[0] - x) < tol and abs(screen_pt[1] - y) < tol:
+                    return (marker, pt, snap_type, feature)
+            except Exception:
+                continue
+        return None
+
+    def move_feature_to_snap(self, feature, ref_point, target_point):
+        import numpy as np
+        delta = np.array(target_point) - np.array(ref_point)
+        feature.apply_translation(delta)
+        rebuild_scene(self.view._display)
+
+    def keyPressEvent(self, event):
+        # ESC cancels snap workflow
+        if event.key() == self.Qt.Key_Escape:
+            self.start_snap_workflow()
+            self.win.statusBar().showMessage("Snap canceled.")
+            return
+        self._keyPressEvent(event)
+
+    # Optionally, call self.start_snap_workflow() in __init__ or after selection
         """Placeholder when GUI deps are unavailable."""
 
     def _require_gui_modules():
@@ -287,8 +363,19 @@ class SettingsDialog:
         )
         if not ok:
             return
+
+        # GPU acceleration checkbox
+        box = QMessageBox(parent)
+        box.setWindowTitle("GPU Support")
+        box.setText("Enable GPU acceleration?")
+        cb = QCheckBox("Enable GPU")
+        cb.setChecked(settings.USE_GPU)
+        box.setCheckBox(cb)
+        box.exec()
+
         settings.MESH_DEFLECTION = defl
         settings.MESH_ANGLE = angle
+        settings.USE_GPU = cb.isChecked()
 
         # ...existing code...
 
@@ -434,7 +521,9 @@ class MainWindow:
 
             # Add Apply button for param updates
             from PySide6.QtWidgets import QPushButton
+
             apply_btn = QPushButton("Apply")
+
             def on_apply():
                 for k, (editor, typ) in param_editors.items():
                     text = editor.text()
@@ -455,6 +544,7 @@ class MainWindow:
                         rebuild_scene(self.view._display)
                     except Exception:
                         pass
+
             apply_btn.clicked.connect(on_apply)
             self.property_layout.addWidget(apply_btn)
         # Show other attributes as before
@@ -497,7 +587,7 @@ class MainWindow:
             self.property_layout.addLayout(row)
 
         # Track the selected feature for deletion
-        from adaptivecad.commands import Feature
+        from adaptivecad.command_defs import Feature
 
         if isinstance(obj, Feature):
             self.selected_feature = obj
@@ -529,7 +619,7 @@ class MainWindow:
 
         ndfield_action.triggered.connect(launch_ndfield_demo)
 
-    from adaptivecad.commands import BaseCmd
+    from adaptivecad.command_defs import BaseCmd
 
     def run_cmd(self, cmd: BaseCmd) -> None:
         """Run a command on the main window."""
@@ -584,6 +674,15 @@ class MainWindow:
         self.win.setCentralWidget(self.view)
         self.view.show()  # Explicitly show the view
 
+        # Enable GPU acceleration when requested
+        if settings.USE_GPU:
+            try:
+                view = self.view._display.View
+                if hasattr(view, "SetRaytracingMode"):
+                    view.SetRaytracingMode(True)
+            except Exception as exc:
+                print(f"Could not enable GPU acceleration: {exc}")
+
         # --- Add View Cube overlay ---
         self.viewcube = ViewCubeWidget(self.view._display, self.view)
         self._position_viewcube()
@@ -608,12 +707,24 @@ class MainWindow:
 
         viewcube_action.triggered.connect(toggle_cube)
         self.win.menuBar().addAction(viewcube_action)
-        self._init_property_panel()  # Initialize SnapManager
+        self._init_property_panel()  # Initialize property dock
+        from PySide6.QtCore import Qt
+        from adaptivecad.gui.snap_menu import SnapMenu
+        self.snap_menu = SnapMenu(self)
+        self.win.addDockWidget(Qt.RightDockWidgetArea, self.snap_menu)
+        # Initialize SnapManager
         from adaptivecad.snap import SnapManager
-        from adaptivecad.snap_strategies import grid_snap, endpoint_snap
+        from adaptivecad.snap_strategies import (
+            grid_snap,
+            endpoint_snap,
+            midpoint_snap,
+            center_snap,
+        )
 
         self.snap_manager = SnapManager()
         self.snap_manager.register(endpoint_snap, priority=20)
+        self.snap_manager.register(midpoint_snap, priority=15)
+        self.snap_manager.register(center_snap, priority=15)
         self.snap_manager.register(grid_snap, priority=10)
         self.current_snap_point = None
         # Note: Snap tolerance slider will be added in the run method
@@ -743,7 +854,7 @@ class MainWindow:
                     print(f"Selection callback error: {e}")
 
                 # --- Show properties in side panel if shape is a Feature or NDField ---
-                from adaptivecad.commands import DOCUMENT
+                from adaptivecad.command_defs import DOCUMENT
 
                 found = None
                 for feat in DOCUMENT:
@@ -824,7 +935,6 @@ class MainWindow:
         self.main_toolbar.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
         self.win.addToolBar(Qt.TopToolBarArea, self.main_toolbar)
 
-
         # File menu (for export/save)
         file_menu = QMenu("File", self.win)
         def add_file_action(text, icon_name, cmd_cls):
@@ -856,6 +966,9 @@ class MainWindow:
         add_shape_action("Ball", "media-record", NewBallCmd)
         add_shape_action("Torus", "preferences-desktop-theme", NewTorusCmd)
         add_shape_action("Cone", "media-eject", NewConeCmd)
+        add_shape_action("Revolve", "object-rotate-right", RevolveCmd)
+        add_shape_action("π‑Square", "draw-rectangle", PiSquareCmd)
+        add_shape_action("Draped Sheet", "view-detailed", DrapedSheetCmd) # Add new command to Shapes menu
         shapes_btn = QToolButton(self.win)
         shapes_btn.setText("Shapes")
         shapes_btn.setIcon(QIcon.fromTheme("view-cube"))
@@ -1099,14 +1212,25 @@ class MainWindow:
         slider_layout.addWidget(slider)
         self.property_layout.addLayout(slider_layout)
 
+    def update_snap_points_display(self):
+        """Refresh the viewer when snap settings change."""
+        if hasattr(self.view, "_display"):
+            try:
+                self.view._display.Context.UpdateCurrentViewer()
+            except Exception:
+                pass
+
     def _on_snap_tolerance_changed(self, value, label):
         """Update snap tolerance when the slider is moved"""
         self.snap_manager.set_tolerance(value)
         label.setText(f"Snap Tolerance: {value} px")
         self.win.statusBar().showMessage(f"Snap tolerance set to {value} pixels", 2000)
 
-    def _on_mouse_press(self, world_pt, *args, **kwargs):
-        pass  # On mouse click: use self.current_snap_point for placement
+    def _on_mouse_press(self, x, y, buttons, modifiers):
+        # Try snap workflow first
+        if self._on_mouse_press_snap(x, y, buttons, modifiers):
+            return
+        # ...existing code for PushPull and other modes...
 
     def toggle_grid_snap(self):
         is_on = self.snap_manager.toggle_strategy("grid_snap")
@@ -1243,6 +1367,8 @@ class MainWindow:
 
         # Execute the application
         return self.app.exec()
+
+    # --- END SNAP WORKFLOW PATCH ---
 
 
 def main() -> None:

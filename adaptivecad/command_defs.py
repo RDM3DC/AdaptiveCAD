@@ -194,6 +194,15 @@ class Feature:
             points.append(self.get_reference_point())
         return points
 
+    def snap_points_2d(self):
+        """Return common 2‑D snap points based on feature parameters."""
+        from adaptivecad.snap_points import snap_points_2d as util
+
+        try:
+            return util(self)
+        except Exception:
+            return []
+
     def apply_translation(self, delta):
         from adaptivecad.nd_math import translationN
         import numpy as np
@@ -834,4 +843,48 @@ class NewConeCmd(BaseCmd):
             return
         shape = make_cone(center, r1, r2, height)
         DOCUMENT.append(Feature("Cone", dict(center=center, base_radius=r1, top_radius=r2, height=height), shape))
+        rebuild_scene(mw.view._display)
+
+class RevolveCmd(BaseCmd):
+    title = "Revolve"
+
+    def run(self, mw):
+        from PySide6.QtWidgets import QInputDialog
+        from adaptivecad.primitives import make_revolve
+
+        curve_items = [
+            f"{i}: {feat.name}" for i, feat in enumerate(DOCUMENT) if hasattr(feat, "shape")
+        ]
+        if not curve_items:
+            mw.win.statusBar().showMessage("No profile curves found!")
+            return
+
+        idx, ok = QInputDialog.getItem(mw.win, "Revolve", "Select profile curve:", curve_items, 0, False)
+        if not ok:
+            return
+        curve_idx = int(idx.split(":")[0])
+        profile = DOCUMENT[curve_idx].shape
+
+        axis_origin_str, ok = QInputDialog.getText(mw.win, "Axis Origin", "Axis origin (x,y,z):", text="0,0,0")
+        if not ok:
+            return
+        axis_origin = [float(x) for x in axis_origin_str.split(",")]
+
+        axis_dir_str, ok = QInputDialog.getText(mw.win, "Axis Direction", "Axis direction (dx,dy,dz):", text="0,0,1")
+        if not ok:
+            return
+        axis_dir = [float(x) for x in axis_dir_str.split(",")]
+
+        angle_deg, ok = QInputDialog.getDouble(mw.win, "Angle", "Degrees:", 360.0, 1.0, 360.0)
+        if not ok:
+            return
+
+        shape = make_revolve(profile, axis_origin, axis_dir, angle_deg)
+        DOCUMENT.append(
+            Feature(
+                "Revolve",
+                dict(profile=curve_idx, axis_origin=axis_origin, axis_dir=axis_dir, angle=angle_deg),
+                shape,
+            )
+        )
         rebuild_scene(mw.view._display)
