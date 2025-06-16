@@ -583,12 +583,24 @@ class MainWindow:
 
         viewcube_action.triggered.connect(toggle_cube)
         self.win.menuBar().addAction(viewcube_action)
-        self._init_property_panel()  # Initialize SnapManager
+        self._init_property_panel()  # Initialize property dock
+        from PySide6.QtCore import Qt
+        from adaptivecad.gui.snap_menu import SnapMenu
+        self.snap_menu = SnapMenu(self)
+        self.win.addDockWidget(Qt.RightDockWidgetArea, self.snap_menu)
+        # Initialize SnapManager
         from adaptivecad.snap import SnapManager
-        from adaptivecad.snap_strategies import grid_snap, endpoint_snap
+        from adaptivecad.snap_strategies import (
+            grid_snap,
+            endpoint_snap,
+            midpoint_snap,
+            center_snap,
+        )
 
         self.snap_manager = SnapManager()
         self.snap_manager.register(endpoint_snap, priority=20)
+        self.snap_manager.register(midpoint_snap, priority=15)
+        self.snap_manager.register(center_snap, priority=15)
         self.snap_manager.register(grid_snap, priority=10)
         self.current_snap_point = None
         # Note: Snap tolerance slider will be added in the run method
@@ -1074,6 +1086,14 @@ class MainWindow:
         slider_layout.addWidget(label)
         slider_layout.addWidget(slider)
         self.property_layout.addLayout(slider_layout)
+
+    def update_snap_points_display(self):
+        """Refresh the viewer when snap settings change."""
+        if hasattr(self.view, "_display"):
+            try:
+                self.view._display.Context.UpdateCurrentViewer()
+            except Exception:
+                pass
 
     def _on_snap_tolerance_changed(self, value, label):
         """Update snap tolerance when the slider is moved"""
