@@ -33,6 +33,7 @@ else:
         NewBallCmd,
         NewTorusCmd,
         NewConeCmd,
+        RevolveCmd,
         ScaleCmd,
         rebuild_scene,
         DOCUMENT,
@@ -830,6 +831,7 @@ class MainWindow:
         add_shape_action("Ball", "media-record", NewBallCmd)
         add_shape_action("Torus", "preferences-desktop-theme", NewTorusCmd)
         add_shape_action("Cone", "media-eject", NewConeCmd)
+        add_shape_action("Revolve", "object-rotate-right", RevolveCmd)
         shapes_btn = QToolButton(self.win)
         shapes_btn.setText("Shapes")
         shapes_btn.setIcon(QIcon.fromTheme("view-cube"))
