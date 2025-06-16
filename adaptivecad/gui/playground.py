@@ -10,7 +10,7 @@ else:
     import numpy as np
     from math import pi, cos, sin
     from adaptivecad import settings
-    from PySide6.QtWidgets import QInputDialog
+    from PySide6.QtWidgets import QInputDialog, QMessageBox, QCheckBox
     from PySide6.QtCore import Qt
     from OCC.Core.AIS import AIS_Shape
     from OCC.Core.TopoDS import TopoDS_Face
@@ -85,21 +85,6 @@ else:
 if not HAS_GUI:
 
     class MainWindow:
-        # File menu (for export/save)
-        file_menu = QMenu("File", self.win)
-        def add_file_action(text, icon_name, cmd_cls):
-            act = QAction(QIcon.fromTheme(icon_name), text, self.win)
-            act.triggered.connect(lambda: self.run_cmd(cmd_cls()))
-            file_menu.addAction(act)
-        add_file_action("Export STL", "document-save", ExportStlCmd)
-        add_file_action("Export AMA", "document-save", ExportAmaCmd)
-        add_file_action("Export GCode", "document-save", ExportGCodeCmd)
-        file_btn = QToolButton(self.win)
-        file_btn.setText("File")
-        file_btn.setIcon(QIcon.fromTheme("document-save"))
-        file_btn.setPopupMode(QToolButton.InstantPopup)
-        file_btn.setMenu(file_menu)
-        self.main_toolbar.addWidget(file_btn)
         """Placeholder when GUI deps are unavailable."""
 
     def _require_gui_modules():
@@ -256,8 +241,19 @@ class SettingsDialog:
         )
         if not ok:
             return
+
+        # GPU acceleration checkbox
+        box = QMessageBox(parent)
+        box.setWindowTitle("GPU Support")
+        box.setText("Enable GPU acceleration?")
+        cb = QCheckBox("Enable GPU")
+        cb.setChecked(settings.USE_GPU)
+        box.setCheckBox(cb)
+        box.exec()
+
         settings.MESH_DEFLECTION = defl
         settings.MESH_ANGLE = angle
+        settings.USE_GPU = cb.isChecked()
 
         # ...existing code...
 
@@ -552,6 +548,15 @@ class MainWindow:
         self.view = qtViewer3d(self.win)
         self.win.setCentralWidget(self.view)
         self.view.show()  # Explicitly show the view
+
+        # Enable GPU acceleration when requested
+        if settings.USE_GPU:
+            try:
+                view = self.view._display.View
+                if hasattr(view, "SetRaytracingMode"):
+                    view.SetRaytracingMode(True)
+            except Exception as exc:
+                print(f"Could not enable GPU acceleration: {exc}")
 
         # --- Add View Cube overlay ---
         self.viewcube = ViewCubeWidget(self.view._display, self.view)
