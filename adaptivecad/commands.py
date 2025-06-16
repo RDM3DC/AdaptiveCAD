@@ -194,6 +194,15 @@ class Feature:
             points.append(self.get_reference_point())
         return points
 
+    def snap_points_2d(self):
+        """Return common 2‑D snap points based on feature parameters."""
+        from adaptivecad.snap_points import snap_points_2d as util
+
+        try:
+            return util(self)
+        except Exception:
+            return []
+
     def apply_translation(self, delta):
         from adaptivecad.nd_math import translationN
         import numpy as np
