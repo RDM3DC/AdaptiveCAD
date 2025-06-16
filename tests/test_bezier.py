@@ -9,3 +9,6 @@ def test_bezier_evaluate():
     p = curve.evaluate(0.5)
     assert abs(p.x - 1.0) < 1e-6
     assert abs(p.y - 1.0) < 1e-6
+    d = curve.derivative(0.5)
+    assert abs(d.x - 2.0) < 1e-6
+    assert abs(d.y - 0.0) < 1e-6

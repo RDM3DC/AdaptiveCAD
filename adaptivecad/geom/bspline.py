@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import List
 
 from ..linalg import Vec3
+from .curve import Curve
 
 
 def _find_span(n: int, degree: int, u: float, knots: List[float]) -> int:
@@ -26,7 +27,7 @@ def _find_span(n: int, degree: int, u: float, knots: List[float]) -> int:
 
 
 @dataclass
-class BSplineCurve:
+class BSplineCurve(Curve):
     control_points: List[Vec3]
     degree: int
     knots: List[float]
@@ -46,3 +47,16 @@ class BSplineCurve:
                     alpha = (u - self.knots[i]) / denom
                 d[j] = (1 - alpha) * d[j - 1] + alpha * d[j]
         return d[self.degree]
+
+    def derivative(self, u: float) -> Vec3:
+        n = len(self.control_points) - 1
+        p = self.degree
+        if p == 0:
+            return Vec3(0.0, 0.0, 0.0)
+        d_ctrl = []
+        for i in range(n):
+            denom = self.knots[i + p + 1] - self.knots[i + 1]
+            coef = p / denom if denom != 0 else 0.0
+            d_ctrl.append((self.control_points[i + 1] - self.control_points[i]) * coef)
+        der_curve = BSplineCurve(d_ctrl, p - 1, self.knots[1:-1])
+        return der_curve.evaluate(u)
