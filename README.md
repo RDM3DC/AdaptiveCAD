@@ -14,6 +14,7 @@ examples and unit tests without a large toolchain.  Current features include:
 - `adaptivecad.geom` – Bézier and B‑spline curves plus hyperbolic helpers
 - `adaptivecad.io` – AMA reader/writer utilities
 - `adaptivecad.gcode_generator` – placeholder G‑code generation routines
+  including `SimpleMilling` and a stub `WaterlineMilling` strategy
 - `adaptivecad.analytic_slicer` – helper for analytic B‑rep slicing
 - `adaptivecad.gui.playground` – PySide6 viewer with a toolbar for Box,
   Cylinder, Bézier and B‑spline curves, push‑pull editing and export commands
@@ -296,7 +297,7 @@ Your πₐ kernel generalises Euclidean distance by allowing *location‑depende
 1. Finish **linalg** + **geom.curve** so you can load/author sketches.
 2. Implement **sketch solver** (least‑squares) → export DXF to verify.
 3. Add **surface & solid B‑rep** with Euler operators.
-4. Stub **CAM waterline** strategy first (2‑axis) to close the CAD–CAM loop quickly.
+4. Stub **CAM waterline** strategy first (2‑axis) to close the CAD–CAM loop quickly. *(Implemented as `WaterlineMilling`)*
 5. Integrate **πₐ metric** gradually: start with read‑only viewer, then allow geodesic queries, finally constraint‑driven updates.
 6. Layer more aggressive CAM (adaptive clearing, 5‑axis) only after core kernels are numerically rock‑solid.
 
