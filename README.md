@@ -299,6 +299,8 @@ Your πₐ kernel generalises Euclidean distance by allowing *location‑depende
 4. Stub **CAM waterline** strategy first (2‑axis) to close the CAD–CAM loop quickly.
 5. Integrate **πₐ metric** gradually: start with read‑only viewer, then allow geodesic queries, finally constraint‑driven updates.
 6. Layer more aggressive CAM (adaptive clearing, 5‑axis) only after core kernels are numerically rock‑solid.
+7. The module `adaptivecad.cam.adaptive_clearing_5axis` is a placeholder
+   that raises ``NotImplementedError`` until those kernels are verified.
 
 ---
 
