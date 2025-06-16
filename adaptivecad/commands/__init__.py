@@ -28,9 +28,11 @@ from ..command_defs import (
 try:
     from .pi_square_cmd import PiSquareCmd
     from .draped_sheet_cmd import DrapedSheetCmd
+    from .import_conformal import ImportConformalCmd
 except Exception:  # optional OCC deps may be missing
     PiSquareCmd = None
     DrapedSheetCmd = None
+    ImportConformalCmd = None
 
 __all__ = [
     "BaseCmd",
@@ -61,3 +63,5 @@ if PiSquareCmd is not None:
     __all__.append("PiSquareCmd")
 if DrapedSheetCmd is not None:
     __all__.append("DrapedSheetCmd")
+if ImportConformalCmd is not None:
+    __all__.append("ImportConformalCmd")
