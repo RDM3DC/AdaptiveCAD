@@ -71,13 +71,44 @@ else:
             f"plot_nd_slice called with data shape: {getattr(data, 'shape', 'unknown')}"
         )
 
-    class NDSliceWidget:
-        """Stub widget for ND field slicing."""
 
+    from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QComboBox, QPushButton
+    from PySide6.QtCore import Qt
+
+    class NDSliceWidget(QWidget):
+        """Widget for interactively slicing ND fields."""
         def __init__(self, ndfield, callback):
+            super().__init__()
             self.ndfield = ndfield
             self.callback = callback
-            print(f"NDSliceWidget initialized with ndfield: {ndfield}")
+            self.slice_indices = [None] * ndfield.ndim
+            layout = QVBoxLayout()
+            self.controls = []
+            for i, dim in enumerate(ndfield.grid_shape):
+                row = QHBoxLayout()
+                label = QLabel(f"Dim {i+1}")
+                combo = QComboBox()
+                combo.addItem("All", None)
+                for idx in range(dim):
+                    combo.addItem(str(idx), idx)
+                combo.currentIndexChanged.connect(self._make_update_callback(i, combo))
+                row.addWidget(label)
+                row.addWidget(combo)
+                layout.addLayout(row)
+                self.controls.append(combo)
+            update_btn = QPushButton("Update Slice")
+            update_btn.clicked.connect(self.emit_slice)
+            layout.addWidget(update_btn)
+            self.setLayout(layout)
+
+        def _make_update_callback(self, axis, combo):
+            def update(_):
+                val = combo.currentData()
+                self.slice_indices[axis] = val
+            return update
+
+        def emit_slice(self):
+            self.callback(self.slice_indices)
 
     HAS_GUI = True
 

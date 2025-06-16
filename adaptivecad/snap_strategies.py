@@ -11,7 +11,10 @@ def endpoint_snap(world_pt, view):
     for feat in DOCUMENT:
         if hasattr(feat, 'all_snap_points'):
             for pt in feat.all_snap_points():
-                d = np.linalg.norm(np.array(pt) - np.array(world_pt))
+                arr_pt = np.array(pt)
+                arr_world = np.array(world_pt)
+                min_dim = min(arr_pt.shape[0], arr_world.shape[0])
+                d = np.linalg.norm(arr_pt[:min_dim] - arr_world[:min_dim])
                 if d < getattr(view, 'snap_world_tol', 1e-3):
-                    return (np.array(pt), "◆")  # ◆ for endpoint
+                    return (arr_pt, "◆")  # ◆ for endpoint
     return None
