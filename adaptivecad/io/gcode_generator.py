@@ -262,6 +262,51 @@ class SimpleMilling(GCodeGenerator):
         program.add_footer()
         return program
 
+
+class WaterlineMilling(GCodeGenerator):
+    """Stub 2‑axis waterline strategy."""
+
+    def __init__(
+        self,
+        safe_height: float = 10.0,
+        step_down: float = 1.0,
+        total_depth: float = 5.0,
+        feed_rate: float = 100.0,
+        rapid_feed_rate: float = 500.0,
+        tool_diameter: float = 3.0,
+    ) -> None:
+        self.safe_height = safe_height
+        self.step_down = step_down
+        self.total_depth = total_depth
+        self.feed_rate = feed_rate
+        self.rapid_feed_rate = rapid_feed_rate
+        self.tool_diameter = tool_diameter
+
+    def generate(self, part_data) -> GCodeProgram:
+        """Generate a basic waterline toolpath."""
+
+        program = GCodeProgram(name=f"waterline_{part_data.get('name', 'part')}")
+        program.add_header()
+        program.add_comment("Waterline milling operation (stub)")
+        program.add_comment(f"Tool diameter: {self.tool_diameter}mm")
+
+        size = 50
+        depth = 0.0
+        while depth < self.total_depth - 1e-6:
+            depth = min(depth + self.step_down, self.total_depth)
+            # Rapid to safe height and start position
+            program.add_command(GCodeRapidMove(z=self.safe_height, comment="Move to safe height"))
+            program.add_command(GCodeRapidMove(x=0, y=0, comment="Move to start position"))
+            program.add_command(GCodeLinearMove(z=-depth, f=self.feed_rate / 2, comment="Move to cutting depth"))
+            program.add_command(GCodeLinearMove(x=size, f=self.feed_rate, comment="Cut along X"))
+            program.add_command(GCodeLinearMove(y=size, comment="Cut along Y"))
+            program.add_command(GCodeLinearMove(x=0, comment="Cut back along X"))
+            program.add_command(GCodeLinearMove(y=0, comment="Cut back along Y"))
+
+        program.add_command(GCodeRapidMove(z=self.safe_height, comment="Move to safe height"))
+        program.add_footer()
+        return program
+
 def ama_to_gcode(ama_file_path: str, output_path: str = None, strategy: GCodeGenerator = None) -> str:
     """
     Convert an AMA file to G-code.

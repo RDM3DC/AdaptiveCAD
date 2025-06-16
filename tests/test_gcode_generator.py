@@ -5,6 +5,7 @@ import zipfile
 import tempfile
 from adaptivecad.gcode_generator import generate_gcode_from_ama_file, generate_gcode_from_ama_data
 from adaptivecad.io.ama_reader import AMAFile, AMAPart
+from adaptivecad.io.gcode_generator import ama_to_gcode, WaterlineMilling
 
 class TestGCodeGenerator(unittest.TestCase):
 
@@ -82,6 +83,16 @@ class TestGCodeGenerator(unittest.TestCase):
         """Test G-code generation with a non-existent AMA file path."""
         gcode = generate_gcode_from_ama_file("nonexistent.ama")
         self.assertIsNone(gcode) # Expecting None as the file can't be read
+
+    def test_waterline_strategy(self):
+        """Ensure WaterlineMilling strategy generates a file."""
+        output_gcode_path = os.path.join(self.temp_dir, "waterline.gcode")
+        strategy = WaterlineMilling(step_down=1.0, total_depth=2.0)
+        result_path = ama_to_gcode(self.test_ama_file_path, output_gcode_path, strategy)
+        self.assertTrue(os.path.exists(result_path))
+        with open(result_path, "r") as f:
+            gcode = f.read()
+        self.assertIn("Waterline milling operation", gcode)
 
 if __name__ == '__main__':
     unittest.main(argv=['first-arg-is-ignored'], exit=False)

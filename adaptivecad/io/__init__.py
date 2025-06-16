@@ -8,6 +8,7 @@ __all__ = [
     "ama_to_gcode",
     "GCodeGenerator",
     "SimpleMilling",
+    "WaterlineMilling",
 ]
 
 
@@ -44,3 +45,8 @@ def GCodeGenerator(*args, **kwargs):  # type: ignore
 def SimpleMilling(*args, **kwargs):  # type: ignore
     from .gcode_generator import SimpleMilling
     return SimpleMilling(*args, **kwargs)
+
+
+def WaterlineMilling(*args, **kwargs):  # type: ignore
+    from .gcode_generator import WaterlineMilling
+    return WaterlineMilling(*args, **kwargs)
