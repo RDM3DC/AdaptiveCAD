@@ -78,6 +78,27 @@ class Feature:
                 r = float(self.params.get("r", 10))
                 h = float(self.params.get("h", 40))
                 self.shape = BRepPrimAPI_MakeCylinder(r, h).Shape()
+            # Cone
+            elif self.name == "Cone":
+                from adaptivecad.primitives import make_cone
+                center = self.params.get("center", [0, 0, 0])
+                r1 = float(self.params.get("base_radius", 10))
+                r2 = float(self.params.get("top_radius", 0))
+                height = float(self.params.get("height", 20))
+                self.shape = make_cone(center, r1, r2, height)
+            # Sphere (Ball)
+            elif self.name == "Ball":
+                from adaptivecad.primitives import make_ball
+                center = self.params.get("center", [0, 0, 0])
+                radius = float(self.params.get("radius", 10))
+                self.shape = make_ball(center, radius)
+            # Torus
+            elif self.name == "Torus":
+                from adaptivecad.primitives import make_torus
+                center = self.params.get("center", [0, 0, 0])
+                major = float(self.params.get("major_radius", 30))
+                minor = float(self.params.get("minor_radius", 7))
+                self.shape = make_torus(center, major, minor)
             # Add more primitives as needed
         except Exception as e:
             print(f"[Feature.rebuild] Error rebuilding {self.name}: {e}")
@@ -181,6 +202,13 @@ class Feature:
         # For OCC shapes, you may need to rebuild the shape at the new position
         # ...add OCC-specific logic if needed...
 
+    def apply_scale(self, factor):
+        """Uniform or per-axis scaling of the feature."""
+        from adaptivecad.nd_math import scalingN
+        import numpy as np
+        if hasattr(self, 'local_transform') and self.local_transform is not None:
+            self.local_transform = np.dot(scalingN(factor, self.dim), self.local_transform)
+
 
 # Global in-memory document tree
 DOCUMENT: List[Feature] = []
@@ -215,9 +243,25 @@ def rebuild_scene(display) -> None:
             except Exception:
                 pass
     # Only display features not consumed by a later feature and not marked as consumed
+    from OCC.Core.gp import gp_Trsf
+    from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
+    import numpy as np
     for i, feat in enumerate(DOCUMENT):
         if i not in consumed and not getattr(feat, 'params', {}).get('consumed', False):
-            smoother_display(display, feat.shape)
+            shape = feat.shape
+            try:
+                T = np.array(feat.world_transform(), dtype=float)
+                trsf = gp_Trsf()
+                trsf.SetValues(
+                    T[0, 0], T[0, 1], T[0, 2],
+                    T[1, 0], T[1, 1], T[1, 2],
+                    T[2, 0], T[2, 1], T[2, 2],
+                    T[0, 3], T[1, 3], T[2, 3]
+                )
+                shape = BRepBuilderAPI_Transform(shape, trsf, True).Shape()
+            except Exception:
+                pass
+            smoother_display(display, shape)
     display.FitAll()
 
 
@@ -604,6 +648,21 @@ class MoveCmd(BaseCmd):
         trsf = gp_Trsf(); trsf.SetTranslation(gp_Vec(dx, dy, dz))
         moved_shape = BRepBuilderAPI_Transform(shape, trsf, True).Shape()
         DOCUMENT.append(Feature("Move", {"target": shape_idx, "dx": dx, "dy": dy, "dz": dz}, moved_shape))
+        rebuild_scene(mw.view._display)
+
+
+class ScaleCmd(BaseCmd):
+    title = "Scale"
+
+    def run(self, mw) -> None:
+        if mw.selected_feature is None:
+            mw.win.statusBar().showMessage("Select object to scale!")
+            return
+        from PySide6.QtWidgets import QInputDialog
+        factor, ok = QInputDialog.getDouble(mw.win, "Scale", "Scale factor:", 1.5, 0.1, 10.0, 2)
+        if not ok:
+            return
+        mw.selected_feature.apply_scale(factor)
         rebuild_scene(mw.view._display)
 
 
