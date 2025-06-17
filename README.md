@@ -20,9 +20,9 @@ examples and unit tests without a large toolchain.  Current features include:
 - `adaptivecad.gcode_generator` – placeholder G‑code generation routines
   including `SimpleMilling` and a stub `WaterlineMilling` strategy
 - `adaptivecad.analytic_slicer` – helper for analytic B‑rep slicing
-- `adaptivecad.gui.playground` – PySide6 viewer with a toolbar for Box,
+- `adaptivecad.gui.playground` – PySide6 viewer with a rich toolbar for Box,
   Cylinder, Bézier and B‑spline curves, push‑pull editing and export commands
-  (STL, AMA and G‑code)
+  (STL, AMA and G‑code). The toolbar now offers constructive tools like Loft, Sweep, Shell and Intersect plus procedural shapes such as Superellipse.
 - Command‑line tools `ama_to_gcode_converter.py` and `ama2gcode.py`
 - Example script `example_script.py` demonstrating curve evaluation
 - Unit tests in the `tests` folder (`python -m pytest`)
@@ -290,8 +290,9 @@ python -m pytest tests/test_linalg.py tests/test_gcode_generator.py tests/test_b
 ### Core Features Working Out of the Box
 
 - **🧮 Linear Algebra**: Vec3, Matrix4, Quaternion operations
-- **📐 Geometry Engine**: Bézier curves, B-splines, curve evaluation and subdivision  
+- **📐 Geometry Engine**: Bézier curves, B-splines, curve evaluation and subdivision
 - **⚙️ CAM/G-code**: Manufacturing toolpath generation from CAD data
+- **🧱 Constructive Solids**: Loft, Sweep, Shell and Intersect operations
 - **🛠️ Command Line Tools**: `ama2gcode.py` for batch processing
 - **📊 File I/O**: AMA format reading and writing
 
