@@ -19,7 +19,10 @@ from OCC.Core.gp import gp_Pnt
 from ..command_defs import rebuild_scene
 from ..command_defs import Feature, DOCUMENT
 from ..commands import BaseCmd
-from ..nd_math import pi_a_over_pi, stable_pi_a_over_pi
+# Use the robust hyperbolic geometry implementation
+from ..geom.hyperbolic import pi_a_over_pi, validate_hyperbolic_params
+# Keep legacy import for compatibility
+from ..nd_math import stable_pi_a_over_pi
 import math
 
 
@@ -42,8 +45,7 @@ def smooth_input(x, y, z, poles, i, j, nb_u_poles, nb_v_poles):
 
 class ImportThread(QThread):
     """Background thread for conformal import to keep GUI responsive."""
-    
-    # Signals for communicating with the main thread
+      # Signals for communicating with the main thread
     progress_update = Signal(str)  # For status messages
     error_occurred = Signal(str)   # For error messages
     import_complete = Signal(object, int)  # When import is finished (processed_results, face_count)
@@ -107,15 +109,42 @@ class ImportThread(QThread):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", DeprecationWarning)
             try:
+                print("[ImportThread] Extracting B-spline faces...")
+                self.progress_update.emit("Extracting surfaces from imported shape...")
+                
                 bspline_faces = extract_bspline_faces(shape)
+                print(f"[ImportThread] Extracted {len(bspline_faces)} B-spline faces")
+                
                 if not bspline_faces:
-                    self.error_occurred.emit("No valid B-spline surfaces could be extracted from the file")
-                    return [], 0
+                    # For simple STL files, this is expected - try mesh triangulation
+                    self.progress_update.emit("No B-spline surfaces found - importing as mesh triangulation")
+                    print("[ImportThread] No B-spline surfaces found, trying mesh triangulation...")
+                    
+                    # Try to mesh the shape and process as triangulated surface
+                    try:
+                        mesh = BRepMesh_IncrementalMesh(shape, 0.1)
+                        mesh.Perform()
+                        if mesh.IsDone():
+                            self.progress_update.emit("Mesh triangulation completed successfully")
+                            print("[ImportThread] Mesh triangulation successful")
+                            # Return a simple result indicating mesh success
+                            return [{'success': True, 'type': 'mesh', 'shape': shape}], 1
+                        else:
+                            self.error_occurred.emit("No surfaces could be extracted and mesh triangulation failed")
+                            return [], 0
+                    except Exception as mesh_error:
+                        print(f"[ImportThread] Mesh triangulation failed: {mesh_error}")
+                        self.error_occurred.emit(f"No surfaces could be extracted and mesh triangulation failed: {str(mesh_error)}")
+                        return [], 0
+                    
                 total = len(bspline_faces)
+                self.progress_update.emit(f"Processing {total} B-spline surfaces with conformal transformation...")
                 self.progress_update.emit(f"PROGRESS:0/{total}")
+                
                 results = []
                 from concurrent.futures import ThreadPoolExecutor, as_completed
                 with ThreadPoolExecutor(max_workers=self.num_threads) as executor:
+                    print(f"[ImportThread] Starting parallel processing with {self.num_threads} threads")
                     future_to_idx = {
                         executor.submit(process_single_bspline_surface, face_data, self.kappa): idx
                         for idx, face_data in enumerate(bspline_faces)
@@ -125,11 +154,17 @@ class ImportThread(QThread):
                         result = future.result()
                         results.append(result)
                         completed += 1
+                        print(f"[ImportThread] Completed surface {completed}/{total}")
                         self.progress_update.emit(f"PROGRESS:{completed}/{total}")
+                        
                 successful_results = [r for r in results if r['success']]
+                print(f"[ImportThread] Processing complete: {len(successful_results)}/{total} surfaces successful")
                 self.progress_update.emit(f"Successfully processed {len(successful_results)}/{total} surfaces")
                 return successful_results, len(successful_results)
             except Exception as e:
+                import traceback
+                print(f"[ImportThread] Error during shape processing: {e}")
+                traceback.print_exc()
                 self.error_occurred.emit(f"Error during face processing: {str(e)}")
                 return [], 0
 
@@ -190,28 +225,41 @@ def extract_bspline_faces(shape):
     """Extract B-spline surfaces from the shape."""
     bspline_faces = []
     
+    print("[extract_bspline_faces] Starting surface extraction...")
+    
     # Suppress deprecation warnings during face extraction
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
         
         explorer = TopExp_Explorer(shape, TopAbs_FACE)
+        face_count = 0
+        
         while explorer.More():
+            face_count += 1
+            print(f"[extract_bspline_faces] Processing face {face_count}")
+            
             face = explorer.Current()
             try:
                 surface = BRep_Tool.Surface(face)
+                print(f"[extract_bspline_faces] Surface obtained for face {face_count}")
+                
                 # Convert to B-spline surface
                 bspline_surface = geomconvert_SurfaceToBSplineSurface(surface)
                 if bspline_surface:
+                    print(f"[extract_bspline_faces] Successfully converted face {face_count} to B-spline")
                     bspline_faces.append({
                         'face': face,
                         'surface': surface,
                         'bspline': bspline_surface
                     })
+                else:
+                    print(f"[extract_bspline_faces] Could not convert face {face_count} to B-spline (returned None)")
             except Exception as e:
-                print(f"Warning: Could not convert face to B-spline: {e}")
+                print(f"[extract_bspline_faces] Warning: Could not convert face {face_count} to B-spline: {e}")
                 # Continue with other faces
             explorer.Next()
             
+    print(f"[extract_bspline_faces] Completed: {len(bspline_faces)} B-spline surfaces extracted from {face_count} total faces")
     return bspline_faces
 
 
@@ -273,12 +321,36 @@ def process_single_bspline_surface(face_data, kappa):
                     x, y, z = smooth_input(
                         x0, y0, z0, bspline.Poles(), i, j, nb_u_poles, nb_v_poles
                     )
-                    print(f"[DEBUG] Pole({i},{j}) after smoothing: x={x}, y={y}, z={z}")
-
-                    # TEMP: Bypass pi_a_over_pi transformation for testing
-                    transformed_x = x
-                    transformed_y = y
-                    transformed_z = z
+                    print(f"[DEBUG] Pole({i},{j}) after smoothing: x={x}, y={y}, z={z}")                    # Apply robust conformal transformation using improved pi_a_over_pi
+                    # Validate parameters first
+                    valid, msg = validate_hyperbolic_params(math.sqrt(x*x + y*y + z*z), kappa)
+                    if not valid:
+                        print(f"[WARN] Invalid hyperbolic params at pole({i},{j}): {msg}")
+                        # Use original coordinates if validation fails
+                        transformed_x = x
+                        transformed_y = y
+                        transformed_z = z
+                    else:
+                        # Apply adaptive pi transformation to each coordinate
+                        # Use coordinate-wise transformation for better stability
+                        if abs(x) > 1e-10:
+                            px = pi_a_over_pi(abs(x), kappa)
+                            transformed_x = x * px
+                        else:
+                            transformed_x = x
+                            
+                        if abs(y) > 1e-10:
+                            py = pi_a_over_pi(abs(y), kappa)
+                            transformed_y = y * py
+                        else:
+                            transformed_y = y
+                            
+                        if abs(z) > 1e-10:
+                            pz = pi_a_over_pi(abs(z), kappa)
+                            transformed_z = z * pz
+                        else:
+                            transformed_z = z
+                    
                     print(f"[DEBUG] Pole({i},{j}) transformed: x={transformed_x}, y={transformed_y}, z={transformed_z}")
 
                     new_pole = gp_Pnt(transformed_x, transformed_y, transformed_z)
@@ -319,8 +391,7 @@ class ImportConformalCmd(BaseCmd):
         
     def __del__(self):
         """Destructor to ensure thread cleanup when command object is destroyed."""
-        try:
-            self._cleanup_thread()
+        try:            self._cleanup_thread()
         except:
             pass  # Ignore any errors during cleanup in destructor
     
@@ -360,6 +431,10 @@ class ImportConformalCmd(BaseCmd):
             self.file_path = path
             self.n_faces = 0
 
+            # Create the progress dialog
+            from ..gui.import_progress_dialog import ImportProgressDialog
+            self.progress_dialog = ImportProgressDialog(mw.win)
+            
             # Create and start the background import thread
             self.import_thread = ImportThread(path, kappa, threads)
 
@@ -373,8 +448,12 @@ class ImportConformalCmd(BaseCmd):
             except Exception as e:
                 print(f"Warning: Could not connect thread signals: {e}")
                 self._cleanup_thread()
-                return
-
+                return            # Set up the progress dialog with the import thread
+            self.progress_dialog.set_import_thread(self.import_thread)
+            
+            # Show the progress dialog
+            self.progress_dialog.show()
+            
             # Show initial status
             mw.win.statusBar().showMessage(f"Starting import of {os.path.basename(path)}...")
 
@@ -453,72 +532,74 @@ class ImportConformalCmd(BaseCmd):
         # Clean up the thread on error as well
         self._cleanup_thread()
 
-    def _on_import_complete(self, imported_shape, face_count):
-        """Handle successful completion of the import.
-        'imported_shape' is the TopoDS_Shape object from the import thread.
-        'face_count' is the number of faces processed/counted.
-        """
+    def _on_import_complete(self, processed_results, face_count):
+        """Handle successful completion of the import."""
         try:
-            # Ensure MainWindow context and its necessary components are available
+            print(f"[_on_import_complete] Called with {len(processed_results) if processed_results else 0} results, {face_count} faces")
+            
+            # Ensure MainWindow context is available
             if not (hasattr(self, 'mw') and self.mw and 
                     hasattr(self.mw, 'win') and hasattr(self.mw, 'view') and 
                     hasattr(self.mw.view, '_display')):
-                print("Error: Critical GUI components (mw, win, view, _display) not available in _on_import_complete.")
-                # Cleanup will be handled in the finally block
+                print("Error: Critical GUI components not available in _on_import_complete.")
+                return
+
+            # Use the original shape that was loaded (stored via shape_loaded signal)
+            if hasattr(self, 'original_shape') and self.original_shape:
+                imported_shape = self.original_shape
+                print("[_on_import_complete] Using original shape")
+            else:
+                print("[_on_import_complete] No original shape available")
+                self._on_error("No shape was successfully loaded from the file.")
                 return
 
             # Check if the imported shape is valid
             if imported_shape is None or (hasattr(imported_shape, 'IsNull') and imported_shape.IsNull()):
-                # If shape is null, trigger the error path which also handles cleanup
-                self._on_error("Import thread returned a null or invalid shape.")
-                return # _on_error calls _cleanup_thread
+                self._on_error("Import returned a null or invalid shape.")
+                return
 
-            self.mw.win.statusBar().showMessage("Import complete. Click 'Add Imported Shape' to add to document.")
-
-            # Hide progress bar if present
-            if self.progress_bar:
-                self.mw.win.statusBar().removeWidget(self.progress_bar)
-                self.progress_bar.deleteLater()
-                self.progress_bar = None
-
-            # Add a button to the toolbar to allow adding the imported shape
-            from PySide6.QtWidgets import QPushButton
-            if hasattr(self, 'add_shape_btn') and self.add_shape_btn:
+            # Automatically add the shape to the document
+            file_basename = "Unknown File"
+            if hasattr(self, 'file_path') and self.file_path:
                 try:
-                    self.add_shape_btn.deleteLater()
+                    file_basename = os.path.basename(self.file_path)
                 except Exception:
-                    pass
-            self.add_shape_btn = QPushButton("Add Imported Shape")
-            self.add_shape_btn.setToolTip("Add the last imported shape to the document")
-            self.add_shape_btn.setEnabled(True)
-            # Add to toolbar (or main window)
-            if hasattr(self.mw, 'win') and hasattr(self.mw.win, 'addToolBar'):
-                # Add to a toolbar if available
-                if not hasattr(self, '_import_toolbar'):
-                    from PySide6.QtWidgets import QToolBar
-                    self._import_toolbar = QToolBar("Import Toolbar")
-                    self.mw.win.addToolBar(self._import_toolbar)
-                self._import_toolbar.addWidget(self.add_shape_btn)
-            else:
-                # Fallback: add to main window layout if possible
-                try:
-                    self.mw.win.layout().addWidget(self.add_shape_btn)
-                except Exception:
-                    pass
+                    file_basename = str(self.file_path)
+                    
+            # Create the feature and add to document
+            feature = Feature(
+                f"Imported: {file_basename}",
+                {"file": getattr(self, 'file_path', 'N/A'), "conformal_faces": face_count},
+                imported_shape
+            )
+            DOCUMENT.append(feature)
+            
+            # Update the display
+            print("[_on_import_complete] Adding shape to display")
+            rebuild_scene(self.mw.view._display)
+            self.mw.view._display.FitAll()
+            
+            # Show success message
+            self.mw.win.statusBar().showMessage(
+                f"Import completed: {file_basename} ({face_count} surfaces processed)", 4000
+            )
+            
+            print("[_on_import_complete] Import completed successfully")
 
-            def add_shape_to_doc():
-                file_basename = "Unknown File"
-                if hasattr(self, 'file_path') and self.file_path:
-                    try:
-                        file_basename = os.path.basename(self.file_path)
-                    except Exception:
-                        file_basename = self.file_path
-                DOCUMENT.append(Feature(
-                    f"Imported: {file_basename}",
-                    {"file": getattr(self, 'file_path', 'N/A'), "conformal_faces": face_count},
-                    imported_shape
-                ))
-                rebuild_scene(self.mw.view._display)
+        except Exception as e:
+            import traceback
+            print(f"[_on_import_complete] Exception: {e}")
+            traceback.print_exc()
+            error_msg = f"Error during final import completion: {str(e)}"
+            file_info = ""
+            if hasattr(self, 'file_path') and self.file_path:
+                try:
+                    file_info = f" (File: {os.path.basename(self.file_path)})"
+                except Exception:
+                    file_info = f" (File: {self.file_path})"
+            self._on_error(f"{error_msg}{file_info}")
+        finally:
+            self._cleanup_thread()
                 self.mw.win.statusBar().showMessage(
                     f"Import completed: {file_basename} ({face_count} faces processed)", 4000
                 )
@@ -538,9 +619,18 @@ class ImportConformalCmd(BaseCmd):
             self._on_error(f"{error_msg_detail}{file_info}")
         finally:
             self._cleanup_thread()
-    
-    def _cleanup_thread(self):
+      def _cleanup_thread(self):
         """Clean up the import thread properly."""
+        
+        # Clean up progress dialog
+        if hasattr(self, 'progress_dialog') and self.progress_dialog:
+            try:
+                self.progress_dialog.close()
+                self.progress_dialog.deleteLater()
+            except:
+                pass
+            self.progress_dialog = None
+            
         if hasattr(self, 'import_thread') and self.import_thread:
             try:
                 # Disconnect signals to prevent callbacks during cleanup

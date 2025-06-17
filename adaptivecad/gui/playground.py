@@ -19,6 +19,7 @@ else:
     from math import pi, cos, sin
     import os
     import sys
+    import json  # Add json import at module level
     import numpy as np
     import traceback
     from adaptivecad import settings
@@ -53,7 +54,7 @@ else:
         NewConeCmd,
         ShellCmd
     )
-    from adaptivecad.commands.import_conformal import ImportConformalCmd
+    from adaptivecad.commands.minimal_import import MinimalImportCmd
 
 # Define SuperellipseFeature at module level regardless of GUI availability
 from adaptivecad.command_defs import Feature
@@ -869,8 +870,7 @@ class MainWindow:
                 param_label = QLabel(f"{key}:")
                 param_label.setMinimumWidth(80)
                 param_layout.addWidget(param_label)
-                
-                # Parameter value (editable if numeric)
+                  # Parameter value (editable if numeric)
                 if isinstance(value, (int, float)):
                     editor = QLineEdit(str(value))
                     editor.setMaximumWidth(100)
@@ -919,11 +919,10 @@ class MainWindow:
         
         # Add Import submenu
         import_menu = file_menu.addMenu("Import")
-        
-        # Add STL/STEP import (Conformal)
-        import_conformal_action = QAction("STL/STEP (Conformal)", self.win)
-        import_conformal_action.triggered.connect(lambda: self._run_command(ImportConformalCmd()))
-        import_menu.addAction(import_conformal_action)
+          # Add STL/STEP import (Simple with Progress)
+        import_simple_action = QAction("STL/STEP (with Progress)", self.win)
+        import_simple_action.triggered.connect(lambda: self._run_command(MinimalImportCmd()))
+        import_menu.addAction(import_simple_action)
         
         # Add separator
         file_menu.addSeparator()
@@ -1160,8 +1159,7 @@ class MainWindow:
         self.toolbar.addAction(union_action)
         self.toolbar.addAction(cut_action)
         self.toolbar.addAction(delete_action)
-        
-        # Create Help menu
+          # Create Help menu
         help_menu = menubar.addMenu("Help")
         
         # Add About action
@@ -1181,222 +1179,22 @@ class MainWindow:
         modeling_tools_action.triggered.connect(lambda: self._show_doc_message("Modeling Tools", 
             "Please see MODELING_TOOLS.md in the project root directory for details on all available modeling tools."))
         docs_menu.addAction(modeling_tools_action)
-        
-        # Create File menu
-        file_menu = menubar.addMenu("File")
-        
-        # Add Import submenu
-        import_menu = file_menu.addMenu("Import")
-        
-        # Add STL/STEP import (Conformal)
-        import_conformal_action = QAction("STL/STEP (Conformal)", self.win)
-        import_conformal_action.triggered.connect(lambda: self._run_command(ImportConformalCmd()))
-        import_menu.addAction(import_conformal_action)
-        
-        # Add separator
-        file_menu.addSeparator()
-        
-        # Add Export submenu
-        export_menu = file_menu.addMenu("Export")
-        
-        # Add STL export
-        export_stl_action = QAction("Export STL", self.win)
-        export_stl_action.triggered.connect(lambda: self._run_command(ExportStlCmd()))
-        export_menu.addAction(export_stl_action)
-        
-        # Add AMA export
-        export_ama_action = QAction("Export AMA", self.win)
-        export_ama_action.triggered.connect(lambda: self._run_command(ExportAmaCmd()))
-        export_menu.addAction(export_ama_action)
-        
-        # Add G-Code export
-        export_gcode_action = QAction("Export G-Code", self.win)
-        export_gcode_action.triggered.connect(lambda: self._run_command(ExportGCodeCmd()))
-        export_menu.addAction(export_gcode_action)
-        
-        # Add G-Code Direct export
-        export_gcode_direct_action = QAction("Export G-Code (Direct)", self.win)
-        export_gcode_direct_action.triggered.connect(lambda: self._run_command(ExportGCodeDirectCmd()))
-        export_menu.addAction(export_gcode_direct_action)
-        
-        # Add separator
-        file_menu.addSeparator()
-          # Add Save/Open project functionality
-        save_action = QAction("Save Project...", self.win)
-        save_action.triggered.connect(lambda: self._run_command(SaveProjectCmd()))
-        file_menu.addAction(save_action)
-        
-        open_action = QAction("Open Project...", self.win)
-        open_action.triggered.connect(lambda: self._run_command(OpenProjectCmd()))
-        file_menu.addAction(open_action)
-        
-        # Add separator and Exit
-        file_menu.addSeparator()
-        
-        exit_action = QAction("Exit", self.win)
-        exit_action.triggered.connect(self.win.close)
-        file_menu.addAction(exit_action)
-        
-        # Create Basic Shapes menu
-        basic_menu = menubar.addMenu("Basic Shapes")
-        
-        # Add Box tool
-        box_action = QAction("Box", self.win)
-        box_action.triggered.connect(lambda: self._run_command(NewBoxCmd()))
-        basic_menu.addAction(box_action)
-        
-        # Add Cylinder tool
-        cyl_action = QAction("Cylinder", self.win)
-        cyl_action.triggered.connect(lambda: self._run_command(NewCylCmd()))
-        basic_menu.addAction(cyl_action)
-        
-        # Add Ball tool
-        ball_action = QAction("Ball", self.win)
-        ball_action.triggered.connect(lambda: self._run_command(NewBallCmd()))
-        basic_menu.addAction(ball_action)
-        
-        # Add Torus tool
-        torus_action = QAction("Torus", self.win)
-        torus_action.triggered.connect(lambda: self._run_command(NewTorusCmd()))
-        basic_menu.addAction(torus_action)
-        
-        # Add Cone tool
-        cone_action = QAction("Cone", self.win)
-        cone_action.triggered.connect(lambda: self._run_command(NewConeCmd()))
-        basic_menu.addAction(cone_action)
-        
-        # Create Advanced Shapes menu
-        adv_menu = menubar.addMenu("Advanced Shapes")
-        
-        # Add Superellipse tool
-        super_action = QAction("Superellipse", self.win)
-        super_action.triggered.connect(lambda: self._run_command(NewSuperellipseCmd()))
-        adv_menu.addAction(super_action)
-        
-        # Add Pi Curve Shell tool
-        pi_shell_action = QAction("Pi Curve Shell (πₐ)", self.win)
-        pi_shell_action.triggered.connect(lambda: self._run_command(NewPiCurveShellCmd()))
-        adv_menu.addAction(pi_shell_action)
-        
-        # Add Helix tool
-        helix_action = QAction("Helix/Spiral", self.win)
-        helix_action.triggered.connect(lambda: self._run_command(NewHelixCmd()))
-        adv_menu.addAction(helix_action)
-        
-        # Add Tapered Cylinder tool
-        tapered_action = QAction("Tapered Cylinder", self.win)
-        tapered_action.triggered.connect(lambda: self._run_command(NewTaperedCylinderCmd()))
-        adv_menu.addAction(tapered_action)
-        
-        # Add Capsule tool
-        capsule_action = QAction("Capsule/Pill", self.win)
-        capsule_action.triggered.connect(lambda: self._run_command(NewCapsuleCmd()))
-        adv_menu.addAction(capsule_action)
-        
-        # Add Ellipsoid tool
-        ellipsoid_action = QAction("Ellipsoid", self.win)
-        ellipsoid_action.triggered.connect(lambda: self._run_command(NewEllipsoidCmd()))
-        adv_menu.addAction(ellipsoid_action)
-        
-        # Create Modeling Tools menu
-        modeling_menu = menubar.addMenu("Modeling Tools")
-        
-        # Add Move tool
-        move_action = QAction("Move", self.win)
-        move_action.triggered.connect(lambda: self._run_command(MoveCmd()))
-        modeling_menu.addAction(move_action)
-        
-        # Add Scale tool
-        scale_action = QAction("Scale", self.win)
-        scale_action.triggered.connect(lambda: self._run_command(ScaleCmd()))
-        modeling_menu.addAction(scale_action)
-        
-        # Add separator
-        modeling_menu.addSeparator()
-        
-        # Add Union tool
-        union_action = QAction("Union", self.win)
-        union_action.triggered.connect(lambda: self._run_command(UnionCmd()))
-        modeling_menu.addAction(union_action)
-        
-        # Add Cut tool
-        cut_action = QAction("Cut", self.win)
-        cut_action.triggered.connect(lambda: self._run_command(CutCmd()))
-        modeling_menu.addAction(cut_action)
-        
-        # Add Intersect tool
-        intersect_action = QAction("Intersect", self.win)
-        intersect_action.triggered.connect(lambda: self._run_command(IntersectCmd()))
-        modeling_menu.addAction(intersect_action)
-        
-        # Add Shell tool
-        shell_action = QAction("Shell", self.win)
-        shell_action.triggered.connect(lambda: self._run_command(ShellCmd()))
-        modeling_menu.addAction(shell_action)
-        
-        # Create Settings menu
-        settings_menu = menubar.addMenu("Settings")
-        
-        # Add View settings submenu
-        view_menu = settings_menu.addMenu("View")
-        
-        # Add View Cube toggle
-        viewcube_action = QAction("Show View Cube", self.win, checkable=True)
-        viewcube_action.setChecked(True)
-        def toggle_cube(checked):
-            self.viewcube.setVisible(checked)
-        viewcube_action.triggered.connect(toggle_cube)
-        view_menu.addAction(viewcube_action)
-        
-        # Add View Background settings
-        view_bg_menu = view_menu.addMenu("Background Color")
-        bg_dark_action = QAction("Dark", self.win)
-        bg_dark_action.triggered.connect(lambda: self.view._display.set_bg_gradient_color([50, 50, 50], [10, 10, 10]))
-        view_bg_menu.addAction(bg_dark_action)
-        
-        bg_light_action = QAction("Light", self.win)
-        bg_light_action.triggered.connect(lambda: self.view._display.set_bg_gradient_color([230, 230, 230], [200, 200, 200]))
-        view_bg_menu.addAction(bg_light_action)
-        
-        bg_blue_action = QAction("Blue", self.win)
-        bg_blue_action.triggered.connect(lambda: self.view._display.set_bg_gradient_color([5, 20, 76], [5, 39, 175]))
-        view_bg_menu.addAction(bg_blue_action)
-        
-        # Add Tessellation quality submenu
-        tessellation_menu = settings_menu.addMenu("Tessellation Quality")
-        
-        # Add different tessellation quality options
-        def set_tessellation(deflection, angle):
-            settings.MESH_DEFLECTION = deflection
-            settings.MESH_ANGLE = angle
-            # Update status bar to confirm the change
-            self.win.statusBar().showMessage(f"Tessellation set to: deflection={deflection}, angle={angle}", 3000)
-            
-        high_quality = QAction("High Quality", self.win)
-        high_quality.triggered.connect(lambda: set_tessellation(0.005, 0.01))
-        tessellation_menu.addAction(high_quality)
-        
-        normal_quality = QAction("Normal Quality", self.win)
-        normal_quality.triggered.connect(lambda: set_tessellation(0.01, 0.05))
-        tessellation_menu.addAction(normal_quality)
-        
-        low_quality = QAction("Low Quality (Faster)", self.win)
-        low_quality.triggered.connect(lambda: set_tessellation(0.05, 0.1))
-        tessellation_menu.addAction(low_quality)
-        
-        # Add option to toggle triedron visibility
-        triedron_action = QAction("Show Axes Indicator", self.win, checkable=True)
-        triedron_action.setChecked(True)
-        triedron_action.triggered.connect(lambda checked: self.view._display.display_triedron() if checked else self.view._display.hide_triedron())
-        view_menu.addAction(triedron_action)
-        
+    
     def _run_command(self, cmd):
         try:
+            # Store reference to command to prevent garbage collection during execution
+            self._current_command = cmd
             cmd.run(self)
         except Exception as e:
             QMessageBox.critical(self.win, "Error", f"Error running command: {str(e)}")
             print(f"Command error: {str(e)}")
             print(traceback.format_exc())
+        finally:
+            # Clear the reference after some delay to allow signals to complete
+            # Don't clear immediately as async operations might still be running
+            if hasattr(self, '_current_command'):
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(1000, lambda: setattr(self, '_current_command', None))
     
     def _delete_selected(self):
         """Delete the currently selected feature."""
@@ -1583,7 +1381,7 @@ class MainWindow:
             self.dimension_panel.hide()
             self.win.removeDockWidget(self.dimension_panel)
             self.dimension_panel = None
-    
+
     def _set_view_preset(self, preset):
         """Set a view preset for the 3D view."""
         try:
@@ -1599,6 +1397,8 @@ class MainWindow:
             self.view._display.FitAll()
             self.win.statusBar().showMessage(f"View set to {preset}", 2000)
         except Exception as e:
+            print(f"Error setting view preset {preset}: {e}")
+            self.win.statusBar().showMessage(f"Error setting view preset: {e}", 3000)
             print(f"Error setting view preset {preset}: {e}")
     
     def _show_not_implemented(self, feature_name):

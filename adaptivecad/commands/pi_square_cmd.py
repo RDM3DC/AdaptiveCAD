@@ -1,5 +1,6 @@
 
 from adaptivecad.command_defs import BaseCmd, DOCUMENT, Feature, rebuild_scene
+from adaptivecad.geom.hyperbolic import pi_a_over_pi, validate_hyperbolic_params
 from OCC.Core.gp import gp_Pnt, gp_Vec
 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire, BRepBuilderAPI_MakeFace
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism
@@ -7,8 +8,9 @@ from OCC.Core.GC import GC_MakeArcOfCircle
 from PySide6.QtWidgets import QInputDialog, QMessageBox
 import math
 
-# Robust, bounded pi_a_over_pi implementation
-def pi_a_over_pi(u):
+# Legacy pi_a_over_pi for compatibility (kept for comparison/fallback)
+def legacy_pi_a_over_pi(u):
+    """Legacy implementation using tanh-based scaling."""
     amplitude = 0.5
     sensitivity = 0.1
     scaling = 1.0 + amplitude * math.tanh(sensitivity * u)
@@ -49,9 +51,13 @@ class PiSquareCmd(BaseCmd):
         kappa, ok = QInputDialog.getDouble(
             mainwin.win, "Conformal Transformation", "Kappa:", 1.0, 0.0, 100.0, 2
         )
-        if not ok: return
+        if not ok: return        # Validate kappa parameter
+        valid, msg = validate_hyperbolic_params(1.0, kappa)
+        if not valid:
+            QMessageBox.warning(mainwin.win, "Invalid Parameters", f"Kappa validation failed: {msg}")
+            return
 
-        # Create and transform 4 corner points
+        # Create and transform 4 corner points using robust hyperbolic geometry
         corners_raw = [
             (0, 0, 0),
             (length, 0, 0),
@@ -60,18 +66,22 @@ class PiSquareCmd(BaseCmd):
         ]
         corners = []
         for x, y, z in corners_raw:
-            px = pi_a_over_pi(kappa * abs(x))
-            py = pi_a_over_pi(kappa * abs(y))
-            pz = pi_a_over_pi(kappa * abs(z))
-            if not all(math.isfinite(val) for val in [px, py, pz]):
-                print(f"[WARN] Non-finite pi_a_over_pi at ({x}, {y}, {z}), using 1.0")
-                px, py, pz = 1.0, 1.0, 1.0
+            # Use robust hyperbolic pi_a_over_pi for each coordinate
+            # Compute distance from origin for each coordinate
+            px = pi_a_over_pi(abs(x), kappa) if abs(x) > 1e-10 else 1.0
+            py = pi_a_over_pi(abs(y), kappa) if abs(y) > 1e-10 else 1.0
+            pz = pi_a_over_pi(abs(z), kappa) if abs(z) > 1e-10 else 1.0
+            
+            # Apply transformation
             transformed_x = x * px
             transformed_y = y * py
             transformed_z = z * pz
+            
+            # Final safety check
             if not all(math.isfinite(val) for val in [transformed_x, transformed_y, transformed_z]):
-                print(f"[WARN] Non-finite transformed coords at ({x}, {y}, {z}), clamping to original")
+                print(f"[WARN] Non-finite transformed coords at ({x}, {y}, {z}), using original")
                 transformed_x, transformed_y, transformed_z = x, y, z
+                
             corners.append(gp_Pnt(transformed_x, transformed_y, transformed_z))
 
         edges = []
@@ -79,8 +89,7 @@ class PiSquareCmd(BaseCmd):
             # Straight edges
             for i in range(4):
                 edges.append(BRepBuilderAPI_MakeEdge(corners[i], corners[(i+1)%4]).Edge())
-        else:
-            # Transform bulge points
+        else:            # Transform bulge points using robust hyperbolic geometry
             bulge_points_raw = [
                 (length / 2, -bulge, 0),  # bp01
                 (length + bulge, width / 2, 0),  # bp12
@@ -89,18 +98,21 @@ class PiSquareCmd(BaseCmd):
             ]
             bulge_points = []
             for x, y, z in bulge_points_raw:
-                px = pi_a_over_pi(kappa * abs(x))
-                py = pi_a_over_pi(kappa * abs(y))
-                pz = pi_a_over_pi(kappa * abs(z))
-                if not all(math.isfinite(val) for val in [px, py, pz]):
-                    print(f"[WARN] Non-finite pi_a_over_pi at ({x}, {y}, {z}), using 1.0")
-                    px, py, pz = 1.0, 1.0, 1.0
+                # Use robust hyperbolic pi_a_over_pi for each coordinate
+                px = pi_a_over_pi(abs(x), kappa) if abs(x) > 1e-10 else 1.0
+                py = pi_a_over_pi(abs(y), kappa) if abs(y) > 1e-10 else 1.0
+                pz = pi_a_over_pi(abs(z), kappa) if abs(z) > 1e-10 else 1.0
+                
+                # Apply transformation
                 transformed_x = x * px
                 transformed_y = y * py
                 transformed_z = z * pz
+                
+                # Final safety check
                 if not all(math.isfinite(val) for val in [transformed_x, transformed_y, transformed_z]):
-                    print(f"[WARN] Non-finite transformed coords at ({x}, {y}, {z}), clamping to original")
+                    print(f"[WARN] Non-finite transformed coords at ({x}, {y}, {z}), using original")
                     transformed_x, transformed_y, transformed_z = x, y, z
+                    
                 bulge_points.append(gp_Pnt(transformed_x, transformed_y, transformed_z))
 
             # Create arcs
@@ -126,9 +138,8 @@ class PiSquareCmd(BaseCmd):
             if height > 1e-6:
                 face_builder = BRepBuilderAPI_MakeFace(wire)
                 if face_builder.IsDone():
-                    face = face_builder.Face()
-                    # Transform height if needed
-                    transformed_height = height * pi_a_over_pi(kappa * abs(height))
+                    face = face_builder.Face()                    # Transform height using robust hyperbolic geometry
+                    transformed_height = height * pi_a_over_pi(height, kappa)
                     if not math.isfinite(transformed_height) or transformed_height > 1e6:
                         print(f"[WARN] Non-finite transformed height {transformed_height}, using original")
                         transformed_height = height
