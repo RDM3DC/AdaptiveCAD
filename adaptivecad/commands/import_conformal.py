@@ -19,7 +19,25 @@ from OCC.Core.gp import gp_Pnt
 from ..command_defs import rebuild_scene
 from ..command_defs import Feature, DOCUMENT
 from ..commands import BaseCmd
-from ..nd_math import pi_a_over_pi
+from ..nd_math import pi_a_over_pi, stable_pi_a_over_pi
+import math
+
+
+def smooth_input(x, y, z, poles, i, j, nb_u_poles, nb_v_poles):
+    """Return averaged coordinates using neighboring control points."""
+    neighbors = []
+    for di in [-1, 0, 1]:
+        for dj in [-1, 0, 1]:
+            ni, nj = i + di, j + dj
+            if 1 <= ni <= nb_u_poles and 1 <= nj <= nb_v_poles and (di or dj):
+                pole = poles.Value(ni, nj)
+                neighbors.append((pole.X(), pole.Y(), pole.Z()))
+    if neighbors:
+        avg_x = sum(n[0] for n in neighbors) / len(neighbors)
+        avg_y = sum(n[1] for n in neighbors) / len(neighbors)
+        avg_z = sum(n[2] for n in neighbors) / len(neighbors)
+        return (x + avg_x) / 2.0, (y + avg_y) / 2.0, (z + avg_z) / 2.0
+    return x, y, z
 
 
 class ImportThread(QThread):
@@ -244,20 +262,64 @@ def process_single_bspline_surface(face_data, kappa):
             # Create new control points array
             new_poles = TColgp_Array2OfPnt(1, nb_u_poles, 1, nb_v_poles)
             
-            # Apply conformal transformation to each control point
+            max_input = 100.0
+
             for i in range(1, nb_u_poles + 1):
                 for j in range(1, nb_v_poles + 1):
                     pole = bspline.Pole(i, j)
-                    
-                    # Apply conformal transformation using pi_a_over_pi
-                    # This is a mathematically correct conformal mapping
                     x, y, z = pole.X(), pole.Y(), pole.Z()
-                    
-                    # Use our mathematically correct pi_a_over_pi function
-                    transformed_x = x * pi_a_over_pi(kappa * abs(x))
-                    transformed_y = y * pi_a_over_pi(kappa * abs(y))
-                    transformed_z = z * pi_a_over_pi(kappa * abs(z))
-                    
+
+                    x, y, z = smooth_input(
+                        x, y, z, bspline.Poles(), i, j, nb_u_poles, nb_v_poles
+                    )
+
+                    u_x = max(-max_input, min(max_input, kappa * abs(x)))
+                    u_y = max(-max_input, min(max_input, kappa * abs(y)))
+                    u_z = max(-max_input, min(max_input, kappa * abs(z)))
+
+                    try:
+                        px = stable_pi_a_over_pi(u_x)
+                        py = stable_pi_a_over_pi(u_y)
+                        pz = stable_pi_a_over_pi(u_z)
+
+                        if not math.isfinite(px) or abs(px) > 1.5:
+                            print(
+                                f"[WARN] pi_a_over_pi(kappa*|x|={u_x}) at ({i},{j}) returned {px}, clamping to 1.0"
+                            )
+                            px = 1.0
+                        if not math.isfinite(py) or abs(py) > 1.5:
+                            print(
+                                f"[WARN] pi_a_over_pi(kappa*|y|={u_y}) at ({i},{j}) returned {py}, clamping to 1.0"
+                            )
+                            py = 1.0
+                        if not math.isfinite(pz) or abs(pz) > 1.5:
+                            print(
+                                f"[WARN] pi_a_over_pi(kappa*|z|={u_z}) at ({i},{j}) returned {pz}, clamping to 1.0"
+                            )
+                            pz = 1.0
+
+                        transformed_x = x * px
+                        transformed_y = y * py
+                        transformed_z = z * pz
+
+                        for name, val in zip(
+                            ["x", "y", "z"],
+                            [transformed_x, transformed_y, transformed_z],
+                        ):
+                            if not math.isfinite(val) or abs(val) > 1e6:
+                                print(
+                                    f"[WARN] Transformed {name} at ({i},{j}) is {val}, clamping to 0.0"
+                                )
+                                if name == "x":
+                                    transformed_x = 0.0
+                                elif name == "y":
+                                    transformed_y = 0.0
+                                else:
+                                    transformed_z = 0.0
+                    except Exception as e:
+                        print(f"[ERROR] pi_a_over_pi failed at ({i},{j}): {e}")
+                        transformed_x, transformed_y, transformed_z = x, y, z
+
                     new_pole = gp_Pnt(transformed_x, transformed_y, transformed_z)
                     new_poles.SetValue(i, j, new_pole)
             
