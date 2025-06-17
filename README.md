@@ -96,6 +96,10 @@ conda env create -f environment.yml
 conda activate adaptivecad
 ```
 
+### Development Resources
+- **Mathematical Reference**: Before implementing new geometric features, review the [MATH_REFERENCE.md](MATH_REFERENCE.md) file for mathematical foundations and formulations
+- **Code Structure**: The repository follows a modular approach with clear separation of math, geometry, and GUI components
+
 ### Development Workflow
 1. Create a feature branch: `git checkout -b feature/your-feature-name`
 2. Make your changes and commit them: `git commit -am "Add your feature description"`
@@ -300,6 +304,22 @@ The `quick_start_demo.py` script demonstrates:
 - 3D transformations with quaternions
 - G-code generation workflow
 - Vector mathematics and operations
+
+## Documentation
+
+### Mathematical Reference
+
+For a comprehensive guide to the mathematical foundations of AdaptiveCAD, check out the [MATH_REFERENCE.md](MATH_REFERENCE.md) file, which includes:
+
+- Linear algebra formulations
+- Curve geometry (Bezier, B-spline)
+- Hyperbolic geometry and πₐ ("Adaptive Pi") concepts
+- CAM layer formulations
+- Constraint solver mathematics
+- Geodesic distance & πₐ metric kernel
+- N-dimensional geometry generalizations
+
+This reference is especially useful for contributors working on the mathematical core or extending the system with new geometric primitives.
 
 ## Environment Status
 
