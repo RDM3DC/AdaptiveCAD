@@ -1,6 +1,6 @@
 @echo off
-echo Starting AdaptiveCAD
-echo ===================
+echo Testing STL Import functionality
+echo =================================
 
 :: Find conda executable
 set CONDA_EXE=
@@ -26,10 +26,6 @@ if exist "D:\Miniconda3\Scripts\conda.exe" (
 )
 if exist "C:\Miniconda3\Scripts\conda.exe" (
     set CONDA_EXE=C:\Miniconda3\Scripts\conda.exe
-    goto :found_conda
-)
-if exist "D:\Mconda\Scripts\conda.exe" (
-    set CONDA_EXE=D:\Mconda\Scripts\conda.exe
     goto :found_conda
 )
 if exist "%~dp0Miniconda3\Scripts\conda.exe" (
@@ -61,11 +57,11 @@ if %errorlevel% neq 0 (
 
 :: Create a temporary batch file to run in the activated environment
 echo @echo off > temp_run.bat
-echo python -m adaptivecad.gui.playground >> temp_run.bat
-echo if %%ERRORLEVEL%% neq 0 pause >> temp_run.bat
+echo echo Running STL import test... >> temp_run.bat
+echo python test_stl_import.py >> temp_run.bat
 echo exit /b %%ERRORLEVEL%% >> temp_run.bat
 
-:: Use call with conda activation to ensure environment is active
+:: Use call with conda.bat activate to ensure environment is active
 echo Activating adaptivecad conda environment...
 call %CONDA_EXE% activate adaptivecad && (
     :: Verify activation
@@ -76,8 +72,7 @@ call %CONDA_EXE% activate adaptivecad && (
     echo Checking for required packages...
     call %CONDA_EXE% install -y -c conda-forge numpy pyside6 pythonocc-core
     
-    :: Run the GUI
-    echo Starting AdaptiveCAD GUI...
+    :: Run the test script in the activated environment
     call temp_run.bat
 ) || (
     echo Failed to activate adaptivecad environment

@@ -11,11 +11,17 @@ else:
     import numpy as np
     from math import pi, cos, sin
     from adaptivecad import settings
-    from PySide6.QtWidgets import QInputDialog, QMessageBox, QCheckBox  # Original import
-    from PySide6.QtGui import QAction  # Added import for QAction
-    from PySide6.QtCore import Qt  # Original import
+    from PySide6.QtWidgets import (
+        QApplication, QMainWindow, QInputDialog, QMessageBox, QCheckBox, 
+        QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QComboBox, 
+        QPushButton, QDockWidget, QLineEdit, QToolBar, QToolButton, QMenu
+    )
+    from PySide6.QtGui import QAction, QIcon, QCursor  # Added import for QAction
+    from PySide6.QtCore import Qt, QObject, QEvent  # Original import
     from OCC.Core.AIS import AIS_Shape
     from OCC.Core.TopoDS import TopoDS_Face
+    from OCC.Core.TopExp import TopExp_Explorer
+    from OCC.Core.TopAbs import TopAbs_FACE
     from adaptivecad.push_pull import PushPullFeatureCmd
     from adaptivecad.gui.viewcube_widget import ViewCubeWidget
     # Ensure this block is indented
@@ -77,9 +83,6 @@ else:
         print(
             f"plot_nd_slice called with data shape: {getattr(data, 'shape', 'unknown')}"
         )
-
-    #QtWidgets import for NDSliceWidget etc. (Qt import was duplicated and removed from here)
-    from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QComboBox, QPushButton
 
     class NDSliceWidget(QWidget):
         """Widget for interactively slicing ND fields."""
@@ -623,7 +626,21 @@ class MainWindow:
 
     def run_cmd(self, cmd: BaseCmd) -> None:
         """Run a command on the main window."""
-        cmd.run(self)
+        try:
+            print(f"Running command: {cmd.__class__.__name__}")
+            cmd.run(self)
+            print(f"Command completed: {cmd.__class__.__name__}")
+        except Exception as e:
+            import traceback
+            print(f"Error running command {cmd.__class__.__name__}: {e}")
+            print(traceback.format_exc())
+            try:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.critical(self.win, "Command Error", f"Error executing {cmd.__class__.__name__}:\n\n{e}")
+                self.win.statusBar().showMessage(f"Command failed: {e}", 4000)
+            except:
+                print("Could not display error dialog")
+                pass
 
     """Main Playground window."""
 
@@ -673,6 +690,9 @@ class MainWindow:
         self.view = qtViewer3d(self.win)
         self.win.setCentralWidget(self.view)
         self.view.show()  # Explicitly show the view
+
+        # Initialize snap marker
+        self.current_snap_marker = None
 
         # Enable GPU acceleration when requested
         if settings.USE_GPU:
@@ -948,7 +968,7 @@ class MainWindow:
         add_file_action("Export GCode", "document-save", ExportGCodeCmd)
 
         # --- Import πₐ command ------------------------------------------------
-        from adaptivecad.commands import ImportConformalCmd
+        from adaptivecad.commands.import_conformal import ImportConformalCmd
         import_action = QAction(
             QIcon.fromTheme("document-open"),
             "Import πₐ Conformal",
@@ -1071,100 +1091,63 @@ class MainWindow:
         ):
             _demo_primitives(self.view._display)
         self.clear_property_panel()
+        
+        # Add debug button for import testing
+        from PySide6.QtWidgets import QPushButton
+        debug_btn = QPushButton("Debug Import")
+        self.property_layout.addWidget(debug_btn)
+        
+        def debug_import():
+            try:
+                print("Attempting to debug import functionality...")
+                from adaptivecad.commands.import_conformal import ImportConformalCmd
+                cmd = ImportConformalCmd()
+                print("Created ImportConformalCmd instance")
+                self.run_cmd(cmd)
+                print("Called run_cmd with ImportConformalCmd")
+            except Exception as e:
+                import traceback
+                print(f"Debug import error: {e}")
+                print(traceback.format_exc())
+                
+        debug_btn.clicked.connect(debug_import)
 
     def _position_viewcube(self):
         if hasattr(self, "viewcube") and self.viewcube.parent() is self.view:
             self.viewcube.move(self.view.width() - self.viewcube.width() - 10, 10)
 
     def _on_mouse_press(self, x, y, buttons, modifiers):
+        # Check if we're in the snap workflow first
+        if hasattr(self, "snap_phase") and self._on_mouse_press_snap(x, y, buttons, modifiers):
+            return
+            
         if self.current_mode == "PushPull" and self.push_pull_cmd:
-            if (
-                not self.push_pull_cmd.selected_face
-            ):  # If no face is selected yet for PP
+            if not self.push_pull_cmd.selected_face:  # If no face is selected yet for PP
                 # Try to pick a face
                 selected_objects = self.view._display.GetSelectedObjects()
                 if selected_objects:
-                    # We need to get the TopoDS_Face from the selected AIS_InteractiveObject
-                    # This requires that selection mode is set to faces, or we iterate subshapes.
-                    # For now, assume the first selected object is an AIS_Shape and try to get a face.
-                    # This part needs robust face picking from AIS_InteractiveContext selection.
-                    # Let's assume selection callback `on_select` has stored the last selected AIS_Shape
-                    # and we can check if it's a face or get sub-faces.
-
-                    # A simpler way for now: use the context to detect what's under the mouse
-                    self.view._display.Select(x, y)  # Perform selection at click point
-                    picked_ais = self.view._display.Context.DetectedCurrentShape()
-
-                    if picked_ais and isinstance(picked_ais, AIS_Shape):
-                        shape = picked_ais.Shape()  # This is the TopoDS_Shape
-                        # We need to find which *face* of this shape was clicked.
-                        # This is non-trivial. AIS_InteractiveContext.DetectedSubShape() or similar is needed.
-                        # For now, let's assume the *first* face of the detected shape if it's a simple solid.
-                        # This is a MAJOR simplification for MVP.
-                        from OCC.Core.TopExp import TopExp_Explorer
-                        from OCC.Core.TopAbs import TopAbs_FACE
-
-                        explorer = TopExp_Explorer(shape, TopAbs_FACE)
-                        if explorer.More():
-                            face = explorer.Current()  # Take the first face
-                            if isinstance(face, TopoDS_Face):
-                                # Find the parent shape in DOCUMENT that this face belongs to
-                                original_doc_shape = None
-                                for feat in DOCUMENT:
-                                    # Check if `shape` is part of `feat.shape` or is `feat.shape`
-                                    # This check might need to be more robust (e.g. IsSame, or checking subshapes)
-                                    if (
-                                        feat.shape.IsSame(shape)
-                                        or TopExp_Explorer(
-                                            feat.shape, TopAbs_FACE
-                                        ).More()
-                                    ):  # Basic check
-                                        # This logic is flawed if shape is a subshape.
-                                        # We need to find the actual TopoDS_Shape from DOCUMENT that `picked_ais` represents.
-                                        # Let's assume picked_ais.Shape() IS the one from DOCUMENT for now.
-                                        original_doc_shape = feat.shape
-                                        break
-                                if original_doc_shape:
-                                    self.push_pull_cmd.pick_face(
-                                        self, original_doc_shape, face
-                                    )
-                                    self.initial_drag_pos = (
-                                        x,
-                                        y,
-                                    )  # Store initial mouse position for dragging
-                                    self.win.statusBar().showMessage(
-                                        "Push-Pull: Face selected. Drag to offset."
-                                    )
-                                else:
-                                    self.win.statusBar().showMessage(
-                                        "Push-Pull: Could not map selected face to document shape."
-                                    )
-                            else:
-                                self.win.statusBar().showMessage(
-                                    "Push-Pull: Selected geometry is not a face."
-                                )
-                        else:
-                            self.win.statusBar().showMessage(
-                                "Push-Pull: No faces found on selected shape."
-                            )
-                    else:
-                        self.win.statusBar().showMessage(
-                            "Push-Pull: No shape selected. Click on a face."
-                        )
+                    # We have a selection, try to get the selected face
+                    for obj in selected_objects:
+                        try:
+                            if hasattr(obj, "GetObject") and obj.GetObject().ShapeType() == 4:  # 4 is FACE
+                                self.push_pull_cmd.select_face(obj.GetObject())
+                                self.initial_drag_pos = (x, y)
+                                return
+                        except Exception as exc:
+                            print(f"Error selecting face: {exc}")
                 else:
-                    self.win.statusBar().showMessage(
-                        "Push-Pull: Click on a face to begin."
-                    )
-            elif (
-                self.push_pull_cmd.selected_face
-            ):  # Face already selected, this click starts the drag
+                    # No selection, tell user to select a face
+                    self.win.statusBar().showMessage("Select a face to push-pull")
+            elif self.push_pull_cmd.selected_face:
+                # If we have a face selected, store initial drag position
                 self.initial_drag_pos = (x, y)
-                # print(f"Push-Pull: Drag started from {self.initial_drag_pos}")
+                return
 
         if self.current_mode == "Move" and self.selected_feature:
-            self.move_dragging = True
-            self.move_start_pos = (x, y)
-            self.move_orig_ref = self.selected_feature.get_reference_point()
+            # Start move operation
+            self.initial_drag_pos = (x, y)
+            self.win.statusBar().showMessage("Drag to move object")
+            return
 
     def _on_mouse_move(self, world_pt):
         if (
@@ -1179,12 +1162,17 @@ class MainWindow:
 
             x1 = self.view.mapFromGlobal(QCursor.pos()).x()
             y1 = self.view.mapFromGlobal(QCursor.pos()).y()
-            # Compute offset along face normal
-            offset = compute_offset(
-                (x0, y0), (x1, y1), self.push_pull_cmd.face_normal_or_axis, self.view
-            )
-            # Live preview update
-            self.push_pull_cmd.update_preview(self, offset)
+            
+            # Calculate the delta move in screen coordinates
+            dx = x1 - x0
+            
+            # Convert to a reasonable scaling factor for the push-pull
+            # Scale based on view width for consistent experience
+            scale_factor = dx / self.view.width() * 100.0
+            
+            # Update the push-pull visualization
+            self.push_pull_cmd.update_depth(scale_factor)
+            self.view._display.Repaint()
             return
         if self.current_mode == "Move" and self.move_dragging and self.move_feature:
             # Snap or free move
@@ -1210,14 +1198,23 @@ class MainWindow:
                 self.current_snap_point = world_pt
 
     def _on_mouse_release(self, x, y, buttons, modifiers):
-        if self.current_mode == "Move" and self.move_dragging and self.move_feature:
-            # Commit the move
-            self.move_dragging = False
-            self.move_start_pos = None
-            self.move_orig_ref = None
-            self.move_feature = None
-            self.rebuild_scene()
-        # ...existing code for PushPull and other modes...
+        if self.current_mode == "PushPull" and self.push_pull_cmd and self.initial_drag_pos:
+            # Finalize the push-pull operation
+            depth = self.push_pull_cmd.current_depth
+            if depth != 0:  # Only apply if some change was made
+                self.push_pull_cmd.apply_depth(depth)
+                rebuild_scene(self.view._display)
+                self.win.statusBar().showMessage(f"Push-pull applied: depth = {depth:.2f}")
+            self.initial_drag_pos = None
+            return
+            
+        if self.current_mode == "Move" and self.selected_feature and self.initial_drag_pos:
+            # Finalize the move operation
+            self.initial_drag_pos = None
+            rebuild_scene(self.view._display)
+            self.win.statusBar().showMessage("Move complete")
+            return
+        # ...existing code for other modes...
 
     def add_snap_tolerance_slider(self):
         """Add a slider to control snap tolerance to the property panel"""
@@ -1320,6 +1317,49 @@ class MainWindow:
         self.move_start_pos = None
         self.move_orig_ref = None
         self.move_feature = self.selected_feature
+
+    def show_snap_marker(self, point, label=""):
+        """Show a visual marker at the snap point."""
+        try:
+            from OCC.Core.AIS import AIS_Point
+            from OCC.Core.gp import gp_Pnt
+            from OCC.Core.Quantity import Quantity_Color, Quantity_NOC_RED
+            
+            # Remove any existing snap marker
+            self.hide_snap_marker()
+            
+            # Create a simple point marker at the snap point
+            gp_point = gp_Pnt(point[0], point[1], point[2])
+            marker = AIS_Point(gp_point)
+            
+            # Try to style the marker with basic settings
+            try:
+                # Set color to red for visibility
+                marker.SetColor(Quantity_Color(Quantity_NOC_RED))
+            except:
+                pass  # Color setting may fail in some versions
+            
+            # Display the marker
+            self.view._display.Context.Display(marker, True)
+            self.current_snap_marker = marker
+            
+            # Update status bar with snap information
+            if label:
+                self.win.statusBar().showMessage(f"Snap: {label}", 2000)
+        except Exception as e:
+            # If marker creation fails, just show status message
+            if label:
+                self.win.statusBar().showMessage(f"Snap: {label}", 2000)
+    
+    def hide_snap_marker(self):
+        """Hide the current snap marker."""
+        try:
+            if hasattr(self, 'current_snap_marker') and self.current_snap_marker:
+                self.view._display.Context.Erase(self.current_snap_marker, True)
+                self.current_snap_marker = None
+        except Exception as e:
+            # If hiding fails, just clear the reference
+            self.current_snap_marker = None
 
     def _keyPressEvent(self, event):
         # Handle global key presses or mode-specific ones

@@ -58,3 +58,32 @@ def get_world_transform(feature, parent=None):
     if parent is not None:
         T = parent.local_transform @ T
     return T
+
+def pi_a_over_pi(r: float, kappa: float = 1.0) -> float:
+    """
+    Ratio  πₐ(r, κ) / π  for a circle of geodesic radius *r*
+    on a surface of constant Gaussian curvature *κ*.
+
+    ▸ κ > 0  →  hyperbolic   (πₐ > π  : circumference grows faster)
+    ▸ κ < 0  →  spherical    (πₐ < π  : circumference grows slower)
+    ▸ κ = 0  →  Euclidean    (ratio = 1)
+
+    Formula:
+        πₐ/π =  S(√|κ| r) / (√|κ| r)
+
+        where  S(t) = sinh(t)   if κ > 0   (hyperbolic)
+                     = sin(t)    if κ < 0   (spherical)
+                     = t         if κ = 0   (limit → 1)
+
+    Edge cases r → 0 handled with 1st‑order limit.
+    """
+    import math
+    
+    if abs(r) < 1e-12 or kappa == 0.0:
+        return 1.0
+
+    root = math.sqrt(abs(kappa)) * r
+    if kappa > 0:               # hyperbolic geometry  (κ = +|κ|)
+        return math.sinh(root) / root
+    else:                       # spherical geometry   (κ = −|κ|)
+        return math.sin(root)  / root

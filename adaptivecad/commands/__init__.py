@@ -32,7 +32,7 @@ try:
 except Exception:  # optional OCC deps may be missing
     PiSquareCmd = None
     DrapedSheetCmd = None
-    ImportConformalCmd = None
+    # Do not assign ImportConformalCmd = None; let import fail if missing
 
 __all__ = [
     "BaseCmd",
@@ -63,5 +63,4 @@ if PiSquareCmd is not None:
     __all__.append("PiSquareCmd")
 if DrapedSheetCmd is not None:
     __all__.append("DrapedSheetCmd")
-if ImportConformalCmd is not None:
-    __all__.append("ImportConformalCmd")
+__all__.append("ImportConformalCmd")

@@ -1,6 +1,6 @@
 @echo off
-echo Starting AdaptiveCAD
-echo ===================
+echo AdaptiveCAD Environment Diagnostic
+echo ================================
 
 :: Find conda executable
 set CONDA_EXE=
@@ -45,40 +45,15 @@ exit /b 1
 :found_conda
 echo Found conda at: %CONDA_EXE%
 
-:: Check if environment exists
-echo Checking if adaptivecad environment exists...
-call %CONDA_EXE% env list | findstr adaptivecad > nul
-if %errorlevel% neq 0 (
-    echo Environment adaptivecad not found!
-    echo Creating environment from environment.yml...
-    call %CONDA_EXE% env create -f environment.yml
-    if %errorlevel% neq 0 (
-        echo Failed to create environment from environment.yml
-        pause
-        exit /b 1
-    )
-)
-
 :: Create a temporary batch file to run in the activated environment
-echo @echo off > temp_run.bat
-echo python -m adaptivecad.gui.playground >> temp_run.bat
-echo if %%ERRORLEVEL%% neq 0 pause >> temp_run.bat
-echo exit /b %%ERRORLEVEL%% >> temp_run.bat
+echo @echo off > temp_check.bat
+echo python check_environment.py >> temp_check.bat
+echo exit /b %%ERRORLEVEL%% >> temp_check.bat
 
 :: Use call with conda activation to ensure environment is active
 echo Activating adaptivecad conda environment...
 call %CONDA_EXE% activate adaptivecad && (
-    :: Verify activation
-    echo Activated environment:
-    python -c "import sys; print(f'Python: {sys.executable}')"
-    
-    :: Ensure dependencies are installed
-    echo Checking for required packages...
-    call %CONDA_EXE% install -y -c conda-forge numpy pyside6 pythonocc-core
-    
-    :: Run the GUI
-    echo Starting AdaptiveCAD GUI...
-    call temp_run.bat
+    call temp_check.bat
 ) || (
     echo Failed to activate adaptivecad environment
     echo Make sure adaptivecad environment exists by running:
@@ -86,6 +61,6 @@ call %CONDA_EXE% activate adaptivecad && (
 )
 
 :: Clean up
-if exist temp_run.bat del temp_run.bat
+if exist temp_check.bat del temp_check.bat
 
 pause
