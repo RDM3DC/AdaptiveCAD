@@ -59,6 +59,31 @@ def get_world_transform(feature, parent=None):
         T = parent.local_transform @ T
     return T
 
+
+def stable_pi_a_over_pi(u: float) -> float:
+    """Return a bounded πₐ/π scaling factor.
+
+    Parameters
+    ----------
+    u:
+        The pre-scaled input ``kappa * abs(x)`` or similar quantity.
+
+    Returns
+    -------
+    float
+        A scaling factor in the range [0.5, 1.5] with graceful handling of
+        non-finite values.
+    """
+    import math
+
+    amplitude = 0.5    # Maximum deviation from 1.0
+    sensitivity = 0.1  # Controls slope of tanh around zero
+
+    scaling = 1.0 + amplitude * math.tanh(sensitivity * u)
+    if not math.isfinite(scaling):
+        return 1.0
+    return max(0.5, min(1.5, scaling))
+
 def pi_a_over_pi(r: float, kappa: float = 1.0) -> float:
     """
     Ratio  πₐ(r, κ) / π  for a circle of geodesic radius *r*

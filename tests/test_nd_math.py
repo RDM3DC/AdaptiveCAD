@@ -1,5 +1,5 @@
 import math
-from adaptivecad.nd_math import pi_a_over_pi
+from adaptivecad.nd_math import pi_a_over_pi, stable_pi_a_over_pi
 
 
 def test_pi_a_over_pi_basic():
@@ -51,6 +51,13 @@ def test_pi_a_over_pi_mathematical_properties():
     root_sph = math.sqrt(kappa) * r
     expected_sph = math.sin(root_sph) / root_sph
     assert abs(ratio_sph - expected_sph) < 1e-12
+
+
+def test_stable_pi_a_over_pi_bounds():
+    """Ensure the stable version stays within expected limits."""
+    for val in [-200, -10, -1, 0, 1, 10, 200]:
+        scale = stable_pi_a_over_pi(val)
+        assert 0.5 <= scale <= 1.5
 
 
 if __name__ == "__main__":
