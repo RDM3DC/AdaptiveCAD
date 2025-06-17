@@ -44,6 +44,10 @@ else:
         NewBallCmd,
         NewTorusCmd,
         NewConeCmd,
+        LoftCmd,
+        SweepAlongPathCmd,
+        ShellCmd,
+        IntersectCmd,
         RevolveCmd,
         ScaleCmd,
         rebuild_scene,
@@ -470,6 +474,77 @@ if not HAS_GUI:
                 mw.view._display.DisplayShape(feat.shape, update=True)
                 mw.view._display.FitAll()
                 mw.win.statusBar().showMessage(f"Capsule created: height={height}, radius={radius}", 3000)
+
+        # --- SUPERELLIPSE SHAPE TOOL ---
+        class SuperellipseFeature(Feature):
+            def __init__(self, a, b, n, height):
+                params = {"a": a, "b": b, "n": n, "height": height}
+                shape = self._make_shape(params)
+                super().__init__("Superellipse", params, shape)
+
+            @staticmethod
+            def _make_shape(params):
+                from OCC.Core.gp import gp_Pnt
+                from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire
+                from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism
+                from OCC.Core.gp import gp_Vec
+                import numpy as np
+                a = params["a"]
+                b = params["b"]
+                n = params["n"]
+                height = params["height"]
+                ts = np.linspace(0, 2 * np.pi, 60)
+                pts = []
+                for t in ts:
+                    ct = np.cos(t)
+                    st = np.sin(t)
+                    x = np.sign(ct) * (abs(ct) ** (2 / n)) * a
+                    y = np.sign(st) * (abs(st) ** (2 / n)) * b
+                    pts.append(gp_Pnt(x, y, 0))
+                wire = BRepBuilderAPI_MakeWire()
+                for p1, p2 in zip(pts, pts[1:] + [pts[0]]):
+                    wire.Add(BRepBuilderAPI_MakeEdge(p1, p2).Edge())
+                prism = BRepPrimAPI_MakePrism(wire.Wire(), gp_Vec(0, 0, height))
+                return prism.Shape()
+
+            def rebuild(self):
+                self.shape = self._make_shape(self.params)
+
+        class NewSuperellipseCmd:
+            def __init__(self):
+                pass
+            def run(self, mw):
+                from PySide6.QtWidgets import QDialog, QFormLayout, QDialogButtonBox, QDoubleSpinBox, QSpinBox
+                class ParamDialog(QDialog):
+                    def __init__(self, parent=None):
+                        super().__init__(parent)
+                        self.setWindowTitle("Superellipse Parameters")
+                        layout = QFormLayout(self)
+                        self.a = QDoubleSpinBox(); self.a.setRange(1, 1000); self.a.setValue(20.0)
+                        self.b = QDoubleSpinBox(); self.b.setRange(1, 1000); self.b.setValue(20.0)
+                        self.n = QDoubleSpinBox(); self.n.setRange(0.1, 10.0); self.n.setValue(2.0)
+                        self.height = QDoubleSpinBox(); self.height.setRange(0.1, 1000); self.height.setValue(10.0)
+                        layout.addRow("A", self.a)
+                        layout.addRow("B", self.b)
+                        layout.addRow("Exponent", self.n)
+                        layout.addRow("Height", self.height)
+                        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+                        buttons.accepted.connect(self.accept)
+                        buttons.rejected.connect(self.reject)
+                        layout.addWidget(buttons)
+                dlg = ParamDialog(mw.win)
+                if not dlg.exec():
+                    return
+                feat = SuperellipseFeature(dlg.a.value(), dlg.b.value(), dlg.n.value(), dlg.height.value())
+                try:
+                    from adaptivecad.command_defs import DOCUMENT
+                    DOCUMENT.append(feat)
+                except Exception:
+                    pass
+                mw.view._display.EraseAll()
+                mw.view._display.DisplayShape(feat.shape, update=True)
+                mw.view._display.FitAll()
+                mw.win.statusBar().showMessage("Superellipse created", 3000)
         # Register Capsule tool after add_shape_tool is defined (moved below)
 
     def start_snap_workflow(self):
@@ -1369,19 +1444,43 @@ class MainWindow:
             "Import file and apply πₐ conformation (prompts for κ)"
         )
         import_btn.clicked.connect(lambda: self.run_cmd(ImportConformalCmd()))
-        self.main_toolbar.addWidget(import_btn)        # --- SHAPES TOOLBAR ---
+        self.main_toolbar.addWidget(import_btn)
+
+        # --- SHAPES TOOLBAR RESTRUCTURED WITH CATEGORY MENUS ---
         self.shapes_toolbar = QToolBar("Shapes", self.win)
         self.shapes_toolbar.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
         self.win.addToolBar(Qt.TopToolBarArea, self.shapes_toolbar)
 
-        def add_shape_tool(text, icon_name, cmd_cls, use_custom=False):
+        def add_shape_action(menu, text, icon_name, cmd_cls, use_custom=False):
             icon = get_custom_icon(icon_name) if use_custom else QIcon.fromTheme(icon_name)
-            btn = QToolButton(self.win)
-            btn.setText(text)
-            btn.setIcon(icon)
-            btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-            btn.clicked.connect(lambda: self.run_cmd(cmd_cls()))
-            self.shapes_toolbar.addWidget(btn)
+            act = QAction(icon, text, self.win)
+            act.triggered.connect(lambda: self.run_cmd(cmd_cls()))
+            menu.addAction(act)
+
+        construct_menu = QMenu("Construct", self.win)
+        procedural_menu = QMenu("Procedural", self.win)
+        highdim_menu = QMenu("High-Dim", self.win)
+
+        construct_btn = QToolButton(self.win)
+        construct_btn.setText("Construct")
+        construct_btn.setIcon(QIcon.fromTheme("folder"))
+        construct_btn.setPopupMode(QToolButton.InstantPopup)
+        construct_btn.setMenu(construct_menu)
+        self.shapes_toolbar.addWidget(construct_btn)
+
+        proc_btn = QToolButton(self.win)
+        proc_btn.setText("Procedural")
+        proc_btn.setIcon(QIcon.fromTheme("applications-graphics"))
+        proc_btn.setPopupMode(QToolButton.InstantPopup)
+        proc_btn.setMenu(procedural_menu)
+        self.shapes_toolbar.addWidget(proc_btn)
+
+        hd_btn = QToolButton(self.win)
+        hd_btn.setText("High-Dim")
+        hd_btn.setIcon(QIcon.fromTheme("view-restore"))
+        hd_btn.setPopupMode(QToolButton.InstantPopup)
+        hd_btn.setMenu(highdim_menu)
+        self.shapes_toolbar.addWidget(hd_btn)
 
         # Import Feature class before using it
         from adaptivecad.command_defs import Feature
@@ -1606,10 +1705,10 @@ class MainWindow:
                 mw.view._display.FitAll()
                 mw.win.statusBar().showMessage(f"Capsule created: height={height}, radius={radius}", 3000)
 
-        # Register advanced shape tools after add_shape_tool is defined
-        add_shape_tool("Helix", "media-playlist-shuffle", NewHelixCmd)
-        add_shape_tool("Ellipsoid", "media-record", NewEllipsoidCmd)
-        add_shape_tool("Capsule", "media-record", NewCapsuleCmd)
+        # Register advanced shape tools in menus
+        add_shape_action(procedural_menu, "Helix", "media-playlist-shuffle", NewHelixCmd)
+        add_shape_action(procedural_menu, "Ellipsoid", "media-record", NewEllipsoidCmd)
+        add_shape_action(procedural_menu, "Capsule", "media-record", NewCapsuleCmd)
 
         # --- ADAPTIVE PI CURVE SHELL TOOL ---
         from adaptivecad.command_defs import Feature
@@ -1730,7 +1829,8 @@ class MainWindow:
                 mw.view._display.FitAll()
                 mw.win.statusBar().showMessage(f"Pi Curve Shell created: r={base_radius}, h={height}, freq={freq}, amp={amp}", 3000)
 
-        add_shape_tool("Pi Curve Shell", "adacurve", NewPiCurveShellCmd, True)
+        add_shape_action(procedural_menu, "Pi Curve Shell", "adacurve", NewPiCurveShellCmd, True)
+        add_shape_action(procedural_menu, "Superellipse", "draw-bezier", NewSuperellipseCmd)
 
         # Capsule tool is now registered below using add_shape_tool
 
@@ -1804,17 +1904,17 @@ class MainWindow:
                 mw.win.statusBar().showMessage(f"Tapered Cylinder created: height={height}, r1={radius1}, r2={radius2}", 3000)
 
 
-        add_shape_tool("Box", "view-cube", NewBoxCmd)
-        add_shape_tool("Cylinder", "media-optical", NewCylCmd)
-        add_shape_tool("Tapered Cylinder", "media-eject", NewTaperedCylinderCmd)
-        add_shape_tool("Bezier Curve", "adacurve", NewBezierCmd, True)
-        add_shape_tool("B-spline Curve", "adacurve", NewBSplineCmd, True)
-        add_shape_tool("ND Box", "cube1", NewNDBoxCmd, True)
-        add_shape_tool("ND Field", "view-list-tree", NewNDFieldCmd)
-        add_shape_tool("Ball", "media-record", NewBallCmd)
-        add_shape_tool("Torus", "preferences-desktop-theme", NewTorusCmd)
-        add_shape_tool("Cone", "media-eject", NewConeCmd)
-        add_shape_tool("Revolve", "object-rotate-right", RevolveCmd)
+        add_shape_action(construct_menu, "Box", "view-cube", NewBoxCmd)
+        add_shape_action(construct_menu, "Cylinder", "media-optical", NewCylCmd)
+        add_shape_action(construct_menu, "Tapered Cylinder", "media-eject", NewTaperedCylinderCmd)
+        add_shape_action(procedural_menu, "Bezier Curve", "adacurve", NewBezierCmd, True)
+        add_shape_action(procedural_menu, "B-spline Curve", "adacurve", NewBSplineCmd, True)
+        add_shape_action(highdim_menu, "ND Box", "cube1", NewNDBoxCmd, True)
+        add_shape_action(highdim_menu, "ND Field", "view-list-tree", NewNDFieldCmd)
+        add_shape_action(construct_menu, "Ball", "media-record", NewBallCmd)
+        add_shape_action(construct_menu, "Torus", "preferences-desktop-theme", NewTorusCmd)
+        add_shape_action(construct_menu, "Cone", "media-eject", NewConeCmd)
+        add_shape_action(construct_menu, "Revolve", "object-rotate-right", RevolveCmd)
 
         # --- ROUNDED BOX SHAPE TOOL (Selectable, like other shapes) ---
         from adaptivecad.command_defs import Feature
@@ -1903,7 +2003,7 @@ class MainWindow:
                 mw.view._display.DisplayShape(feat.shape, update=True)
                 mw.view._display.FitAll()
                 mw.win.statusBar().showMessage(f"Rounded Box created: {length}×{width}×{height}, fillet={fillet}", 3000)
-        add_shape_tool("Rounded Box", "view-cube", NewRoundedBoxCmd)
+        add_shape_action(procedural_menu, "Rounded Box", "view-cube", NewRoundedBoxCmd)
 
         # --- TAPERED CYLINDER / CONE SHAPE TOOL (Selectable, like other shapes) ---
         class TaperedCylinderFeature(Feature):
@@ -1972,9 +2072,12 @@ class MainWindow:
                 mw.view._display.DisplayShape(feat.shape, update=True)
                 mw.view._display.FitAll()
                 mw.win.statusBar().showMessage(f"Tapered Cylinder created: height={height}, bottom radius={radius1}, top radius={radius2}", 3000)
-        add_shape_tool("Tapered Cylinder", "media-eject", NewTaperedCylinderCmd)
-        add_shape_tool("π‑Square", "draw-rectangle", PiSquareCmd)
-        add_shape_tool("Draped Sheet", "adasurface", DrapedSheetCmd, True)
+        add_shape_action(construct_menu, "Tapered Cylinder", "media-eject", NewTaperedCylinderCmd)
+        add_shape_action(procedural_menu, "π‑Square", "draw-rectangle", PiSquareCmd)
+        add_shape_action(procedural_menu, "Draped Sheet", "adasurface", DrapedSheetCmd, True)
+        add_shape_action(construct_menu, "Loft", "document-new", LoftCmd)
+        add_shape_action(construct_menu, "Sweep", "media-seek-forward", SweepAlongPathCmd)
+        add_shape_action(construct_menu, "Shell", "edit-undo", ShellCmd)
 
         # Tools menu
         tools_menu = QMenu("Tools", self.win)
@@ -1993,6 +2096,7 @@ class MainWindow:
         )
         add_tool_action("Union", "union", lambda: self.run_cmd(UnionCmd()), True)  # Using custom union icon
         add_tool_action("Cut", "edit-cut", lambda: self.run_cmd(CutCmd()))
+        add_tool_action("Intersect", "zoom-original", lambda: self.run_cmd(IntersectCmd()))
         
         def on_delete():
             if self.selected_feature is not None:

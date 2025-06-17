@@ -22,6 +22,10 @@ from ..command_defs import (
     NewBallCmd,
     NewTorusCmd,
     NewConeCmd,
+    LoftCmd,
+    SweepAlongPathCmd,
+    ShellCmd,
+    IntersectCmd,
     _require_command_modules,
 )
 
@@ -56,6 +60,10 @@ __all__ = [
     "NewBallCmd",
     "NewTorusCmd",
     "NewConeCmd",
+    "LoftCmd",
+    "SweepAlongPathCmd",
+    "ShellCmd",
+    "IntersectCmd",
     "_require_command_modules",
 ]
 

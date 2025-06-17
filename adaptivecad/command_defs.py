@@ -888,3 +888,118 @@ class RevolveCmd(BaseCmd):
             )
         )
         rebuild_scene(mw.view._display)
+
+
+class LoftCmd(BaseCmd):
+    title = "Loft"
+
+    def run(self, mw) -> None:
+        from PySide6.QtWidgets import QInputDialog
+        from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire
+        from OCC.Core.gp import gp_Pnt, gp_Dir, gp_Ax2, gp_Circ
+        from OCC.Core.BRepOffsetAPI import BRepOffsetAPI_ThruSections
+
+        r1, ok = QInputDialog.getDouble(mw.win, "Loft", "Bottom radius:", 10.0, 0.1)
+        if not ok:
+            return
+        r2, ok = QInputDialog.getDouble(mw.win, "Loft", "Top radius:", 20.0, 0.1)
+        if not ok:
+            return
+        height, ok = QInputDialog.getDouble(mw.win, "Loft", "Height:", 40.0, 0.1)
+        if not ok:
+            return
+
+        circ1 = gp_Circ(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), r1)
+        circ2 = gp_Circ(gp_Ax2(gp_Pnt(0, 0, height), gp_Dir(0, 0, 1)), r2)
+        wire1 = BRepBuilderAPI_MakeWire(BRepBuilderAPI_MakeEdge(circ1).Edge()).Wire()
+        wire2 = BRepBuilderAPI_MakeWire(BRepBuilderAPI_MakeEdge(circ2).Edge()).Wire()
+
+        loft = BRepOffsetAPI_ThruSections(True)
+        loft.AddWire(wire1)
+        loft.AddWire(wire2)
+        loft.Build()
+        shape = loft.Shape()
+
+        DOCUMENT.append(Feature("Loft", {"r1": r1, "r2": r2, "height": height}, shape))
+        rebuild_scene(mw.view._display)
+
+
+class SweepAlongPathCmd(BaseCmd):
+    title = "Sweep"
+
+    def run(self, mw) -> None:
+        from PySide6.QtWidgets import QInputDialog
+        from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire
+        from OCC.Core.gp import gp_Pnt, gp_Dir, gp_Ax2, gp_Circ
+        from OCC.Core.BRepOffsetAPI import BRepOffsetAPI_MakePipe
+
+        radius, ok = QInputDialog.getDouble(mw.win, "Sweep", "Profile radius:", 5.0, 0.1)
+        if not ok:
+            return
+        length, ok = QInputDialog.getDouble(mw.win, "Sweep", "Path length:", 50.0, 0.1)
+        if not ok:
+            return
+
+        path_edge = BRepBuilderAPI_MakeEdge(gp_Pnt(0, 0, 0), gp_Pnt(0, 0, length)).Edge()
+        circ = gp_Circ(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0)), radius)
+        profile_wire = BRepBuilderAPI_MakeWire(BRepBuilderAPI_MakeEdge(circ).Edge()).Wire()
+
+        pipe = BRepOffsetAPI_MakePipe(path_edge, profile_wire)
+        shape = pipe.Shape()
+
+        DOCUMENT.append(Feature("Sweep", {"radius": radius, "length": length}, shape))
+        rebuild_scene(mw.view._display)
+
+
+class ShellCmd(BaseCmd):
+    title = "Shell"
+
+    def run(self, mw) -> None:
+        if not DOCUMENT:
+            mw.win.statusBar().showMessage("No shapes to shell!")
+            return
+        from PySide6.QtWidgets import QInputDialog
+        from OCC.Core.BRepOffsetAPI import BRepOffsetAPI_MakeThickSolid
+        from OCC.Core.TopTools import TopTools_ListOfShape
+
+        items = [f"{i}: {feat.name}" for i, feat in enumerate(DOCUMENT)]
+        idx_str, ok = QInputDialog.getItem(mw.win, "Shell", "Select shape:", items, 0, False)
+        if not ok:
+            return
+        idx = int(idx_str.split(":" )[0])
+        thickness, ok = QInputDialog.getDouble(mw.win, "Shell", "Thickness:", 1.0, 0.01)
+        if not ok:
+            return
+
+        maker = BRepOffsetAPI_MakeThickSolid()
+        maker.MakeThickSolidByJoin(DOCUMENT[idx].shape, TopTools_ListOfShape(), -abs(thickness), 1e-3)
+        maker.Build()
+        shape = maker.Shape()
+        DOCUMENT.append(Feature("Shell", {"source": idx, "thickness": thickness}, shape))
+        rebuild_scene(mw.view._display)
+
+
+class IntersectCmd(BaseCmd):
+    title = "Intersect"
+
+    def run(self, mw) -> None:
+        if len(DOCUMENT) < 2:
+            mw.win.statusBar().showMessage("Need at least two shapes for Intersect!")
+            return
+        from PySide6.QtWidgets import QInputDialog
+        from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Common
+
+        items = [f"{i}: {feat.name}" for i, feat in enumerate(DOCUMENT)]
+        idx1, ok = QInputDialog.getItem(mw.win, "Select A", "Target:", items, 0, False)
+        if not ok:
+            return
+        idx2, ok = QInputDialog.getItem(mw.win, "Select B", "Tool:", items, 1, False)
+        if not ok:
+            return
+        i1 = int(idx1.split(":" )[0])
+        i2 = int(idx2.split(":" )[0])
+        a = DOCUMENT[i1].shape
+        b = DOCUMENT[i2].shape
+        common = BRepAlgoAPI_Common(a, b).Shape()
+        DOCUMENT.append(Feature("Intersect", {"a": i1, "b": i2}, common))
+        rebuild_scene(mw.view._display)

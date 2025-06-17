@@ -9,6 +9,10 @@ def test_commands_import():
     assert hasattr(mod, "NewBoxCmd")
     assert hasattr(mod, "ExportAmaCmd")
     assert hasattr(mod, "RevolveCmd")
+    assert hasattr(mod, "LoftCmd")
+    assert hasattr(mod, "SweepAlongPathCmd")
+    assert hasattr(mod, "ShellCmd")
+    assert hasattr(mod, "IntersectCmd")
 
 
 def test_commands_missing_deps(monkeypatch):
