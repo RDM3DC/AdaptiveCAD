@@ -62,17 +62,16 @@ else:
             V3d_MSAA_8X = 8
 
     except Exception:
-        AA_AVAILABLE = False
-
-    # Minimal Props class for volume calculation
+        AA_AVAILABLE = False    # Minimal Props class for volume calculation
     class Props:
         def Volume(self, shape):
             try:
                 from OCC.Core.GProp import GProp_GProps
-                from OCC.Core.BRepGProp import brepgprop_VolumeProperties
+                from OCC.Core.BRepGProp import BRepGProp
 
                 props = GProp_GProps()
-                brepgprop_VolumeProperties(shape, props)
+                # Use static method BRepGProp.VolumeProperties instead of deprecated function
+                BRepGProp.VolumeProperties(shape, props)
                 return props.Mass()
             except Exception:
                 return 0.0
@@ -776,54 +775,55 @@ class MainWindow:
         self.snap_manager.register(center_snap, priority=15)
         self.snap_manager.register(grid_snap, priority=10)
         self.current_snap_point = None
-        # Note: Snap tolerance slider will be added in the run method
-
-        # Override mouse events instead of connecting to signals that don't exist
+        # Note: Snap tolerance slider will be added in the run method        # Override mouse events instead of connecting to signals that don't exist
         # Override the qtViewer3d's mouse event handlers
         original_mouseMoveEvent = self.view.mouseMoveEvent
         original_mousePressEvent = self.view.mousePressEvent
         original_mouseReleaseEvent = self.view.mouseReleaseEvent
-
+        
         def mouseMoveEvent_override(event):
             # Call the original handler first
             original_mouseMoveEvent(event)
             # Fix: Use a valid method to convert screen to world coordinates
             try:
+                # Use position() instead of pos() to avoid deprecation warning
+                pos = event.position() if hasattr(event, 'position') else event.pos()
+                x, y = int(pos.x()), int(pos.y())
+                
                 if hasattr(self.view._display, "View") and hasattr(
                     self.view._display.View, "ConvertToGrid"
                 ):
-                    world_pt = self.view._display.View.ConvertToGrid(
-                        event.pos().x(), event.pos().y()
-                    )
+                    world_pt = self.view._display.View.ConvertToGrid(x, y)
                 elif hasattr(self.view._display, "ConvertToPoint"):
-                    world_pt = self.view._display.ConvertToPoint(
-                        event.pos().x(), event.pos().y()
-                    )
+                    world_pt = self.view._display.ConvertToPoint(x, y)
                 elif hasattr(self.view._display, "convertToPoint"):
-                    world_pt = self.view._display.convertToPoint(
-                        event.pos().x(), event.pos().y()
-                    )
+                    world_pt = self.view._display.convertToPoint(x, y)
                 else:
                     # Fallback: just use zeros or the event position as a placeholder
                     world_pt = [0.0, 0.0, 0.0]
             except:  # Fallback if any conversion fails
                 world_pt = [0.0, 0.0, 0.0]
+            
             self._on_mouse_move(world_pt)
-
+            
         def mousePressEvent_override(event):
             # Call the original handler first
             original_mousePressEvent(event)
             # Then call our custom handler
+            # Use position() instead of pos() to avoid deprecation warning
+            pos = event.position() if hasattr(event, 'position') else event.pos()
             self._on_mouse_press(
-                event.pos().x(), event.pos().y(), event.buttons(), event.modifiers()
+                int(pos.x()), int(pos.y()), event.buttons(), event.modifiers()
             )
 
         def mouseReleaseEvent_override(event):
             # Call the original handler first
             original_mouseReleaseEvent(event)
             # Then call our custom handler
+            # Use position() instead of pos() to avoid deprecation warning
+            pos = event.position() if hasattr(event, 'position') else event.pos()
             self._on_mouse_release(
-                event.pos().x(), event.pos().y(), event.buttons(), event.modifiers()
+                int(pos.x()), int(pos.y()), event.buttons(), event.modifiers()
             )
 
         # Apply the overrides

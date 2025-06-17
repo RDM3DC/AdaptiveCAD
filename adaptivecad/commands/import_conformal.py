@@ -267,58 +267,19 @@ def process_single_bspline_surface(face_data, kappa):
             for i in range(1, nb_u_poles + 1):
                 for j in range(1, nb_v_poles + 1):
                     pole = bspline.Pole(i, j)
-                    x, y, z = pole.X(), pole.Y(), pole.Z()
+                    x0, y0, z0 = pole.X(), pole.Y(), pole.Z()
+                    print(f"[DEBUG] Pole({i},{j}) original: x={x0}, y={y0}, z={z0}")
 
                     x, y, z = smooth_input(
-                        x, y, z, bspline.Poles(), i, j, nb_u_poles, nb_v_poles
+                        x0, y0, z0, bspline.Poles(), i, j, nb_u_poles, nb_v_poles
                     )
+                    print(f"[DEBUG] Pole({i},{j}) after smoothing: x={x}, y={y}, z={z}")
 
-                    u_x = max(-max_input, min(max_input, kappa * abs(x)))
-                    u_y = max(-max_input, min(max_input, kappa * abs(y)))
-                    u_z = max(-max_input, min(max_input, kappa * abs(z)))
-
-                    try:
-                        px = stable_pi_a_over_pi(u_x)
-                        py = stable_pi_a_over_pi(u_y)
-                        pz = stable_pi_a_over_pi(u_z)
-
-                        if not math.isfinite(px) or abs(px) > 1.5:
-                            print(
-                                f"[WARN] pi_a_over_pi(kappa*|x|={u_x}) at ({i},{j}) returned {px}, clamping to 1.0"
-                            )
-                            px = 1.0
-                        if not math.isfinite(py) or abs(py) > 1.5:
-                            print(
-                                f"[WARN] pi_a_over_pi(kappa*|y|={u_y}) at ({i},{j}) returned {py}, clamping to 1.0"
-                            )
-                            py = 1.0
-                        if not math.isfinite(pz) or abs(pz) > 1.5:
-                            print(
-                                f"[WARN] pi_a_over_pi(kappa*|z|={u_z}) at ({i},{j}) returned {pz}, clamping to 1.0"
-                            )
-                            pz = 1.0
-
-                        transformed_x = x * px
-                        transformed_y = y * py
-                        transformed_z = z * pz
-
-                        for name, val in zip(
-                            ["x", "y", "z"],
-                            [transformed_x, transformed_y, transformed_z],
-                        ):
-                            if not math.isfinite(val) or abs(val) > 1e6:
-                                print(
-                                    f"[WARN] Transformed {name} at ({i},{j}) is {val}, clamping to 0.0"
-                                )
-                                if name == "x":
-                                    transformed_x = 0.0
-                                elif name == "y":
-                                    transformed_y = 0.0
-                                else:
-                                    transformed_z = 0.0
-                    except Exception as e:
-                        print(f"[ERROR] pi_a_over_pi failed at ({i},{j}): {e}")
-                        transformed_x, transformed_y, transformed_z = x, y, z
+                    # TEMP: Bypass pi_a_over_pi transformation for testing
+                    transformed_x = x
+                    transformed_y = y
+                    transformed_z = z
+                    print(f"[DEBUG] Pole({i},{j}) transformed: x={transformed_x}, y={transformed_y}, z={transformed_z}")
 
                     new_pole = gp_Pnt(transformed_x, transformed_y, transformed_z)
                     new_poles.SetValue(i, j, new_pole)

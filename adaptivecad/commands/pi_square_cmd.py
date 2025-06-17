@@ -1,3 +1,4 @@
+
 from adaptivecad.command_defs import BaseCmd, DOCUMENT, Feature, rebuild_scene
 from OCC.Core.gp import gp_Pnt, gp_Vec
 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire, BRepBuilderAPI_MakeFace
@@ -5,6 +6,15 @@ from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism
 from OCC.Core.GC import GC_MakeArcOfCircle
 from PySide6.QtWidgets import QInputDialog, QMessageBox
 import math
+
+# Robust, bounded pi_a_over_pi implementation
+def pi_a_over_pi(u):
+    amplitude = 0.5
+    sensitivity = 0.1
+    scaling = 1.0 + amplitude * math.tanh(sensitivity * u)
+    if not math.isfinite(scaling):
+        return 1.0
+    return max(0.5, min(1.5, scaling))
 
 class PiSquareCmd(BaseCmd):
     def run(self, mainwin):
@@ -31,103 +41,125 @@ class PiSquareCmd(BaseCmd):
 
         # Prompt for Height (Z)
         height, ok = QInputDialog.getDouble(
-            mainwin.win, "Parametric Rectangle", "Height (Z) (mm):", 0.0, 0.0, 1000.0, 2 # Min height 0 for 2D wire
+            mainwin.win, "Parametric Rectangle", "Height (Z) (mm):", 0.0, 0.0, 1000.0, 2
         )
         if not ok: return
 
-        # Create 4 corner points for the rectangle
-        p0 = gp_Pnt(0, 0, 0)
-        p1 = gp_Pnt(length, 0, 0)
-        p2 = gp_Pnt(length, width, 0)
-        p3 = gp_Pnt(0, width, 0)
+        # Prompt for Kappa (conformal factor)
+        kappa, ok = QInputDialog.getDouble(
+            mainwin.win, "Conformal Transformation", "Kappa:", 1.0, 0.0, 100.0, 2
+        )
+        if not ok: return
 
-        corners = [p0, p1, p2, p3]
+        # Create and transform 4 corner points
+        corners_raw = [
+            (0, 0, 0),
+            (length, 0, 0),
+            (length, width, 0),
+            (0, width, 0)
+        ]
+        corners = []
+        for x, y, z in corners_raw:
+            px = pi_a_over_pi(kappa * abs(x))
+            py = pi_a_over_pi(kappa * abs(y))
+            pz = pi_a_over_pi(kappa * abs(z))
+            if not all(math.isfinite(val) for val in [px, py, pz]):
+                print(f"[WARN] Non-finite pi_a_over_pi at ({x}, {y}, {z}), using 1.0")
+                px, py, pz = 1.0, 1.0, 1.0
+            transformed_x = x * px
+            transformed_y = y * py
+            transformed_z = z * pz
+            if not all(math.isfinite(val) for val in [transformed_x, transformed_y, transformed_z]):
+                print(f"[WARN] Non-finite transformed coords at ({x}, {y}, {z}), clamping to original")
+                transformed_x, transformed_y, transformed_z = x, y, z
+            corners.append(gp_Pnt(transformed_x, transformed_y, transformed_z))
+
         edges = []
-
-        if abs(bulge) < 1e-6: # If bulge is very small, make straight edges
-            edges.append(BRepBuilderAPI_MakeEdge(corners[0], corners[1]).Edge())
-            edges.append(BRepBuilderAPI_MakeEdge(corners[1], corners[2]).Edge())
-            edges.append(BRepBuilderAPI_MakeEdge(corners[2], corners[3]).Edge())
-            edges.append(BRepBuilderAPI_MakeEdge(corners[3], corners[0]).Edge())
+        if abs(bulge) < 1e-6:
+            # Straight edges
+            for i in range(4):
+                edges.append(BRepBuilderAPI_MakeEdge(corners[i], corners[(i+1)%4]).Edge())
         else:
-            # Calculate bulge points and create arcs for rectangle
-            # Edge 0: p0 to p1 (along X axis, length 'length')
-            bp01 = gp_Pnt(length / 2, -bulge, 0) 
-            arc01 = GC_MakeArcOfCircle(corners[0], bp01, corners[1]).Value()
-            if arc01: edges.append(BRepBuilderAPI_MakeEdge(arc01).Edge())
-            else: edges.append(BRepBuilderAPI_MakeEdge(corners[0], corners[1]).Edge())
+            # Transform bulge points
+            bulge_points_raw = [
+                (length / 2, -bulge, 0),  # bp01
+                (length + bulge, width / 2, 0),  # bp12
+                (length / 2, width + bulge, 0),  # bp23
+                (-bulge, width / 2, 0)  # bp30
+            ]
+            bulge_points = []
+            for x, y, z in bulge_points_raw:
+                px = pi_a_over_pi(kappa * abs(x))
+                py = pi_a_over_pi(kappa * abs(y))
+                pz = pi_a_over_pi(kappa * abs(z))
+                if not all(math.isfinite(val) for val in [px, py, pz]):
+                    print(f"[WARN] Non-finite pi_a_over_pi at ({x}, {y}, {z}), using 1.0")
+                    px, py, pz = 1.0, 1.0, 1.0
+                transformed_x = x * px
+                transformed_y = y * py
+                transformed_z = z * pz
+                if not all(math.isfinite(val) for val in [transformed_x, transformed_y, transformed_z]):
+                    print(f"[WARN] Non-finite transformed coords at ({x}, {y}, {z}), clamping to original")
+                    transformed_x, transformed_y, transformed_z = x, y, z
+                bulge_points.append(gp_Pnt(transformed_x, transformed_y, transformed_z))
 
-            # Edge 1: p1 to p2 (along Y axis, length 'width')
-            bp12 = gp_Pnt(length + bulge, width / 2, 0)
-            arc12 = GC_MakeArcOfCircle(corners[1], bp12, corners[2]).Value()
-            if arc12: edges.append(BRepBuilderAPI_MakeEdge(arc12).Edge())
-            else: edges.append(BRepBuilderAPI_MakeEdge(corners[1], corners[2]).Edge())
-
-            # Edge 2: p2 to p3 (along X axis, length 'length')
-            bp23 = gp_Pnt(length / 2, width + bulge, 0)
-            arc23 = GC_MakeArcOfCircle(corners[2], bp23, corners[3]).Value()
-            if arc23: edges.append(BRepBuilderAPI_MakeEdge(arc23).Edge())
-            else: edges.append(BRepBuilderAPI_MakeEdge(corners[2], corners[3]).Edge())
-
-            # Edge 3: p3 to p0 (along Y axis, length 'width')
-            bp30 = gp_Pnt(-bulge, width / 2, 0)
-            arc30 = GC_MakeArcOfCircle(corners[3], bp30, corners[0]).Value()
-            if arc30: edges.append(BRepBuilderAPI_MakeEdge(arc30).Edge())
-            else: edges.append(BRepBuilderAPI_MakeEdge(corners[3], corners[0]).Edge())
-            
-            if len(edges) != 4: # Fallback if any arc creation failed
-                mainwin.QMessageBox.warning(mainwin.win, "Warning", "Arc creation failed for one or more edges. Using straight edges.")
-                edges = [
-                    BRepBuilderAPI_MakeEdge(corners[0], corners[1]).Edge(),
-                    BRepBuilderAPI_MakeEdge(corners[1], corners[2]).Edge(),
-                    BRepBuilderAPI_MakeEdge(corners[2], corners[3]).Edge(),
-                    BRepBuilderAPI_MakeEdge(corners[3], corners[0]).Edge(),
-                ]
+            # Create arcs
+            for i in range(4):
+                arc = GC_MakeArcOfCircle(corners[i], bulge_points[i], corners[(i+1)%4]).Value()
+                if arc:
+                    edges.append(BRepBuilderAPI_MakeEdge(arc).Edge())
+                else:
+                    print(f"[WARN] Arc creation failed for edge {i}, using straight edge")
+                    edges.append(BRepBuilderAPI_MakeEdge(corners[i], corners[(i+1)%4]).Edge())
 
         wire_builder = BRepBuilderAPI_MakeWire()
         for edge in edges:
-            if edge: wire_builder.Add(edge)
-            else: # Should not happen if fallback above works
-                mainwin.QMessageBox.critical(mainwin.win, "Error", "A null edge was encountered.")
+            if edge:
+                wire_builder.Add(edge)
+            else:
+                QMessageBox.critical(mainwin.win, "Error", "A null edge was encountered.")
                 return
-
 
         final_shape = None
         if wire_builder.IsDone():
             wire = wire_builder.Wire()
-            if height > 1e-6: # If height is significant, extrude to 3D
+            if height > 1e-6:
                 face_builder = BRepBuilderAPI_MakeFace(wire)
                 if face_builder.IsDone():
                     face = face_builder.Face()
-                    prism_vec = gp_Vec(0, 0, height)
+                    # Transform height if needed
+                    transformed_height = height * pi_a_over_pi(kappa * abs(height))
+                    if not math.isfinite(transformed_height) or transformed_height > 1e6:
+                        print(f"[WARN] Non-finite transformed height {transformed_height}, using original")
+                        transformed_height = height
+                    prism_vec = gp_Vec(0, 0, transformed_height)
                     prism_builder = BRepPrimAPI_MakePrism(face, prism_vec)
                     if prism_builder.IsDone():
                         final_shape = prism_builder.Shape()
                     else:
-                        mainwin.QMessageBox.warning(mainwin.win, "Error", "Failed to create 3D prism. Check parameters.")
-                        final_shape = wire # Fallback to 2D wire
+                        QMessageBox.warning(mainwin.win, "Error", "Failed to create 3D prism.")
+                        final_shape = wire
                 else:
-                    mainwin.QMessageBox.warning(mainwin.win, "Error", "Failed to create face from wire for extrusion. Check wire self-intersections.")
-                    final_shape = wire # Fallback to 2D wire
-            else: # Otherwise, keep it as a 2D wire
+                    QMessageBox.warning(mainwin.win, "Error", "Failed to create face from wire.")
+                    final_shape = wire
+            else:
                 final_shape = wire
         else:
-            mainwin.QMessageBox.critical(mainwin.win, "Error", "Failed to build wire. Creating a simple straight rectangle as fallback.")
-            # Fallback to a simple straight rectangle wire
+            QMessageBox.critical(mainwin.win, "Error", "Failed to build wire. Creating fallback rectangle.")
             sb_wire = BRepBuilderAPI_MakeWire()
-            sb_wire.Add(BRepBuilderAPI_MakeEdge(corners[0], corners[1]).Edge())
-            sb_wire.Add(BRepBuilderAPI_MakeEdge(corners[1], corners[2]).Edge())
-            sb_wire.Add(BRepBuilderAPI_MakeEdge(corners[2], corners[3]).Edge())
-            sb_wire.Add(BRepBuilderAPI_MakeEdge(corners[3], corners[0]).Edge())
-            if sb_wire.IsDone(): final_shape = sb_wire.Wire()
-            else: # Ultimate fallback: do nothing
-                mainwin.QMessageBox.critical(mainwin.win, "Fatal Error", "Could not create even a simple fallback shape.")
+            for i in range(4):
+                sb_wire.Add(BRepBuilderAPI_MakeEdge(corners[i], corners[(i+1)%4]).Edge())
+            if sb_wire.IsDone():
+                final_shape = sb_wire.Wire()
+            else:
+                QMessageBox.critical(mainwin.win, "Fatal Error", "Could not create fallback shape.")
                 return
 
-
         if final_shape:
-            feat = Feature("ParametricRectShape", {"length": length, "width": width, "bulge": bulge, "height": height}, final_shape)
+            feat = Feature("ParametricRectShape", {
+                "length": length, "width": width, "bulge": bulge, "height": height, "kappa": kappa
+            }, final_shape)
             DOCUMENT.append(feat)
             rebuild_scene(mainwin.view._display)
         else:
-            mainwin.QMessageBox.information(mainwin.win, "Info", "No shape was created.")
+            QMessageBox.information(mainwin.win, "Info", "No shape was created.")
