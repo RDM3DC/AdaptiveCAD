@@ -650,12 +650,15 @@ class MoveCmd(BaseCmd):
             return
         dz, ok = QInputDialog.getDouble(mw.win, "Move", "dz (mm)", 0.0)
         if not ok:
-            return
-        # Apply translation
+            return        # Apply translation
         from OCC.Core.gp import gp_Trsf, gp_Vec
         from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
         trsf = gp_Trsf(); trsf.SetTranslation(gp_Vec(dx, dy, dz))
         moved_shape = BRepBuilderAPI_Transform(shape, trsf, True).Shape()
+        # Mark the source shape as consumed (hidden)
+        if hasattr(DOCUMENT[shape_idx], 'params'):
+            DOCUMENT[shape_idx].params['consumed'] = True
+            print(f"[MoveCmd] Feature '{DOCUMENT[shape_idx].name}' (index {shape_idx}) marked as consumed: {DOCUMENT[shape_idx].params}") # DEBUG
         DOCUMENT.append(Feature("Move", {"target": shape_idx, "dx": dx, "dy": dy, "dz": dz}, moved_shape))
         rebuild_scene(mw.view._display)
 
@@ -699,6 +702,11 @@ class UnionCmd(BaseCmd):
         b = DOCUMENT[i2].shape
         from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse
         fused = BRepAlgoAPI_Fuse(a, b).Shape()
+        # Mark the target and tool as consumed (hidden)
+        if hasattr(DOCUMENT[i1], 'params'):
+            DOCUMENT[i1].params['consumed'] = True
+        if hasattr(DOCUMENT[i2], 'params'):
+            DOCUMENT[i2].params['consumed'] = True
         DOCUMENT.append(Feature("Union", {"target": i1, "tool": i2}, fused))
         rebuild_scene(mw.view._display)
 
@@ -1001,5 +1009,10 @@ class IntersectCmd(BaseCmd):
         a = DOCUMENT[i1].shape
         b = DOCUMENT[i2].shape
         common = BRepAlgoAPI_Common(a, b).Shape()
-        DOCUMENT.append(Feature("Intersect", {"a": i1, "b": i2}, common))
+        # Mark the target and tool as consumed (hidden)
+        if hasattr(DOCUMENT[i1], 'params'):
+            DOCUMENT[i1].params['consumed'] = True
+        if hasattr(DOCUMENT[i2], 'params'):
+            DOCUMENT[i2].params['consumed'] = True
+        DOCUMENT.append(Feature("Intersect", {"target": i1, "tool": i2}, common))
         rebuild_scene(mw.view._display)

@@ -758,7 +758,13 @@ class MainWindow:
             
         # Initialize the application
         self.app = QApplication.instance() or QApplication([])
-          # Create the main window
+        
+        # Initialize state variables
+        self.selected_feature = None
+        self.property_panel = None
+        self.dimension_panel = None
+        
+        # Create the main window
         self.win = QMainWindow()
         self.win.setWindowTitle("AdaptiveCAD - Advanced Shapes & Modeling Tools")
         self.win.resize(1024, 768)
@@ -782,8 +788,399 @@ class MainWindow:
         self._position_viewcube()
         self.viewcube.show()
         self.setup_view_events()
-          # Create menu bar
+        
+        # Setup selection handling
+        self._setup_selection_handling()
+        
+        # Setup UI
+        self._create_menus_and_toolbar()
+        
+        # Create status bar
+        self.win.statusBar().showMessage("AdaptiveCAD Advanced Shapes & Modeling Tools Ready")
+        
+    def _setup_selection_handling(self):
+        """Setup selection handling for objects in the 3D view."""
+        try:
+            # Connect selection changed signal
+            def on_selection_changed():
+                self._on_object_selected()
+            
+            # Set up mouse click handling for selection
+            self.view._display.register_select_callback(on_selection_changed)
+        except Exception as e:
+            print(f"Warning: Could not setup selection handling: {e}")
+    
+    def _on_object_selected(self):
+        """Handle object selection in the 3D view."""
+        try:
+            from adaptivecad.command_defs import DOCUMENT
+            
+            # Get selected objects from the display
+            selected_shapes = self.view._display.GetSelectedShapes()
+            
+            if selected_shapes:
+                # Find the feature that corresponds to the selected shape
+                for i, feature in enumerate(DOCUMENT):
+                    if hasattr(feature, 'shape') and feature.shape in selected_shapes:
+                        self.selected_feature = feature
+                        self._update_property_panel(feature)
+                        self.win.statusBar().showMessage(f"Selected: {feature.name}", 3000)
+                        return
+                        
+                # If no matching feature found, clear selection
+                self.selected_feature = None
+                self._clear_property_panel()
+            else:
+                self.selected_feature = None
+                self._clear_property_panel()
+                
+        except Exception as e:
+            print(f"Error handling selection: {e}")
+    
+    def _update_property_panel(self, feature):
+        """Update the property panel with the selected feature's properties."""
+        if self.property_panel is None or not hasattr(self, 'property_layout'):
+            return
+            
+        # Clear existing property widgets
+        self._clear_property_panel()
+        
+        # Add feature name
+        name_label = QLabel(f"Selected: {feature.name}")
+        name_label.setStyleSheet("font-weight: bold; color: blue; margin-bottom: 5px;")
+        self.property_layout.insertWidget(2, name_label)
+        
+        # Add feature parameters
+        if hasattr(feature, 'params') and feature.params:
+            params_label = QLabel("Parameters:")
+            params_label.setStyleSheet("font-weight: bold; margin-top: 10px; margin-bottom: 5px;")
+            self.property_layout.insertWidget(3, params_label)
+            
+            # Create editable parameter fields
+            for key, value in feature.params.items():
+                if key == 'consumed':  # Skip internal flags
+                    continue
+                    
+                param_widget = QWidget()
+                param_layout = QHBoxLayout(param_widget)
+                param_layout.setContentsMargins(0, 2, 0, 2)
+                
+                # Parameter name
+                param_label = QLabel(f"{key}:")
+                param_label.setMinimumWidth(80)
+                param_layout.addWidget(param_label)
+                
+                # Parameter value (editable if numeric)
+                if isinstance(value, (int, float)):
+                    editor = QLineEdit(str(value))
+                    editor.setMaximumWidth(100)
+                    
+                    def make_param_setter(param_key, param_type):
+                        def setter():
+                            try:
+                                new_value = param_type(editor.text())
+                                feature.params[param_key] = new_value
+                                # Rebuild the feature if it has a rebuild method
+                                if hasattr(feature, 'rebuild'):
+                                    feature.rebuild()
+                                # Update the display
+                                if hasattr(self, 'view') and hasattr(self.view, '_display'):
+                                    from adaptivecad.command_defs import rebuild_scene
+                                    rebuild_scene(self.view._display)
+                                self.win.statusBar().showMessage(f"Updated {param_key} to {new_value}", 2000)
+                            except ValueError:
+                                editor.setText(str(feature.params[param_key]))  # Revert on error
+                                self.win.statusBar().showMessage(f"Invalid value for {param_key}", 2000)
+                        return setter
+                    
+                    editor.editingFinished.connect(make_param_setter(key, type(value)))
+                    param_layout.addWidget(editor)
+                else:
+                    # Non-editable display
+                    value_label = QLabel(str(value))
+                    value_label.setStyleSheet("color: gray;")
+                    param_layout.addWidget(value_label)
+                
+                param_layout.addStretch()
+                self.property_layout.insertWidget(self.property_layout.count() - 1, param_widget)
+        
+        # Add feature type info
+        type_label = QLabel(f"Type: {type(feature).__name__}")
+        type_label.setStyleSheet("color: gray; margin-top: 10px;")
+        self.property_layout.insertWidget(self.property_layout.count() - 1, type_label)
+        
+    def _create_menus_and_toolbar(self):
+        """Create all menus and toolbar in one method to avoid variable scope issues."""
+        # Create menu bar
         menubar = self.win.menuBar()
+        
+        # Create File menu
+        file_menu = menubar.addMenu("File")
+        
+        # Add Import submenu
+        import_menu = file_menu.addMenu("Import")
+        
+        # Add STL/STEP import (Conformal)
+        import_conformal_action = QAction("STL/STEP (Conformal)", self.win)
+        import_conformal_action.triggered.connect(lambda: self._run_command(ImportConformalCmd()))
+        import_menu.addAction(import_conformal_action)
+        
+        # Add separator
+        file_menu.addSeparator()
+        
+        # Add Export submenu
+        export_menu = file_menu.addMenu("Export")
+        
+        # Add STL export
+        export_stl_action = QAction("Export STL", self.win)
+        export_stl_action.triggered.connect(lambda: self._run_command(ExportStlCmd()))
+        export_menu.addAction(export_stl_action)
+        
+        # Add AMA export
+        export_ama_action = QAction("Export AMA", self.win)
+        export_ama_action.triggered.connect(lambda: self._run_command(ExportAmaCmd()))
+        export_menu.addAction(export_ama_action)
+        
+        # Add G-Code export
+        export_gcode_action = QAction("Export G-Code", self.win)
+        export_gcode_action.triggered.connect(lambda: self._run_command(ExportGCodeCmd()))
+        export_menu.addAction(export_gcode_action)
+        
+        # Add G-Code Direct export
+        export_gcode_direct_action = QAction("Export G-Code (Direct)", self.win)
+        export_gcode_direct_action.triggered.connect(lambda: self._run_command(ExportGCodeDirectCmd()))
+        export_menu.addAction(export_gcode_direct_action)
+        
+        # Add separator
+        file_menu.addSeparator()
+        
+        # Add Save/Open project functionality
+        save_action = QAction("Save Project...", self.win)
+        save_action.triggered.connect(lambda: self._run_command(SaveProjectCmd()))
+        file_menu.addAction(save_action)
+        
+        open_action = QAction("Open Project...", self.win)
+        open_action.triggered.connect(lambda: self._run_command(OpenProjectCmd()))
+        file_menu.addAction(open_action)
+        
+        # Add separator and Exit
+        file_menu.addSeparator()
+        
+        exit_action = QAction("Exit", self.win)
+        exit_action.triggered.connect(self.win.close)
+        file_menu.addAction(exit_action)
+        
+        # Create Basic Shapes menu
+        basic_menu = menubar.addMenu("Basic Shapes")
+        
+        # Add Box tool
+        box_action = QAction("Box", self.win)
+        box_action.triggered.connect(lambda: self._run_command(NewBoxCmd()))
+        basic_menu.addAction(box_action)
+        
+        # Add Cylinder tool
+        cyl_action = QAction("Cylinder", self.win)
+        cyl_action.triggered.connect(lambda: self._run_command(NewCylCmd()))
+        basic_menu.addAction(cyl_action)
+        
+        # Add Ball tool
+        ball_action = QAction("Ball", self.win)
+        ball_action.triggered.connect(lambda: self._run_command(NewBallCmd()))
+        basic_menu.addAction(ball_action)
+        
+        # Add Torus tool
+        torus_action = QAction("Torus", self.win)
+        torus_action.triggered.connect(lambda: self._run_command(NewTorusCmd()))
+        basic_menu.addAction(torus_action)
+        
+        # Add Cone tool
+        cone_action = QAction("Cone", self.win)
+        cone_action.triggered.connect(lambda: self._run_command(NewConeCmd()))
+        basic_menu.addAction(cone_action)
+        
+        # Create Advanced Shapes menu
+        adv_menu = menubar.addMenu("Advanced Shapes")
+        
+        # Add Superellipse tool
+        super_action = QAction("Superellipse", self.win)
+        super_action.triggered.connect(lambda: self._run_command(NewSuperellipseCmd()))
+        adv_menu.addAction(super_action)
+        
+        # Add Pi Curve Shell tool
+        pi_shell_action = QAction("Pi Curve Shell (πₐ)", self.win)
+        pi_shell_action.triggered.connect(lambda: self._run_command(NewPiCurveShellCmd()))
+        adv_menu.addAction(pi_shell_action)
+        
+        # Add Helix tool
+        helix_action = QAction("Helix/Spiral", self.win)
+        helix_action.triggered.connect(lambda: self._run_command(NewHelixCmd()))
+        adv_menu.addAction(helix_action)
+        
+        # Add Tapered Cylinder tool
+        tapered_action = QAction("Tapered Cylinder", self.win)
+        tapered_action.triggered.connect(lambda: self._run_command(NewTaperedCylinderCmd()))
+        adv_menu.addAction(tapered_action)
+        
+        # Add Capsule tool
+        capsule_action = QAction("Capsule/Pill", self.win)
+        capsule_action.triggered.connect(lambda: self._run_command(NewCapsuleCmd()))
+        adv_menu.addAction(capsule_action)
+        
+        # Add Ellipsoid tool
+        ellipsoid_action = QAction("Ellipsoid", self.win)
+        ellipsoid_action.triggered.connect(lambda: self._run_command(NewEllipsoidCmd()))
+        adv_menu.addAction(ellipsoid_action)
+        
+        # Create Modeling Tools menu
+        modeling_menu = menubar.addMenu("Modeling Tools")
+        
+        # Add Move tool
+        move_action = QAction("Move", self.win)
+        move_action.triggered.connect(lambda: self._run_command(MoveCmd()))
+        modeling_menu.addAction(move_action)
+        
+        # Add Scale tool
+        scale_action = QAction("Scale", self.win)
+        scale_action.triggered.connect(lambda: self._run_command(ScaleCmd()))
+        modeling_menu.addAction(scale_action)
+        
+        # Add separator
+        modeling_menu.addSeparator()
+        
+        # Add Union tool
+        union_action = QAction("Union", self.win)
+        union_action.triggered.connect(lambda: self._run_command(UnionCmd()))
+        modeling_menu.addAction(union_action)
+        
+        # Add Cut tool
+        cut_action = QAction("Cut", self.win)
+        cut_action.triggered.connect(lambda: self._run_command(CutCmd()))
+        modeling_menu.addAction(cut_action)
+        
+        # Add Intersect tool
+        intersect_action = QAction("Intersect", self.win)
+        intersect_action.triggered.connect(lambda: self._run_command(IntersectCmd()))
+        modeling_menu.addAction(intersect_action)
+        
+        # Add Shell tool
+        shell_action = QAction("Shell", self.win)
+        shell_action.triggered.connect(lambda: self._run_command(ShellCmd()))
+        modeling_menu.addAction(shell_action)
+        
+        # Add separator
+        modeling_menu.addSeparator()
+        
+        # Add Delete tool
+        delete_action = QAction("Delete", self.win)
+        delete_action.triggered.connect(self._delete_selected)
+        modeling_menu.addAction(delete_action)
+        
+        # Create Settings menu
+        settings_menu = menubar.addMenu("Settings")
+        
+        # Add View settings submenu
+        view_menu = settings_menu.addMenu("View")
+        
+        # Add Properties Panel toggle
+        properties_action = QAction("Show Properties Panel", self.win, checkable=True)
+        properties_action.setChecked(False)
+        properties_action.triggered.connect(self._toggle_properties_panel)
+        view_menu.addAction(properties_action)
+        
+        # Add Dimension Selector toggle
+        dimension_action = QAction("Show Dimension Selector", self.win, checkable=True)
+        dimension_action.setChecked(False)
+        dimension_action.triggered.connect(self._toggle_dimension_panel)
+        view_menu.addAction(dimension_action)
+        
+        view_menu.addSeparator()
+        
+        # Add View Cube toggle
+        viewcube_action = QAction("Show View Cube", self.win, checkable=True)
+        viewcube_action.setChecked(True)
+        def toggle_cube(checked):
+            self.viewcube.setVisible(checked)
+        viewcube_action.triggered.connect(toggle_cube)
+        view_menu.addAction(viewcube_action)
+        
+        # Add View Background settings
+        view_bg_menu = view_menu.addMenu("Background Color")
+        bg_dark_action = QAction("Dark", self.win)
+        bg_dark_action.triggered.connect(lambda: self.view._display.set_bg_gradient_color([50, 50, 50], [10, 10, 10]))
+        view_bg_menu.addAction(bg_dark_action)
+        
+        bg_light_action = QAction("Light", self.win)
+        bg_light_action.triggered.connect(lambda: self.view._display.set_bg_gradient_color([230, 230, 230], [200, 200, 200]))
+        view_bg_menu.addAction(bg_light_action)
+        
+        bg_blue_action = QAction("Blue", self.win)
+        bg_blue_action.triggered.connect(lambda: self.view._display.set_bg_gradient_color([5, 20, 76], [5, 39, 175]))
+        view_bg_menu.addAction(bg_blue_action)
+        
+        # Add Tessellation quality submenu
+        tessellation_menu = settings_menu.addMenu("Tessellation Quality")
+        
+        # Add different tessellation quality options
+        def set_tessellation(deflection, angle):
+            settings.MESH_DEFLECTION = deflection
+            settings.MESH_ANGLE = angle
+            # Update status bar to confirm the change
+            self.win.statusBar().showMessage(f"Tessellation set to: deflection={deflection}, angle={angle}", 3000)
+            
+        high_quality = QAction("High Quality", self.win)
+        high_quality.triggered.connect(lambda: set_tessellation(0.005, 0.01))
+        tessellation_menu.addAction(high_quality)
+        
+        normal_quality = QAction("Normal Quality", self.win)
+        normal_quality.triggered.connect(lambda: set_tessellation(0.01, 0.05))
+        tessellation_menu.addAction(normal_quality)
+        
+        low_quality = QAction("Low Quality (Faster)", self.win)
+        low_quality.triggered.connect(lambda: set_tessellation(0.05, 0.1))
+        tessellation_menu.addAction(low_quality)
+        
+        # Add option to toggle triedron visibility
+        triedron_action = QAction("Show Axes Indicator", self.win, checkable=True)
+        triedron_action.setChecked(True)
+        triedron_action.triggered.connect(lambda checked: self.view._display.display_triedron() if checked else self.view._display.hide_triedron())
+        view_menu.addAction(triedron_action)
+        
+        # Create a main toolbar with commonly used shapes
+        self.toolbar = self.win.addToolBar("Common Shapes")
+        self.toolbar.addAction(box_action)
+        self.toolbar.addAction(cyl_action)
+        self.toolbar.addAction(super_action)
+        self.toolbar.addAction(pi_shell_action)
+        
+        # Add separator
+        self.toolbar.addSeparator()
+        
+        # Add common modeling tools to toolbar
+        self.toolbar.addAction(move_action)
+        self.toolbar.addAction(union_action)
+        self.toolbar.addAction(cut_action)
+        self.toolbar.addAction(delete_action)
+        
+        # Create Help menu
+        help_menu = menubar.addMenu("Help")
+        
+        # Add About action
+        about_action = QAction("About AdaptiveCAD", self.win)
+        about_action.triggered.connect(self._show_about)
+        help_menu.addAction(about_action)
+        
+        # Add Documentation links
+        docs_menu = help_menu.addMenu("Documentation")
+        
+        adaptive_pi_action = QAction("Adaptive Pi Axioms", self.win)
+        adaptive_pi_action.triggered.connect(lambda: self._show_doc_message("Adaptive Pi Axioms", 
+            "Please see ADAPTIVE_PI_AXIOMS.md in the project root directory for the complete formal axiom set."))
+        docs_menu.addAction(adaptive_pi_action)
+        
+        modeling_tools_action = QAction("Modeling Tools Reference", self.win)
+        modeling_tools_action.triggered.connect(lambda: self._show_doc_message("Modeling Tools", 
+            "Please see MODELING_TOOLS.md in the project root directory for details on all available modeling tools."))
+        docs_menu.addAction(modeling_tools_action)
         
         # Create File menu
         file_menu = menubar.addMenu("File")
@@ -993,45 +1390,6 @@ class MainWindow:
         triedron_action.triggered.connect(lambda checked: self.view._display.display_triedron() if checked else self.view._display.hide_triedron())
         view_menu.addAction(triedron_action)
         
-        # Create a main toolbar with commonly used shapes
-        self.toolbar = self.win.addToolBar("Common Shapes")
-        self.toolbar.addAction(box_action)
-        self.toolbar.addAction(cyl_action)
-        self.toolbar.addAction(super_action)
-        self.toolbar.addAction(pi_shell_action)
-        
-        # Add separator
-        self.toolbar.addSeparator()
-        
-        # Add common modeling tools to toolbar
-        self.toolbar.addAction(move_action)
-        self.toolbar.addAction(union_action)
-        self.toolbar.addAction(cut_action)
-        
-        # Create Help menu
-        help_menu = menubar.addMenu("Help")
-        
-        # Add About action
-        about_action = QAction("About AdaptiveCAD", self.win)
-        about_action.triggered.connect(self._show_about)
-        help_menu.addAction(about_action)
-        
-        # Add Documentation links
-        docs_menu = help_menu.addMenu("Documentation")
-        
-        adaptive_pi_action = QAction("Adaptive Pi Axioms", self.win)
-        adaptive_pi_action.triggered.connect(lambda: self._show_doc_message("Adaptive Pi Axioms", 
-            "Please see ADAPTIVE_PI_AXIOMS.md in the project root directory for the complete formal axiom set."))
-        docs_menu.addAction(adaptive_pi_action)
-        
-        modeling_tools_action = QAction("Modeling Tools Reference", self.win)
-        modeling_tools_action.triggered.connect(lambda: self._show_doc_message("Modeling Tools", 
-            "Please see MODELING_TOOLS.md in the project root directory for details on all available modeling tools."))
-        docs_menu.addAction(modeling_tools_action)
-        
-        # Create status bar
-        self.win.statusBar().showMessage("AdaptiveCAD Advanced Shapes & Modeling Tools Ready")
-        
     def _run_command(self, cmd):
         try:
             cmd.run(self)
@@ -1039,6 +1397,209 @@ class MainWindow:
             QMessageBox.critical(self.win, "Error", f"Error running command: {str(e)}")
             print(f"Command error: {str(e)}")
             print(traceback.format_exc())
+    
+    def _delete_selected(self):
+        """Delete the currently selected feature."""
+        if self.selected_feature is None:
+            QMessageBox.information(self.win, "Delete", "No object selected for deletion.")
+            return
+            
+        try:
+            from adaptivecad.command_defs import DOCUMENT, rebuild_scene
+            
+            if self.selected_feature in DOCUMENT:
+                DOCUMENT.remove(self.selected_feature)
+                self.selected_feature = None
+                self._clear_property_panel()
+                rebuild_scene(self.view._display)
+                self.win.statusBar().showMessage("Object deleted.", 2000)
+            else:
+                self.win.statusBar().showMessage("Could not delete object.", 2000)
+        except Exception as e:
+            QMessageBox.critical(self.win, "Error", f"Error deleting object: {str(e)}")
+    
+    def _toggle_properties_panel(self, checked):
+        """Toggle the properties panel visibility."""
+        if checked:
+            self._create_properties_panel()
+        else:
+            self._hide_properties_panel()
+    
+    def _create_properties_panel(self):
+        """Create and show the properties panel."""
+        if self.property_panel is not None:
+            return  # Already created
+            
+        # Create a dock widget for properties
+        self.property_panel = QDockWidget("Properties", self.win)
+        self.property_panel.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
+        
+        # Create the properties widget
+        properties_widget = QWidget()
+        self.property_layout = QVBoxLayout(properties_widget)
+        
+        # Add a label
+        label = QLabel("Object Properties")
+        label.setStyleSheet("font-weight: bold; margin-bottom: 10px;")
+        self.property_layout.addWidget(label)
+        
+        # Add instructions
+        instructions = QLabel("Select an object from the 3D view to see its properties here.")
+        instructions.setWordWrap(True)
+        instructions.setStyleSheet("color: gray; margin-bottom: 10px;")
+        self.property_layout.addWidget(instructions)
+        
+        # Add stretch to push content to top
+        self.property_layout.addStretch()
+        
+        self.property_panel.setWidget(properties_widget)
+        self.win.addDockWidget(Qt.LeftDockWidgetArea, self.property_panel)
+        self.property_panel.show()
+    
+    def _hide_properties_panel(self):
+        """Hide the properties panel."""
+        if self.property_panel is not None:
+            self.property_panel.hide()
+            self.win.removeDockWidget(self.property_panel)
+            self.property_panel = None
+    
+    def _clear_property_panel(self):
+        """Clear the property panel contents."""
+        if self.property_panel is not None and hasattr(self, 'property_layout'):
+            # Clear all widgets except the first two (label and instructions)
+            while self.property_layout.count() > 3:  # Keep label, instructions, and stretch
+                child = self.property_layout.takeAt(2)  # Remove items after instructions
+                if child.widget():
+                    child.widget().deleteLater()
+    
+    def _toggle_dimension_panel(self, checked):
+        """Toggle the dimension selector panel visibility."""
+        if checked:
+            self._create_dimension_panel()
+        else:
+            self._hide_dimension_panel()
+    
+    def _create_dimension_panel(self):
+        """Create and show the dimension selector panel."""
+        if self.dimension_panel is not None:
+            return  # Already created
+            
+        # Create a dock widget for dimension selection
+        self.dimension_panel = QDockWidget("Dimension Selector", self.win)
+        self.dimension_panel.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
+        
+        # Create the dimension widget
+        dimension_widget = QWidget()
+        layout = QVBoxLayout(dimension_widget)
+        
+        # Add title
+        title = QLabel("Multi-Dimensional View Control")
+        title.setStyleSheet("font-weight: bold; margin-bottom: 10px;")
+        layout.addWidget(title)
+        
+        # Add dimension selector
+        dim_label = QLabel("Active Dimensions:")
+        layout.addWidget(dim_label)
+        
+        # Create checkboxes for X, Y, Z, and additional dimensions
+        self.dim_checkboxes = {}
+        dimensions = ['X', 'Y', 'Z', 'W', 'U', 'V']
+        
+        for i, dim in enumerate(dimensions):
+            checkbox = QCheckBox(f"Dimension {dim}")
+            # Default to X, Y, Z enabled for 3D view
+            if i < 3:
+                checkbox.setChecked(True)
+            else:
+                checkbox.setChecked(False)
+            self.dim_checkboxes[dim] = checkbox
+            layout.addWidget(checkbox)
+        
+        # Add slice controls for higher dimensions
+        layout.addWidget(QLabel("Slice Controls:"))
+        
+        # Create sliders for slicing through higher dimensions
+        self.slice_controls = {}
+        for dim in ['W', 'U', 'V']:
+            group = QWidget()
+            group_layout = QHBoxLayout(group)
+            
+            label = QLabel(f"{dim}:")
+            slider = QSlider(Qt.Horizontal)
+            slider.setRange(0, 100)
+            slider.setValue(50)
+            value_label = QLabel("50")
+            
+            slider.valueChanged.connect(lambda v, lbl=value_label: lbl.setText(str(v)))
+            
+            group_layout.addWidget(label)
+            group_layout.addWidget(slider)
+            group_layout.addWidget(value_label)
+            
+            self.slice_controls[dim] = {'slider': slider, 'value_label': value_label}
+            layout.addWidget(group)
+        
+        # Add projection controls
+        layout.addWidget(QLabel("Projection:"))
+        
+        projection_combo = QComboBox()
+        projection_combo.addItems(['Orthographic', 'Perspective', 'Isometric'])
+        layout.addWidget(projection_combo)
+        
+        # Add view preset buttons
+        layout.addWidget(QLabel("View Presets:"))
+        
+        preset_buttons = QHBoxLayout()
+        
+        xy_btn = QPushButton("X-Y")
+        xz_btn = QPushButton("X-Z")
+        yz_btn = QPushButton("Y-Z")
+        iso_btn = QPushButton("ISO")
+        
+        xy_btn.clicked.connect(lambda: self._set_view_preset('XY'))
+        xz_btn.clicked.connect(lambda: self._set_view_preset('XZ'))
+        yz_btn.clicked.connect(lambda: self._set_view_preset('YZ'))
+        iso_btn.clicked.connect(lambda: self._set_view_preset('ISO'))
+        
+        preset_buttons.addWidget(xy_btn)
+        preset_buttons.addWidget(xz_btn)
+        preset_buttons.addWidget(yz_btn)
+        preset_buttons.addWidget(iso_btn)
+        
+        preset_widget = QWidget()
+        preset_widget.setLayout(preset_buttons)
+        layout.addWidget(preset_widget)
+        
+        # Add stretch to push content to top
+        layout.addStretch()
+        
+        self.dimension_panel.setWidget(dimension_widget)
+        self.win.addDockWidget(Qt.RightDockWidgetArea, self.dimension_panel)
+        self.dimension_panel.show()
+    
+    def _hide_dimension_panel(self):
+        """Hide the dimension selector panel."""
+        if self.dimension_panel is not None:
+            self.dimension_panel.hide()
+            self.win.removeDockWidget(self.dimension_panel)
+            self.dimension_panel = None
+    
+    def _set_view_preset(self, preset):
+        """Set a view preset for the 3D view."""
+        try:
+            if preset == 'XY':
+                self.view._display.View.SetProj(0, 0, 1)  # Top view
+            elif preset == 'XZ':
+                self.view._display.View.SetProj(0, -1, 0)  # Front view
+            elif preset == 'YZ':
+                self.view._display.View.SetProj(1, 0, 0)  # Right view
+            elif preset == 'ISO':
+                self.view._display.View.SetProj(1, 1, 1)  # Isometric view
+            
+            self.view._display.FitAll()
+            self.win.statusBar().showMessage(f"View set to {preset}", 2000)
+        except Exception as e:
+            print(f"Error setting view preset {preset}: {e}")
     
     def _show_not_implemented(self, feature_name):
         QMessageBox.information(self.win, "Not Implemented", 
