@@ -139,6 +139,16 @@ if not HAS_GUI:
         self.win.statusBar().showMessage("Select object and snap point to use as reference.")
 
     def _on_mouse_press_snap(self, x, y, buttons, modifiers):
+        """Handle mouse press events for snap workflow."""
+        # Check if we're in snap mode and handle accordingly
+        if hasattr(self, "snap_phase") and self.snap_phase is not None:
+            # Handle snap workflow (simplified version for now)
+            return True
+        
+        # If not in snap mode, return False to continue with normal handling
+        return False
+
+    def _on_mouse_press(self, x, y, buttons, modifiers):
         # --- SNAP WORKFLOW ---
         if getattr(self, "snap_phase", None) is None:
             # Check if a feature is selected
@@ -643,15 +653,19 @@ class MainWindow:
                 pass
 
     """Main Playground window."""
-
-    def __init__(self) -> None:
+    
+    def __init__(self, existing_app=None) -> None:
         # Initialize attributes
         self.app = None
         self.win = None
         self.view = None
         self.current_mode = "Navigate"  # Navigate, Pick, PushPull, Sketch
         self.push_pull_cmd: PushPullFeatureCmd | None = None
-        self.initial_drag_pos = None  # For PushPull dragging        self.Qt = Qt # Store Qt for use in _keyPressEvent
+        self.initial_drag_pos = None  # For PushPull dragging
+        
+        # Import Qt here to ensure it's defined
+        from PySide6.QtCore import Qt
+        self.Qt = Qt # Store Qt for use in _keyPressEvent
 
         # Get the required GUI modules
         result = _require_gui_modules()
@@ -684,7 +698,20 @@ class MainWindow:
             return
 
         # Set up the application
-        self.app = QApplication(sys.argv)
+        if existing_app is not None:
+            # Use the provided QApplication instance
+            self.app = existing_app
+        else:
+            # Check if there's an existing QApplication instance
+            existing_qapp = QApplication.instance()
+            if existing_qapp is not None:
+                self.app = existing_qapp
+                print("Using existing QApplication instance")
+            else:
+                # Create a new QApplication instance
+                self.app = QApplication(sys.argv)
+                print("Created new QApplication instance")
+
         self.win = QMainWindow()
         self.win.setWindowTitle("AdaptiveCAD – Playground")
         self.view = qtViewer3d(self.win)

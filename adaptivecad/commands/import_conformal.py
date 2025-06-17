@@ -40,11 +40,13 @@ class ImportThread(QThread):
     def run(self):
         """Execute the import in the background thread."""
         try:
+            print("[ImportThread] Thread started")
             # Check for interruption before starting
             if self.isInterruptionRequested():
                 return
                 
             # Import the shape
+            print(f"[ImportThread] About to import shape: {self.filename}")
             self.progress_update.emit(f"Starting import of {os.path.basename(self.filename)}...")
             
             # Check for interruption again
@@ -52,6 +54,7 @@ class ImportThread(QThread):
                 return
             
             shape = import_mesh_shape(self.filename)
+            print(f"[ImportThread] Shape import returned: {shape}")
             if shape is None:
                 self.error_occurred.emit("Failed to load the file")
                 return
@@ -64,7 +67,9 @@ class ImportThread(QThread):
                 return
                 
             # Process the shape
+            print("[ImportThread] About to process shape")
             processed_results, face_count = self._process_shape(shape)
+            print(f"[ImportThread] Processed results: {processed_results}, face_count: {face_count}")
             
             # Check one final time before completion
             if not self.isInterruptionRequested():
@@ -72,6 +77,9 @@ class ImportThread(QThread):
                 self.import_complete.emit(processed_results, face_count)
                 
         except Exception as e:
+            import traceback
+            print("[ImportThread] Exception:", e)
+            traceback.print_exc()
             if not self.isInterruptionRequested():
                 self.error_occurred.emit(f"Import failed: {str(e)}")
 
@@ -80,24 +88,29 @@ class ImportThread(QThread):
         # Suppress deprecation warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", DeprecationWarning)
-            
-            # Extract and process B-spline surfaces
             try:
                 bspline_faces = extract_bspline_faces(shape)
                 if not bspline_faces:
                     self.error_occurred.emit("No valid B-spline surfaces could be extracted from the file")
                     return [], 0
-                
-                # Process B-spline surfaces in parallel with conformal transformation
-                self.progress_update.emit(f"Processing {len(bspline_faces)} surfaces with {self.num_threads} threads...")
-                results = process_bspline_surfaces_parallel(bspline_faces, self.kappa, max_workers=self.num_threads)
-                
-                # Return only successful results as faces ready for the document
+                total = len(bspline_faces)
+                self.progress_update.emit(f"PROGRESS:0/{total}")
+                results = []
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+                with ThreadPoolExecutor(max_workers=self.num_threads) as executor:
+                    future_to_idx = {
+                        executor.submit(process_single_bspline_surface, face_data, self.kappa): idx
+                        for idx, face_data in enumerate(bspline_faces)
+                    }
+                    completed = 0
+                    for future in as_completed(future_to_idx):
+                        result = future.result()
+                        results.append(result)
+                        completed += 1
+                        self.progress_update.emit(f"PROGRESS:{completed}/{total}")
                 successful_results = [r for r in results if r['success']]
-                
-                self.progress_update.emit(f"Successfully processed {len(successful_results)}/{len(bspline_faces)} surfaces")
+                self.progress_update.emit(f"Successfully processed {len(successful_results)}/{total} surfaces")
                 return successful_results, len(successful_results)
-                
             except Exception as e:
                 self.error_occurred.emit(f"Error during face processing: {str(e)}")
                 return [], 0
@@ -106,29 +119,52 @@ class ImportThread(QThread):
 def import_mesh_shape(file_path: str) -> TopoDS_Shape:
     """Import STL or STEP file and return the shape."""
     ext = os.path.splitext(file_path)[1].lower()
-    
+    print(f"[import_mesh_shape] Called with: {file_path} (ext: {ext})")
     try:
         if ext == '.stl':
+            print(f"[import_mesh_shape] Reading STL file: {file_path}")
             reader = StlAPI_Reader()
             shape = TopoDS_Shape()
-            success = reader.Read(shape, file_path)
-            return shape if success else None
-            
+            success = None # Initialize success
+            try:
+                # Try to get the return value, which is typical in newer versions
+                success = reader.Read(shape, file_path)
+                print(f"[import_mesh_shape] STL Read returned: {success}")
+            except TypeError:
+                print(f"[import_mesh_shape] STL Read TypeError, trying fallback")
+                reader.Read(shape, file_path)
+                success = True 
+            except Exception as e:
+                print(f"[import_mesh_shape] Exception during STL Read: {e}")
+                import traceback
+                traceback.print_exc()
+                return None
+            # After reading, check if the shape is null as an additional safeguard
+            if shape.IsNull():
+                print(f"[import_mesh_shape] Warning: STL file {file_path} resulted in a null shape.")
+                return None
+            print(f"[import_mesh_shape] STL shape is not null, returning shape")
+            return shape if (success is None or bool(success)) else None
         elif ext in ['.step', '.stp']:
+            print(f"[import_mesh_shape] Reading STEP file: {file_path}")
             reader = STEPCAFControl_Reader()
             status = reader.ReadFile(file_path)
+            print(f"[import_mesh_shape] STEP ReadFile status: {status}")
             if status == 1:  # Success
                 reader.TransferRoots()
                 shape = reader.OneShape()
+                print(f"[import_mesh_shape] STEP shape returned")
                 return shape
             else:
+                print(f"[import_mesh_shape] STEP ReadFile failed")
                 return None
         else:
-            print(f"Unsupported file format: {ext}")
+            print(f"[import_mesh_shape] Unsupported file format: {ext}")
             return None
-            
     except Exception as e:
-        print(f"Error importing {file_path}: {e}")
+        print(f"[import_mesh_shape] Error importing {file_path}: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
@@ -256,6 +292,7 @@ class ImportConformalCmd(BaseCmd):
         super().__init__()
         self.import_thread = None
         self.original_shape = None
+        self.progress_bar = None
         
     def __del__(self):
         """Destructor to ensure thread cleanup when command object is destroyed."""
@@ -268,13 +305,13 @@ class ImportConformalCmd(BaseCmd):
         try:
             # Clean up any existing thread first
             self._cleanup_thread()
-            
+
             path, _ = QFileDialog.getOpenFileName(
                 mw.win, "Import STL or STEP", filter="CAD files (*.stl *.step *.stp)"
             )
             if not path:
                 return
-                
+
             # Check if file exists
             if not os.path.exists(path):
                 QMessageBox.critical(mw.win, "Error", f"File not found: {path}")
@@ -283,26 +320,26 @@ class ImportConformalCmd(BaseCmd):
             kappa, ok = QInputDialog.getDouble(mw.win, "Conformal Import", "kappa:", 1.0)
             if not ok:
                 return
-            
+
             # Ask for number of threads (optional optimization)
             max_threads = min(32, os.cpu_count() or 1)  # Cap at reasonable limit
             threads, ok_threads = QInputDialog.getInt(
-                mw.win, "Threading Options", 
-                f"Number of threads (1-{max_threads}):", 
+                mw.win, "Threading Options",
+                f"Number of threads (1-{max_threads}):",
                 min(8, max_threads), 1, max_threads
             )
             if not ok_threads:
                 threads = min(8, max_threads)  # Default to 8 threads
-                
+
             # Store references for the thread callbacks
             self.mw = mw
             self.kappa = kappa
             self.file_path = path
             self.n_faces = 0
-            
+
             # Create and start the background import thread
             self.import_thread = ImportThread(path, kappa, threads)
-            
+
             # Connect signals with proper error handling
             try:
                 self.import_thread.progress_update.connect(self._on_progress_update)
@@ -314,13 +351,21 @@ class ImportConformalCmd(BaseCmd):
                 print(f"Warning: Could not connect thread signals: {e}")
                 self._cleanup_thread()
                 return
-            
+
             # Show initial status
             mw.win.statusBar().showMessage(f"Starting import of {os.path.basename(path)}...")
-            
+
+            # Remove any previous 'Add Imported Shape' button
+            if hasattr(self, 'add_shape_btn') and self.add_shape_btn:
+                try:
+                    self.add_shape_btn.deleteLater()
+                except Exception:
+                    pass
+                self.add_shape_btn = None
+
             # Start the background thread
             self.import_thread.start()
-                
+
         except Exception as exc:
             print(f"Critical error in ImportConformalCmd: {exc}")
             self._cleanup_thread()  # Ensure cleanup on any error
@@ -338,7 +383,33 @@ class ImportConformalCmd(BaseCmd):
         """Handle progress updates from the background thread."""
         try:
             if hasattr(self, 'mw') and self.mw:
-                self.mw.win.statusBar().showMessage(message)
+                # Handle progress bar updates
+                if message.startswith("PROGRESS:"):
+                    # Format: PROGRESS:current/total
+                    try:
+                        _, val = message.split(":", 1)
+                        current, total = val.split("/")
+                        current = int(current)
+                        total = int(total)
+                        if self.progress_bar is None:
+                            from PySide6.QtWidgets import QProgressBar
+                            self.progress_bar = QProgressBar()
+                            self.progress_bar.setMinimum(0)
+                            self.progress_bar.setMaximum(total)
+                            self.progress_bar.setValue(current)
+                            self.mw.win.statusBar().addPermanentWidget(self.progress_bar)
+                        else:
+                            self.progress_bar.setMaximum(total)
+                            self.progress_bar.setValue(current)
+                        if current == total:
+                            # Hide progress bar after completion
+                            self.mw.win.statusBar().removeWidget(self.progress_bar)
+                            self.progress_bar.deleteLater()
+                            self.progress_bar = None
+                    except Exception as e:
+                        print(f"Error parsing progress bar update: {e}")
+                else:
+                    self.mw.win.statusBar().showMessage(message)
         except Exception as e:
             print(f"Error updating progress: {e}")
     
@@ -349,36 +420,100 @@ class ImportConformalCmd(BaseCmd):
                 print(f"Import error: {error_message}")
                 QMessageBox.critical(self.mw.win, "Import Error", error_message)
                 self.mw.win.statusBar().showMessage(f"Import failed: {error_message}", 4000)
+                # Hide progress bar if present
+                if self.progress_bar:
+                    self.mw.win.statusBar().removeWidget(self.progress_bar)
+                    self.progress_bar.deleteLater()
+                    self.progress_bar = None
         except Exception as e:
             print(f"Error handling import error: {e}")
-        
         # Clean up the thread on error as well
         self._cleanup_thread()
 
-    def _on_import_complete(self, processed_results, face_count):
-        """Handle successful completion of the import."""
+    def _on_import_complete(self, imported_shape, face_count):
+        """Handle successful completion of the import.
+        'imported_shape' is the TopoDS_Shape object from the import thread.
+        'face_count' is the number of faces processed/counted.
+        """
         try:
-            if hasattr(self, 'mw') and self.mw and self.original_shape:
-                # The results contain face processing results ready for the document
-                self.mw.win.statusBar().showMessage("Adding imported shape to document...")
-                
-                # Add the original shape with conformal processing marker
-                if hasattr(self, 'file_path'):
-                    DOCUMENT.append(Feature("Imported Shape", {"file": self.file_path, "conformal_faces": face_count}, self.original_shape))
-                    
-                    # Display the original shape (conformal processing affects analysis, not visual display)
-                    self.mw.view._display.DisplayShape(self.original_shape, update=False)
-                    rebuild_scene(self.mw.view._display)
-                    
-                    # Final status message
-                    self.mw.win.statusBar().showMessage(
-                        f"Import completed: {os.path.basename(self.file_path)} ({face_count} faces processed)", 4000
-                    )
-                
+            # Ensure MainWindow context and its necessary components are available
+            if not (hasattr(self, 'mw') and self.mw and 
+                    hasattr(self.mw, 'win') and hasattr(self.mw, 'view') and 
+                    hasattr(self.mw.view, '_display')):
+                print("Error: Critical GUI components (mw, win, view, _display) not available in _on_import_complete.")
+                # Cleanup will be handled in the finally block
+                return
+
+            # Check if the imported shape is valid
+            if imported_shape is None or (hasattr(imported_shape, 'IsNull') and imported_shape.IsNull()):
+                # If shape is null, trigger the error path which also handles cleanup
+                self._on_error("Import thread returned a null or invalid shape.")
+                return # _on_error calls _cleanup_thread
+
+            self.mw.win.statusBar().showMessage("Import complete. Click 'Add Imported Shape' to add to document.")
+
+            # Hide progress bar if present
+            if self.progress_bar:
+                self.mw.win.statusBar().removeWidget(self.progress_bar)
+                self.progress_bar.deleteLater()
+                self.progress_bar = None
+
+            # Add a button to the toolbar to allow adding the imported shape
+            from PySide6.QtWidgets import QPushButton
+            if hasattr(self, 'add_shape_btn') and self.add_shape_btn:
+                try:
+                    self.add_shape_btn.deleteLater()
+                except Exception:
+                    pass
+            self.add_shape_btn = QPushButton("Add Imported Shape")
+            self.add_shape_btn.setToolTip("Add the last imported shape to the document")
+            self.add_shape_btn.setEnabled(True)
+            # Add to toolbar (or main window)
+            if hasattr(self.mw, 'win') and hasattr(self.mw.win, 'addToolBar'):
+                # Add to a toolbar if available
+                if not hasattr(self, '_import_toolbar'):
+                    from PySide6.QtWidgets import QToolBar
+                    self._import_toolbar = QToolBar("Import Toolbar")
+                    self.mw.win.addToolBar(self._import_toolbar)
+                self._import_toolbar.addWidget(self.add_shape_btn)
+            else:
+                # Fallback: add to main window layout if possible
+                try:
+                    self.mw.win.layout().addWidget(self.add_shape_btn)
+                except Exception:
+                    pass
+
+            def add_shape_to_doc():
+                file_basename = "Unknown File"
+                if hasattr(self, 'file_path') and self.file_path:
+                    try:
+                        file_basename = os.path.basename(self.file_path)
+                    except Exception:
+                        file_basename = self.file_path
+                DOCUMENT.append(Feature(
+                    f"Imported: {file_basename}",
+                    {"file": getattr(self, 'file_path', 'N/A'), "conformal_faces": face_count},
+                    imported_shape
+                ))
+                rebuild_scene(self.mw.view._display)
+                self.mw.win.statusBar().showMessage(
+                    f"Import completed: {file_basename} ({face_count} faces processed)", 4000
+                )
+                self.add_shape_btn.setEnabled(False)
+
+            self.add_shape_btn.clicked.connect(add_shape_to_doc)
+
         except Exception as e:
-            self._on_error(f"Error displaying imported shape: {str(e)}")
+            # Construct an informative error message
+            error_msg_detail = f"Error during final import completion or display: {str(e)}"
+            file_info = ""
+            if hasattr(self, 'file_path') and self.file_path:
+                try:
+                    file_info = f" (File: {os.path.basename(self.file_path)})"
+                except Exception:
+                    file_info = f" (File: {self.file_path})"
+            self._on_error(f"{error_msg_detail}{file_info}")
         finally:
-            # Clean up the thread
             self._cleanup_thread()
     
     def _cleanup_thread(self):
