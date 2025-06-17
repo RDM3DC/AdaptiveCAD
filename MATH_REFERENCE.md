@@ -2,6 +2,8 @@
 
 This document serves as a reference for the core mathematical concepts and equations used in the AdaptiveCAD project. It's intended to help new developers understand the mathematical foundations of the code.
 
+> **New**: For the complete formal foundation of our geometry system, see the [Adaptive Pi Axioms](ADAPTIVE_PI_AXIOMS.md) document.
+
 ## Table of Contents
 
 1. [Linear Algebra](#1-linear-algebra-linalgpy)
@@ -67,9 +69,11 @@ where $N$ is the unit normal vector.
 #### Curvatures
 $$K = \frac{eg - f^2}{EG - F^2}, \quad H = \frac{Eg + Ge - 2Ff}{2(EG - F^2)}$$
 
-where $K$ is the Gaussian curvature and $H$ is the mean curvature.
+where $K' is the Gaussian curvature and $H$ is the mean curvature.
 
 ## 3. Hyperbolic Geometry (hyperbolic.py)
+
+> **Note**: This section implements concepts from our [Adaptive Pi Axioms](ADAPTIVE_PI_AXIOMS.md), particularly the curve-centric approach to geometry.
 
 ### Adaptive π ratio
 
@@ -126,6 +130,8 @@ $$\min_x \sum f_i(x)^2$$
 $$\begin{bmatrix} M & C^T \\ C & 0 \end{bmatrix} \begin{bmatrix} \ddot{q} \\ \lambda \end{bmatrix} = \begin{bmatrix} b \\ -\dot{C}\dot{q} \end{bmatrix}$$
 
 ## 6. Geodesic Distance & πₐ Metric Kernel
+
+> **Axiom Implementation**: This section implements [Axioms 1, 5, 6 & 8](ADAPTIVE_PI_AXIOMS.md) from our formal Adaptive Pi Geometry, enforcing curvature primacy, continuity, and measurement principles.
 
 ### Metric-based distance
 

@@ -8,6 +8,8 @@
 Below is a *road‑map of the mathematics* you will actually need if you want to write a modern CAD / CAM system completely from scratch and, at the same time, support your **πₐ (“Adaptive Pi”) non‑Euclidean geometry kernel**.
 The list is intentionally grouped as *“modules you will implement”* so you can turn each block into an internal library or namespace.  After each block I give the key formulas, identities, or algorithms you will code, plus notes on typical numerical pitfalls.
 
+> **New**: A complete [axiom set for the Adaptive Pi Geometry](ADAPTIVE_PI_AXIOMS.md) is now available, providing the formal foundation for our curvature-first approach.
+
 ## Repository Overview
 
 This repository contains a minimal Python implementation of key CAD/CAM
@@ -22,7 +24,9 @@ examples and unit tests without a large toolchain.  Current features include:
 - `adaptivecad.analytic_slicer` – helper for analytic B‑rep slicing
 - `adaptivecad.gui.playground` – PySide6 viewer with a rich toolbar for Box,
   Cylinder, Bézier and B‑spline curves, push‑pull editing and export commands
-  (STL, AMA and G‑code). The toolbar now offers constructive tools like Loft, Sweep, Shell and Intersect plus procedural shapes such as Superellipse.
+  (STL, AMA and G‑code). The toolbar now offers constructive tools like Move,
+  Scale, Union, Cut, Intersect, Shell plus advanced parametric shapes like
+  Superellipse, Pi Curve Shell, Helix, Tapered Cylinder, Capsule and Ellipsoid.
 - Command‑line tools `ama_to_gcode_converter.py` and `ama2gcode.py`
 - Example script `example_script.py` demonstrating curve evaluation
 - Unit tests in the `tests` folder (`python -m pytest`)
@@ -322,10 +326,23 @@ For a comprehensive guide to the mathematical foundations of AdaptiveCAD, check 
 
 This reference is especially useful for contributors working on the mathematical core or extending the system with new geometric primitives.
 
-## Environment Status
+## Adaptive Pi Geometry (πₐ)
 
-✅ **Current Setup**: Fully operational with conda environment
-- Python 3.10 with all dependencies installed
-- PySide6 (GUI framework) ✅
-- pythonocc-core (3D kernel) ✅  
-- Core tests passing (8/8) ✅
+The AdaptiveCAD system is built upon the novel concept of "Adaptive Pi Geometry" (πₐ), a curvature-first approach where curves—not straight lines—are the fundamental primitive objects. This approach provides several advantages:
+
+1. **Physical Reality**: Physical objects never contain perfectly straight lines at all scales; πₐ geometry acknowledges this reality
+2. **Computational Efficiency**: Parametric curve representations offer compact, efficient encoding of complex geometry
+3. **Design Flexibility**: Curve-based geometry enables more organic, adaptive forms that respond to physical forces
+4. **Manufacturing Alignment**: CNC toolpaths naturally follow curves; πₐ geometry aligns CAD models with manufacturing reality
+
+The [ADAPTIVE_PI_AXIOMS.md](ADAPTIVE_PI_AXIOMS.md) document provides the complete formal axiom set for this geometry, establishing a rigorous mathematical foundation.
+
+### πₐ Curve Implementation
+
+The AdaptiveCAD playground demonstrates this concept with advanced parametric shapes that exemplify the πₐ approach:
+
+- **Pi Curve Shell**: A cylindrical surface deformed by parametric πₐ functions
+- **Superellipse**: A generalization of ellipses with variable exponents, controlled by the πₐ parameter
+- **Helix/Spiral**: Intrinsically curved paths with constant curvature in certain projections
+
+These shapes showcase how curve-based primitives can generate complex, manufacturably-realistic geometries that traditional CAD systems struggle to represent efficiently.

@@ -1,0 +1,42 @@
+"""Simplified GUI playground with optional dependencies."""
+
+try:
+    import PySide6  # type: ignore
+    from OCC.Display import backend  # type: ignore
+except Exception:  # pragma: no cover - optional GUI deps missing
+    HAS_GUI = False
+else:
+    HAS_GUI = True  # Ensure HAS_GUI is set to True here
+    import numpy as np
+    import traceback
+    from adaptivecad import settings
+    from PySide6.QtWidgets import (
+        QApplication, QMainWindow, QMessageBox
+    )
+
+# Make sure MainWindow is defined regardless of HAS_GUI
+class MainWindow:
+    def __init__(self):
+        if not HAS_GUI:
+            print("GUI dependencies not available. Cannot create MainWindow.")
+            return
+        
+        self.app = QApplication.instance() or QApplication([])
+        self.win = QMainWindow()
+        self.win.setWindowTitle("AdaptiveCAD - Minimal Playground (GUI Fixed)")
+        self.win.resize(800, 600)
+    
+    def run(self):
+        if not HAS_GUI:
+            print("Error: Cannot run GUI without PySide6 and OCC.Display dependencies.")
+            return 1
+        
+        self.win.show()
+        return self.app.exec()
+
+def main() -> None:
+    MainWindow().run()
+
+
+if __name__ == "__main__":  # pragma: no cover - manual execution only
+    main()
