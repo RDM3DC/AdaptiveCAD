@@ -1,0 +1,7 @@
+2025-06-17 03:29:51,302 - __main__ - DEBUG - Starting import of MainWindow
+2025-06-17 03:30:11,639 - matplotlib - DEBUG - matplotlib data path: D:\SuperCAD\AdaptiveCAD\.conda\lib\site-packages\matplotlib\mpl-data
+2025-06-17 03:30:11,655 - matplotlib - DEBUG - CONFIGDIR=C:\Users\RDM3D\.matplotlib
+2025-06-17 03:30:11,655 - matplotlib - DEBUG - interactive is False
+2025-06-17 03:30:11,655 - matplotlib - DEBUG - platform is win32
+2025-06-17 03:30:11,895 - matplotlib - DEBUG - CACHEDIR=C:\Users\RDM3D\.matplotlib
+2025-06-17 03:30:11,895 - matplotlib.font_manager - DEBUG - font search path [WindowsPath('D:/SuperCAD/AdaptiveCAD/.conda/lib/site-packages/matplotlib/mpl-data/fonts/ttf'), WindowsPath('D:/SuperCAD/AdaptiveCAD/.conda/lib/site-packages/matplotlib/mpl-data/fonts/afm'), WindowsPath('D:/SuperCAD/AdaptiveCAD/.conda/lib/site-packages/matplotlib/mpl-data/fonts/pdfcorefonts')]

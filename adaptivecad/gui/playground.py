@@ -7,16 +7,18 @@ except Exception:  # pragma: no cover - optional GUI deps missing
     HAS_GUI = False
 else:
     HAS_GUI = True  # Ensure HAS_GUI is set to True here
+    from math import pi, cos, sin
+    import os
     import sys
     import numpy as np
-    from math import pi, cos, sin
+    import traceback
     from adaptivecad import settings
     from PySide6.QtWidgets import (
         QApplication, QMainWindow, QInputDialog, QMessageBox, QCheckBox, 
         QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QComboBox, 
         QPushButton, QDockWidget, QLineEdit, QToolBar, QToolButton, QMenu
     )
-    from PySide6.QtGui import QAction, QIcon, QCursor  # Added import for QAction
+    from PySide6.QtGui import QAction, QIcon, QCursor, QPixmap  # Added QPixmap for custom icon loading
     from PySide6.QtCore import Qt, QObject, QEvent  # Original import
     from OCC.Core.AIS import AIS_Shape
     from OCC.Core.TopoDS import TopoDS_Face
@@ -83,44 +85,160 @@ else:
             f"plot_nd_slice called with data shape: {getattr(data, 'shape', 'unknown')}"
         )
 
-    class NDSliceWidget(QWidget):
-        """Widget for interactively slicing ND fields."""
-        def __init__(self, ndfield, callback):
-            super().__init__()
-            self.ndfield = ndfield
-            self.callback = callback
-            self.slice_indices = [None] * ndfield.ndim
-            layout = QVBoxLayout()
-            self.controls = []
-            for i, dim in enumerate(ndfield.grid_shape):
-                row = QHBoxLayout()
-                label = QLabel(f"Dim {i+1}")
-                combo = QComboBox()
-                combo.addItem("All", None)
-                for idx in range(dim):
-                    combo.addItem(str(idx), idx)
-                combo.currentIndexChanged.connect(self._make_update_callback(i, combo))
-                row.addWidget(label)
-                row.addWidget(combo)
-                layout.addLayout(row)
-                self.controls.append(combo)
-            update_btn = QPushButton("Update Slice")
-            update_btn.clicked.connect(self.emit_slice)
-            layout.addWidget(update_btn)
-            self.setLayout(layout)
 
-        def _make_update_callback(self, axis, combo):
-            def update(_):
-                val = combo.currentData()
-                self.slice_indices[axis] = val
-            return update
+# --- Advanced NDSliceWidget with PCA and Matplotlib integration ---
+import numpy as np
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, QCheckBox, QGroupBox, QDockWidget
+)
+from PySide6.QtCore import Qt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+from sklearn.decomposition import PCA
 
-        def emit_slice(self):
+class NDSliceWidget(QWidget):
+    """Interactive NDField slicer with axis selection and PCA auto-projection."""
+    def __init__(self, ndfield, callback=None, parent=None):
+        super().__init__(parent)
+        self.ndfield = ndfield
+        self.callback = callback
+        self.slice_indices = [None] * ndfield.ndim
+        self.pca_enabled = False
+        self.axis_x = 0
+        self.axis_y = 1 if ndfield.ndim > 1 else 0
+        self._build_ui()
+        self._update_plot()
+
+    def _build_ui(self):
+        layout = QVBoxLayout()
+
+        # Axis selection controls
+        axis_group = QGroupBox("Axis Selection")
+        axis_layout = QHBoxLayout()
+        self.axis_x_combo = QComboBox()
+        self.axis_y_combo = QComboBox()
+        for i in range(self.ndfield.ndim):
+            self.axis_x_combo.addItem(f"Axis {i}", i)
+            self.axis_y_combo.addItem(f"Axis {i}", i)
+        self.axis_x_combo.setCurrentIndex(self.axis_x)
+        self.axis_y_combo.setCurrentIndex(self.axis_y)
+        self.axis_x_combo.currentIndexChanged.connect(self._on_axis_changed)
+        self.axis_y_combo.currentIndexChanged.connect(self._on_axis_changed)
+        axis_layout.addWidget(QLabel("X:"))
+        axis_layout.addWidget(self.axis_x_combo)
+        axis_layout.addWidget(QLabel("Y:"))
+        axis_layout.addWidget(self.axis_y_combo)
+        axis_group.setLayout(axis_layout)
+        layout.addWidget(axis_group)
+
+        # Slicing controls
+        self.slice_combos = []
+        slice_group = QGroupBox("Slice Selection")
+        slice_layout = QHBoxLayout()
+        for i, dim in enumerate(self.ndfield.grid_shape):
+            if i in (self.axis_x, self.axis_y):
+                self.slice_combos.append(None)
+                continue
+            combo = QComboBox()
+            combo.addItem("All", None)
+            for idx in range(dim):
+                combo.addItem(str(idx), idx)
+            combo.currentIndexChanged.connect(self._make_slice_callback(i, combo))
+            slice_layout.addWidget(QLabel(f"Dim {i}"))
+            slice_layout.addWidget(combo)
+            self.slice_combos.append(combo)
+        slice_group.setLayout(slice_layout)
+        layout.addWidget(slice_group)
+
+        # PCA checkbox
+        self.pca_checkbox = QCheckBox("Auto-project with PCA (best 2D)")
+        self.pca_checkbox.stateChanged.connect(self._on_pca_toggled)
+        layout.addWidget(self.pca_checkbox)
+
+        # Update button
+        update_btn = QPushButton("Update Slice")
+        update_btn.clicked.connect(self._update_plot)
+        layout.addWidget(update_btn)
+
+        # Matplotlib Figure
+        self.fig = Figure(figsize=(4, 4))
+        self.canvas = FigureCanvas(self.fig)
+        layout.addWidget(self.canvas)
+
+        self.setLayout(layout)
+
+    def _make_slice_callback(self, axis, combo):
+        def update(_):
+            val = combo.currentData()
+            self.slice_indices[axis] = val
+        return update
+
+    def _on_axis_changed(self, _):
+        self.axis_x = self.axis_x_combo.currentData()
+        self.axis_y = self.axis_y_combo.currentData()
+        # Rebuild slice controls for new axes
+        for i, combo in enumerate(self.slice_combos):
+            if combo is not None:
+                combo.setEnabled(i not in (self.axis_x, self.axis_y))
+        self._update_plot()
+
+    def _on_pca_toggled(self, state):
+        self.pca_enabled = bool(state)
+        self._update_plot()
+
+    def _get_slice(self):
+        # Build slice tuple for numpy
+        slicer = []
+        for i, dim in enumerate(self.ndfield.grid_shape):
+            if i == self.axis_x or i == self.axis_y:
+                slicer.append(slice(None))
+            else:
+                idx = self.slice_indices[i]
+                slicer.append(idx if idx is not None else slice(None))
+        return tuple(slicer)
+
+    def _update_plot(self):
+        self.fig.clear()
+        ax = self.fig.add_subplot(111)
+        data = self.ndfield.values[self._get_slice()]
+        # If PCA is enabled and ndim > 2, flatten and project
+        if self.pca_enabled and self.ndfield.ndim > 2:
+            # Reshape to (N, D)
+            coords = np.stack(np.meshgrid(*[np.arange(s) for s in data.shape], indexing='ij'), -1).reshape(-1, data.ndim)
+            flat_vals = data.flatten()
+            pca = PCA(n_components=2)
+            coords_2d = pca.fit_transform(coords)
+            sc = ax.scatter(coords_2d[:, 0], coords_2d[:, 1], c=flat_vals, cmap='viridis')
+            self.fig.colorbar(sc, ax=ax)
+            ax.set_title("PCA Projection")
+        else:
+            # Show as image if 2D, else flatten
+            if data.ndim == 2:
+                im = ax.imshow(data, cmap='viridis', origin='lower', aspect='auto')
+                self.fig.colorbar(im, ax=ax)
+                ax.set_title(f"Slice [{self.axis_x}, {self.axis_y}]")
+            else:
+                ax.plot(data.flatten())
+                ax.set_title("1D Slice")
+        self.canvas.draw()
+        if self.callback:
             self.callback(self.slice_indices)
 
     HAS_GUI = True
 
 
+def get_custom_icon(icon_name):
+    """Load a custom icon from the project root directory."""
+    # Get the project root directory (parent of the current directory)
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    icon_path = os.path.join(project_root, f"{icon_name}.png")
+    
+    if os.path.exists(icon_path):
+        return QIcon(icon_path)
+    else:
+        # Fallback to theme icon if custom icon doesn't exist
+        return QIcon.fromTheme(icon_name)
+    
 if not HAS_GUI:
 
 
@@ -607,28 +725,29 @@ class MainWindow:
             self.selected_feature = None
 
     def show_ndfield_slicer(self, ndfield):
-        """Show the NDField slicer dock for a given NDField object."""
-
+        """Show the advanced NDField slicer dock for a given NDField object."""
+        # Remove previous slicer if present
+        if hasattr(self, 'ndfield_slicer_dock') and self.ndfield_slicer_dock is not None:
+            self.ndfield_slicer_dock.setParent(None)
+            self.ndfield_slicer_dock.deleteLater()
         def on_slice_update(slice_indices):
-            data = ndfield.get_slice(slice_indices)
-            plot_nd_slice(data)
-
+            # Optionally handle slice updates (e.g., update other UI)
+            pass
         self.ndfield_slicer = NDSliceWidget(ndfield, on_slice_update)
-        self.win.addDockWidget(Qt.RightDockWidgetArea, self.ndfield_slicer)
+        dock = QDockWidget("NDField Slicer", self.win)
+        dock.setWidget(self.ndfield_slicer)
+        self.win.addDockWidget(Qt.RightDockWidgetArea, dock)
+        self.ndfield_slicer_dock = dock
 
-        # Add NDField Slicer demo action to menu
+    def add_ndfield_slicer_menu(self):
+        """Add NDField Slicer Demo action to the menu bar."""
         ndfield_action = self.win.menuBar().addAction("NDField Slicer Demo")
-
         def launch_ndfield_demo():
-            import numpy as np
             from adaptivecad.ndfield import NDField
-
-            # Example: 4D field, shape (8,8,8,8)
             grid_shape = [8, 8, 8, 8]
             values = np.random.rand(*grid_shape)
             ndfield = NDField(grid_shape, values)
             self.show_ndfield_slicer(ndfield)
-
         ndfield_action.triggered.connect(launch_ndfield_demo)
 
     from adaptivecad.command_defs import BaseCmd
@@ -652,8 +771,8 @@ class MainWindow:
                 pass
 
     """Main Playground window."""
-    
     def __init__(self, existing_app=None) -> None:
+        print("MainWindow.__init__ starting")
         # Initialize attributes
         self.app = None
         self.win = None
@@ -661,6 +780,7 @@ class MainWindow:
         self.current_mode = "Navigate"  # Navigate, Pick, PushPull, Sketch
         self.push_pull_cmd: PushPullFeatureCmd | None = None
         self.initial_drag_pos = None  # For PushPull dragging
+        print("MainWindow attributes initialized")
         
         # Import Qt here to ensure it's defined
         from PySide6.QtCore import Qt
@@ -716,6 +836,9 @@ class MainWindow:
         self.view = qtViewer3d(self.win)
         self.win.setCentralWidget(self.view)
         self.view.show()  # Explicitly show the view
+
+        # Add NDField Slicer menu action
+        self.add_ndfield_slicer_menu()
 
         # Initialize snap marker
         self.current_snap_marker = None
@@ -982,9 +1105,7 @@ class MainWindow:
 
         self.main_toolbar = QToolBar("Main", self.win)
         self.main_toolbar.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-        self.win.addToolBar(Qt.TopToolBarArea, self.main_toolbar)
-
-        # File menu (for export/save)
+        self.win.addToolBar(Qt.TopToolBarArea, self.main_toolbar)        # File menu (for export/save)
         file_menu = QMenu("File", self.win)
         def add_file_action(text, icon_name, cmd_cls):
             act = QAction(QIcon.fromTheme(icon_name), text, self.win)
@@ -992,12 +1113,10 @@ class MainWindow:
             file_menu.addAction(act)
         add_file_action("Export STL", "document-save", ExportStlCmd)
         add_file_action("Export AMA", "document-save", ExportAmaCmd)
-        add_file_action("Export GCode", "document-save", ExportGCodeCmd)
-
-        # --- Import πₐ command ------------------------------------------------
+        add_file_action("Export GCode", "document-save", ExportGCodeCmd)        # --- Import πₐ command ------------------------------------------------
         from adaptivecad.commands.import_conformal import ImportConformalCmd
         import_action = QAction(
-            QIcon.fromTheme("document-open"),
+            get_custom_icon("adashaper"),
             "Import πₐ Conformal",
             self.win,
         )
@@ -1016,23 +1135,24 @@ class MainWindow:
         # Dedicated toolbar button for import
         import_btn = QToolButton(self.win)
         import_btn.setText("Import πₐ")
-        import_btn.setIcon(QIcon.fromTheme("document-open"))
+        import_btn.setIcon(get_custom_icon("adashaper"))
         import_btn.setToolTip(
             "Import file and apply πₐ conformation (prompts for κ)"
         )
         import_btn.clicked.connect(lambda: self.run_cmd(ImportConformalCmd()))
-        self.main_toolbar.addWidget(import_btn)
-
-        # Shapes menu
+        self.main_toolbar.addWidget(import_btn)        # Shapes menu
         shapes_menu = QMenu("Shapes", self.win)
-        def add_shape_action(text, icon_name, cmd_cls):
-            act = QAction(QIcon.fromTheme(icon_name), text, self.win)
+        def add_shape_action(text, icon_name, cmd_cls, use_custom=False):
+            # Use custom icon if specified, otherwise use theme icon
+            icon = get_custom_icon(icon_name) if use_custom else QIcon.fromTheme(icon_name)
+            act = QAction(icon, text, self.win)
             act.triggered.connect(lambda: self.run_cmd(cmd_cls()))
             shapes_menu.addAction(act)
+            
         add_shape_action("Box", "view-cube", NewBoxCmd)
         add_shape_action("Cylinder", "media-optical", NewCylCmd)
-        add_shape_action("Bezier Curve", "draw-bezier-curves", NewBezierCmd)
-        add_shape_action("B-spline Curve", "curve-b-spline", NewBSplineCmd)
+        add_shape_action("Bezier Curve", "adacurve", NewBezierCmd, True)
+        add_shape_action("B-spline Curve", "adacurve", NewBSplineCmd, True)
         add_shape_action("ND Box", "view-list-details", NewNDBoxCmd)
         add_shape_action("ND Field", "view-list-tree", NewNDFieldCmd)
         add_shape_action("Ball", "media-record", NewBallCmd)
@@ -1040,19 +1160,20 @@ class MainWindow:
         add_shape_action("Cone", "media-eject", NewConeCmd)
         add_shape_action("Revolve", "object-rotate-right", RevolveCmd)
         add_shape_action("π‑Square", "draw-rectangle", PiSquareCmd)
-        add_shape_action("Draped Sheet", "view-detailed", DrapedSheetCmd) # Add new command to Shapes menu
+        add_shape_action("Draped Sheet", "adasurface", DrapedSheetCmd, True) # Using custom adasurface icon
+        
         shapes_btn = QToolButton(self.win)
         shapes_btn.setText("Shapes")
-        shapes_btn.setIcon(QIcon.fromTheme("view-cube"))
+        shapes_btn.setIcon(get_custom_icon("adashaper"))  # Using custom adashaper icon
         shapes_btn.setPopupMode(QToolButton.InstantPopup)
         shapes_btn.setMenu(shapes_menu)
-        self.main_toolbar.addWidget(shapes_btn)
-
-        # Tools menu
+        self.main_toolbar.addWidget(shapes_btn)        # Tools menu
         tools_menu = QMenu("Tools", self.win)
 
-        def add_tool_action(text, icon_name, handler):
-            act = QAction(QIcon.fromTheme(icon_name), text, self.win)
+        def add_tool_action(text, icon_name, handler, use_custom=False):
+            # Use custom icon if specified, otherwise use theme icon
+            icon = get_custom_icon(icon_name) if use_custom else QIcon.fromTheme(icon_name)
+            act = QAction(icon, text, self.win)
             act.triggered.connect(handler)
             tools_menu.addAction(act)
 
@@ -1061,9 +1182,9 @@ class MainWindow:
         add_tool_action(
             "Push-Pull", "transform-scale", lambda: self.enter_push_pull_mode()
         )
-        add_tool_action("Union", "list-add", lambda: self.run_cmd(UnionCmd()))
+        add_tool_action("Union", "union", lambda: self.run_cmd(UnionCmd()), True)  # Using custom union icon
         add_tool_action("Cut", "edit-cut", lambda: self.run_cmd(CutCmd()))
-
+        
         def on_delete():
             if self.selected_feature is not None:
                 from adaptivecad.gui.delete_utils import delete_selected_feature
