@@ -242,9 +242,235 @@ def get_custom_icon(icon_name):
 if not HAS_GUI:
 
 
+
+
     class MainWindow:
+        # --- HELIX / SPIRAL SHAPE TOOL (Selectable, parametric) ---
+        from adaptivecad.command_defs import Feature
+        class HelixFeature(Feature):
+            def __init__(self, radius, pitch, height, n_points=250):
+                params = {
+                    "radius": radius,
+                    "pitch": pitch,
+                    "height": height,
+                    "n_points": n_points,
+                }
+                shape = self._make_shape(params)
+                super().__init__("Helix", params, shape)
+
+            @staticmethod
+            def _make_shape(params):
+                from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire
+                from OCC.Core.gp import gp_Pnt
+                import numpy as np
+                radius = params["radius"]
+                pitch = params["pitch"]
+                height = params["height"]
+                n = int(params.get("n_points", 250))
+                ts = np.linspace(0, 2 * np.pi * height / pitch, n)
+                pts = [gp_Pnt(radius * np.cos(t), radius * np.sin(t), pitch * t / (2 * np.pi)) for t in ts]
+                wire = BRepBuilderAPI_MakeWire()
+                for a, b in zip(pts[:-1], pts[1:]):
+                    wire.Add(BRepBuilderAPI_MakeEdge(a, b).Edge())
+                return wire.Wire()
+
+            def rebuild(self):
+                self.shape = self._make_shape(self.params)
+
+        class NewHelixCmd:
+            def __init__(self):
+                pass
+            def run(self, mw):
+                from PySide6.QtWidgets import QDialog, QFormLayout, QDialogButtonBox, QDoubleSpinBox, QSpinBox
+                class ParamDialog(QDialog):
+                    def __init__(self, parent=None):
+                        super().__init__(parent)
+                        self.setWindowTitle("Helix / Spiral Parameters")
+                        layout = QFormLayout(self)
+                        self.radius = QDoubleSpinBox()
+                        self.radius.setRange(0.1, 1000)
+                        self.radius.setValue(20.0)
+                        self.pitch = QDoubleSpinBox()
+                        self.pitch.setRange(0.1, 1000)
+                        self.pitch.setValue(5.0)
+                        self.height = QDoubleSpinBox()
+                        self.height.setRange(0.1, 1000)
+                        self.height.setValue(40.0)
+                        self.n_points = QSpinBox()
+                        self.n_points.setRange(10, 2000)
+                        self.n_points.setValue(250)
+                        layout.addRow("Radius", self.radius)
+                        layout.addRow("Pitch", self.pitch)
+                        layout.addRow("Height", self.height)
+                        layout.addRow("Points", self.n_points)
+                        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+                        buttons.accepted.connect(self.accept)
+                        buttons.rejected.connect(self.reject)
+                        layout.addWidget(buttons)
+                dlg = ParamDialog(mw.win)
+                if not dlg.exec():
+                    return
+                radius = dlg.radius.value()
+                pitch = dlg.pitch.value()
+                height = dlg.height.value()
+                n_points = dlg.n_points.value()
+                feat = HelixFeature(radius, pitch, height, n_points)
+                try:
+                    from adaptivecad.command_defs import DOCUMENT
+                    DOCUMENT.append(feat)
+                except Exception:
+                    pass
+                mw.view._display.EraseAll()
+                mw.view._display.DisplayShape(feat.shape, update=True)
+                mw.view._display.FitAll()
+                mw.win.statusBar().showMessage(f"Helix created: radius={radius}, pitch={pitch}, height={height}", 3000)
+
+        # Register Helix tool after add_shape_tool is defined (moved below)
         """Placeholder when GUI deps are unavailable."""
         pass
+        # --- ELLIPSOID SHAPE TOOL (Selectable, like other shapes) ---
+        class EllipsoidFeature(Feature):
+            def __init__(self, rx, ry, rz):
+                params = {
+                    "rx": rx,
+                    "ry": ry,
+                    "rz": rz,
+                }
+                shape = self._make_shape(params)
+                super().__init__("Ellipsoid", params, shape)
+
+            @staticmethod
+            def _make_shape(params):
+                from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeSphere
+                from OCC.Core.gp import gp_Pnt
+                from OCC.Core.gp import gp_Trsf
+                from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
+                rx = params["rx"]
+                ry = params["ry"]
+                rz = params["rz"]
+                sphere = BRepPrimAPI_MakeSphere(gp_Pnt(0, 0, 0), 1.0).Shape()
+                trsf = gp_Trsf()
+                trsf.SetValues(
+                    rx, 0, 0, 0,
+                    0, ry, 0, 0,
+                    0, 0, rz, 0
+                )
+                ellipsoid = BRepBuilderAPI_Transform(sphere, trsf, True).Shape()
+                return ellipsoid
+
+            def rebuild(self):
+                self.shape = self._make_shape(self.params)
+
+        class NewEllipsoidCmd:
+            def __init__(self):
+                pass
+            def run(self, mw):
+                from PySide6.QtWidgets import QDialog, QFormLayout, QDialogButtonBox, QDoubleSpinBox
+                class ParamDialog(QDialog):
+                    def __init__(self, parent=None):
+                        super().__init__(parent)
+                        self.setWindowTitle("Ellipsoid Parameters")
+                        layout = QFormLayout(self)
+                        self.rx = QDoubleSpinBox()
+                        self.rx.setRange(0.1, 1000)
+                        self.rx.setValue(20.0)
+                        self.ry = QDoubleSpinBox()
+                        self.ry.setRange(0.1, 1000)
+                        self.ry.setValue(10.0)
+                        self.rz = QDoubleSpinBox()
+                        self.rz.setRange(0.1, 1000)
+                        self.rz.setValue(5.0)
+                        layout.addRow("Radius X", self.rx)
+                        layout.addRow("Radius Y", self.ry)
+                        layout.addRow("Radius Z", self.rz)
+                        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+                        buttons.accepted.connect(self.accept)
+                        buttons.rejected.connect(self.reject)
+                        layout.addWidget(buttons)
+                dlg = ParamDialog(mw.win)
+                if not dlg.exec():
+                    return
+                rx = dlg.rx.value()
+                ry = dlg.ry.value()
+                rz = dlg.rz.value()
+                feat = MainWindow.EllipsoidFeature(rx, ry, rz)
+                try:
+                    from adaptivecad.command_defs import DOCUMENT
+                    DOCUMENT.append(feat)
+                except Exception:
+                    pass
+                mw.view._display.EraseAll()
+                mw.view._display.DisplayShape(feat.shape, update=True)
+                mw.view._display.FitAll()
+                mw.win.statusBar().showMessage(f"Ellipsoid created: rx={rx}, ry={ry}, rz={rz}", 3000)
+        # Register Ellipsoid tool after add_shape_tool is defined (moved below)
+
+        # --- CAPSULE / PILL SHAPE TOOL (Selectable, like other shapes) ---
+        class CapsuleFeature(Feature):
+            def __init__(self, height, radius):
+                params = {
+                    "height": height,
+                    "radius": radius,
+                }
+                shape = self._make_shape(params)
+                super().__init__("Capsule", params, shape)
+
+            @staticmethod
+            def _make_shape(params):
+                from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeCylinder, BRepPrimAPI_MakeSphere
+                from OCC.Core.gp import gp_Pnt
+                from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse
+                height = params["height"]
+                radius = params["radius"]
+                cyl_height = max(0.0, height - 2 * radius)
+                cyl = BRepPrimAPI_MakeCylinder(radius, cyl_height).Shape()
+                sph1 = BRepPrimAPI_MakeSphere(gp_Pnt(0, 0, 0), radius, 0, 0.5 * 3.141592653589793).Shape()
+                sph2 = BRepPrimAPI_MakeSphere(gp_Pnt(0, 0, cyl_height), radius, 0.5 * 3.141592653589793, 3.141592653589793).Shape()
+                fuse1 = BRepAlgoAPI_Fuse(cyl, sph1).Shape()
+                capsule = BRepAlgoAPI_Fuse(fuse1, sph2).Shape()
+                return capsule
+
+            def rebuild(self):
+                self.shape = self._make_shape(self.params)
+
+        class NewCapsuleCmd:
+            def __init__(self):
+                pass
+            def run(self, mw):
+                from PySide6.QtWidgets import QDialog, QFormLayout, QDialogButtonBox, QDoubleSpinBox
+                class ParamDialog(QDialog):
+                    def __init__(self, parent=None):
+                        super().__init__(parent)
+                        self.setWindowTitle("Capsule / Pill Parameters")
+                        layout = QFormLayout(self)
+                        self.height = QDoubleSpinBox()
+                        self.height.setRange(1, 1000)
+                        self.height.setValue(40.0)
+                        self.radius = QDoubleSpinBox()
+                        self.radius.setRange(0.1, 1000)
+                        self.radius.setValue(10.0)
+                        layout.addRow("Height", self.height)
+                        layout.addRow("Radius", self.radius)
+                        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+                        buttons.accepted.connect(self.accept)
+                        buttons.rejected.connect(self.reject)
+                        layout.addWidget(buttons)
+                dlg = ParamDialog(mw.win)
+                if not dlg.exec():
+                    return
+                height = dlg.height.value()
+                radius = dlg.radius.value()
+                feat = MainWindow.CapsuleFeature(height, radius)
+                try:
+                    from adaptivecad.command_defs import DOCUMENT
+                    DOCUMENT.append(feat)
+                except Exception:
+                    pass
+                mw.view._display.EraseAll()
+                mw.view._display.DisplayShape(feat.shape, update=True)
+                mw.view._display.FitAll()
+                mw.win.statusBar().showMessage(f"Capsule created: height={height}, radius={radius}", 3000)
+        # Register Capsule tool after add_shape_tool is defined (moved below)
 
     def start_snap_workflow(self):
         self.snap_phase = None
@@ -1105,7 +1331,9 @@ class MainWindow:
 
         self.main_toolbar = QToolBar("Main", self.win)
         self.main_toolbar.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-        self.win.addToolBar(Qt.TopToolBarArea, self.main_toolbar)        # File menu (for export/save)
+        self.win.addToolBar(Qt.TopToolBarArea, self.main_toolbar)
+
+        # File menu (for export/save)
         file_menu = QMenu("File", self.win)
         def add_file_action(text, icon_name, cmd_cls):
             act = QAction(QIcon.fromTheme(icon_name), text, self.win)
@@ -1113,7 +1341,8 @@ class MainWindow:
             file_menu.addAction(act)
         add_file_action("Export STL", "document-save", ExportStlCmd)
         add_file_action("Export AMA", "document-save", ExportAmaCmd)
-        add_file_action("Export GCode", "document-save", ExportGCodeCmd)        # --- Import πₐ command ------------------------------------------------
+        add_file_action("Export GCode", "document-save", ExportGCodeCmd)
+        # --- Import πₐ command ------------------------------------------------
         from adaptivecad.commands.import_conformal import ImportConformalCmd
         import_action = QAction(
             get_custom_icon("adashaper"),
@@ -1140,34 +1369,614 @@ class MainWindow:
             "Import file and apply πₐ conformation (prompts for κ)"
         )
         import_btn.clicked.connect(lambda: self.run_cmd(ImportConformalCmd()))
-        self.main_toolbar.addWidget(import_btn)        # Shapes menu
-        shapes_menu = QMenu("Shapes", self.win)
-        def add_shape_action(text, icon_name, cmd_cls, use_custom=False):
-            # Use custom icon if specified, otherwise use theme icon
+        self.main_toolbar.addWidget(import_btn)        # --- SHAPES TOOLBAR ---
+        self.shapes_toolbar = QToolBar("Shapes", self.win)
+        self.shapes_toolbar.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+        self.win.addToolBar(Qt.TopToolBarArea, self.shapes_toolbar)
+
+        def add_shape_tool(text, icon_name, cmd_cls, use_custom=False):
             icon = get_custom_icon(icon_name) if use_custom else QIcon.fromTheme(icon_name)
-            act = QAction(icon, text, self.win)
-            act.triggered.connect(lambda: self.run_cmd(cmd_cls()))
-            shapes_menu.addAction(act)
-            
-        add_shape_action("Box", "view-cube", NewBoxCmd)
-        add_shape_action("Cylinder", "media-optical", NewCylCmd)
-        add_shape_action("Bezier Curve", "adacurve", NewBezierCmd, True)
-        add_shape_action("B-spline Curve", "adacurve", NewBSplineCmd, True)
-        add_shape_action("ND Box", "view-list-details", NewNDBoxCmd)
-        add_shape_action("ND Field", "view-list-tree", NewNDFieldCmd)
-        add_shape_action("Ball", "media-record", NewBallCmd)
-        add_shape_action("Torus", "preferences-desktop-theme", NewTorusCmd)
-        add_shape_action("Cone", "media-eject", NewConeCmd)
-        add_shape_action("Revolve", "object-rotate-right", RevolveCmd)
-        add_shape_action("π‑Square", "draw-rectangle", PiSquareCmd)
-        add_shape_action("Draped Sheet", "adasurface", DrapedSheetCmd, True) # Using custom adasurface icon
-        
-        shapes_btn = QToolButton(self.win)
-        shapes_btn.setText("Shapes")
-        shapes_btn.setIcon(get_custom_icon("adashaper"))  # Using custom adashaper icon
-        shapes_btn.setPopupMode(QToolButton.InstantPopup)
-        shapes_btn.setMenu(shapes_menu)
-        self.main_toolbar.addWidget(shapes_btn)        # Tools menu
+            btn = QToolButton(self.win)
+            btn.setText(text)
+            btn.setIcon(icon)
+            btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+            btn.clicked.connect(lambda: self.run_cmd(cmd_cls()))
+            self.shapes_toolbar.addWidget(btn)
+
+        # Import Feature class before using it
+        from adaptivecad.command_defs import Feature
+
+        # --- HELIX / SPIRAL SHAPE TOOL (Selectable, parametric) ---
+        class HelixFeature(Feature):
+            def __init__(self, radius, pitch, height, n_points=250):
+                params = {
+                    "radius": radius,
+                    "pitch": pitch,
+                    "height": height,
+                    "n_points": n_points,
+                }
+                shape = self._make_shape(params)
+                super().__init__("Helix", params, shape)
+
+            @staticmethod
+            def _make_shape(params):
+                from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire
+                from OCC.Core.gp import gp_Pnt
+                import numpy as np
+                radius = params["radius"]
+                pitch = params["pitch"]
+                height = params["height"]
+                n = int(params.get("n_points", 250))
+                ts = np.linspace(0, 2 * np.pi * height / pitch, n)
+                pts = [gp_Pnt(radius * np.cos(t), radius * np.sin(t), pitch * t / (2 * np.pi)) for t in ts]
+                wire = BRepBuilderAPI_MakeWire()
+                for a, b in zip(pts[:-1], pts[1:]):
+                    wire.Add(BRepBuilderAPI_MakeEdge(a, b).Edge())
+                return wire.Wire()
+
+            def rebuild(self):
+                self.shape = self._make_shape(self.params)
+
+        class NewHelixCmd:
+            def __init__(self):
+                pass
+            def run(self, mw):
+                from PySide6.QtWidgets import QDialog, QFormLayout, QDialogButtonBox, QDoubleSpinBox, QSpinBox
+                class ParamDialog(QDialog):
+                    def __init__(self, parent=None):
+                        super().__init__(parent)
+                        self.setWindowTitle("Helix / Spiral Parameters")
+                        layout = QFormLayout(self)
+                        self.radius = QDoubleSpinBox()
+                        self.radius.setRange(0.1, 1000)
+                        self.radius.setValue(20.0)
+                        self.pitch = QDoubleSpinBox()
+                        self.pitch.setRange(0.1, 1000)
+                        self.pitch.setValue(5.0)
+                        self.height = QDoubleSpinBox()
+                        self.height.setRange(0.1, 1000)
+                        self.height.setValue(40.0)
+                        self.n_points = QSpinBox()
+                        self.n_points.setRange(10, 2000)
+                        self.n_points.setValue(250)
+                        layout.addRow("Radius", self.radius)
+                        layout.addRow("Pitch", self.pitch)
+                        layout.addRow("Height", self.height)
+                        layout.addRow("Points", self.n_points)
+                        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+                        buttons.accepted.connect(self.accept)
+                        buttons.rejected.connect(self.reject)
+                        layout.addWidget(buttons)
+                dlg = ParamDialog(mw.win)
+                if not dlg.exec():
+                    return
+                radius = dlg.radius.value()
+                pitch = dlg.pitch.value()
+                height = dlg.height.value()
+                n_points = dlg.n_points.value()
+                feat = HelixFeature(radius, pitch, height, n_points)
+                try:
+                    from adaptivecad.command_defs import DOCUMENT
+                    DOCUMENT.append(feat)
+                except Exception:
+                    pass
+                mw.view._display.EraseAll()
+                mw.view._display.DisplayShape(feat.shape, update=True)
+                mw.view._display.FitAll()
+                mw.win.statusBar().showMessage(f"Helix created: radius={radius}, pitch={pitch}, height={height}", 3000)
+
+        # --- ELLIPSOID SHAPE TOOL (Selectable, like other shapes) ---
+        class EllipsoidFeature(Feature):
+            def __init__(self, rx, ry, rz):
+                params = {
+                    "rx": rx,
+                    "ry": ry,
+                    "rz": rz,
+                }
+                shape = self._make_shape(params)
+                super().__init__("Ellipsoid", params, shape)
+
+            @staticmethod
+            def _make_shape(params):
+                from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeSphere
+                from OCC.Core.gp import gp_Pnt, gp_Trsf
+                from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
+                rx = params["rx"]
+                ry = params["ry"]
+                rz = params["rz"]
+                sphere = BRepPrimAPI_MakeSphere(gp_Pnt(0, 0, 0), 1.0).Shape()
+                trsf = gp_Trsf()
+                trsf.SetValues(
+                    rx, 0, 0, 0,
+                    0, ry, 0, 0,
+                    0, 0, rz, 0
+                )
+                ellipsoid = BRepBuilderAPI_Transform(sphere, trsf, True).Shape()
+                return ellipsoid
+
+            def rebuild(self):
+                self.shape = self._make_shape(self.params)
+
+        class NewEllipsoidCmd:
+            def __init__(self):
+                pass
+            def run(self, mw):
+                from PySide6.QtWidgets import QDialog, QFormLayout, QDialogButtonBox, QDoubleSpinBox
+                class ParamDialog(QDialog):
+                    def __init__(self, parent=None):
+                        super().__init__(parent)
+                        self.setWindowTitle("Ellipsoid Parameters")
+                        layout = QFormLayout(self)
+                        self.rx = QDoubleSpinBox()
+                        self.rx.setRange(0.1, 1000)
+                        self.rx.setValue(20.0)
+                        self.ry = QDoubleSpinBox()
+                        self.ry.setRange(0.1, 1000)
+                        self.ry.setValue(10.0)
+                        self.rz = QDoubleSpinBox()
+                        self.rz.setRange(0.1, 1000)
+                        self.rz.setValue(5.0)
+                        layout.addRow("Radius X", self.rx)
+                        layout.addRow("Radius Y", self.ry)
+                        layout.addRow("Radius Z", self.rz)
+                        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+                        buttons.accepted.connect(self.accept)
+                        buttons.rejected.connect(self.reject)
+                        layout.addWidget(buttons)
+                dlg = ParamDialog(mw.win)
+                if not dlg.exec():
+                    return
+                rx = dlg.rx.value()
+                ry = dlg.ry.value()
+                rz = dlg.rz.value()
+                feat = EllipsoidFeature(rx, ry, rz)
+                try:
+                    from adaptivecad.command_defs import DOCUMENT
+                    DOCUMENT.append(feat)
+                except Exception:
+                    pass
+                mw.view._display.EraseAll()
+                mw.view._display.DisplayShape(feat.shape, update=True)
+                mw.view._display.FitAll()
+                mw.win.statusBar().showMessage(f"Ellipsoid created: rx={rx}, ry={ry}, rz={rz}", 3000)
+
+        # --- CAPSULE / PILL SHAPE TOOL (Selectable, like other shapes) ---
+        class CapsuleFeature(Feature):
+            def __init__(self, height, radius):
+                params = {
+                    "height": height,
+                    "radius": radius,
+                }
+                shape = self._make_shape(params)
+                super().__init__("Capsule", params, shape)
+
+            @staticmethod
+            def _make_shape(params):
+                from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeCylinder, BRepPrimAPI_MakeSphere
+                from OCC.Core.gp import gp_Pnt
+                from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse
+                height = params["height"]
+                radius = params["radius"]
+                cyl_height = max(0.0, height - 2 * radius)
+                cyl = BRepPrimAPI_MakeCylinder(radius, cyl_height).Shape()
+                sph1 = BRepPrimAPI_MakeSphere(gp_Pnt(0, 0, 0), radius, 0, 0.5 * np.pi).Shape()
+                sph2 = BRepPrimAPI_MakeSphere(gp_Pnt(0, 0, cyl_height), radius, 0.5 * np.pi, np.pi).Shape()
+                fuse1 = BRepAlgoAPI_Fuse(cyl, sph1).Shape()
+                capsule = BRepAlgoAPI_Fuse(fuse1, sph2).Shape()
+                return capsule
+
+            def rebuild(self):
+                self.shape = self._make_shape(self.params)
+
+        class NewCapsuleCmd:
+            def __init__(self):
+                pass
+            def run(self, mw):
+                from PySide6.QtWidgets import QDialog, QFormLayout, QDialogButtonBox, QDoubleSpinBox
+                class ParamDialog(QDialog):
+                    def __init__(self, parent=None):
+                        super().__init__(parent)
+                        self.setWindowTitle("Capsule / Pill Parameters")
+                        layout = QFormLayout(self)
+                        self.height = QDoubleSpinBox()
+                        self.height.setRange(1, 1000)
+                        self.height.setValue(40.0)
+                        self.radius = QDoubleSpinBox()
+                        self.radius.setRange(0.1, 1000)
+                        self.radius.setValue(10.0)
+                        layout.addRow("Height", self.height)
+                        layout.addRow("Radius", self.radius)
+                        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+                        buttons.accepted.connect(self.accept)
+                        buttons.rejected.connect(self.reject)
+                        layout.addWidget(buttons)
+                dlg = ParamDialog(mw.win)
+                if not dlg.exec():
+                    return
+                height = dlg.height.value()
+                radius = dlg.radius.value()
+                feat = CapsuleFeature(height, radius)
+                try:
+                    from adaptivecad.command_defs import DOCUMENT
+                    DOCUMENT.append(feat)
+                except Exception:
+                    pass
+                mw.view._display.EraseAll()
+                mw.view._display.DisplayShape(feat.shape, update=True)
+                mw.view._display.FitAll()
+                mw.win.statusBar().showMessage(f"Capsule created: height={height}, radius={radius}", 3000)
+
+        # Register advanced shape tools after add_shape_tool is defined
+        add_shape_tool("Helix", "media-playlist-shuffle", NewHelixCmd)
+        add_shape_tool("Ellipsoid", "media-record", NewEllipsoidCmd)
+        add_shape_tool("Capsule", "media-record", NewCapsuleCmd)
+
+        # --- ADAPTIVE PI CURVE SHELL TOOL ---
+        from adaptivecad.command_defs import Feature
+        class PiCurveShellFeature(Feature):
+            def __init__(self, base_radius, height, freq, amp, phase, n_u=60, n_v=30):
+                params = {
+                    "base_radius": base_radius,
+                    "height": height,
+                    "freq": freq,
+                    "amp": amp,
+                    "phase": phase,
+                    "n_u": n_u,
+                    "n_v": n_v,
+                }
+                shape = self._make_shape(params)
+                super().__init__("PiCurveShell", params, shape)
+
+            @staticmethod
+            def _make_shape(params):
+                from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeFace
+                from OCC.Core.gp import gp_Pnt
+                import numpy as np
+                base_radius = params["base_radius"]
+                height = params["height"]
+                freq = params["freq"]
+                amp = params["amp"]
+                phase = params["phase"]
+                n_u = params["n_u"]
+                n_v = params["n_v"]
+                # Generate points for a deformed cylinder shell
+                us = np.linspace(0, 2 * np.pi, n_u)
+                vs = np.linspace(0, height, n_v)
+                def pi_curve(u):
+                    # Example: πₐ curve as a sine deformation
+                    return amp * np.sin(freq * u + phase)
+                pts = []
+                for v in vs:
+                    row = []
+                    for u in us:
+                        r = base_radius + pi_curve(u)
+                        x = r * np.cos(u)
+                        y = r * np.sin(u)
+                        z = v
+                        row.append(gp_Pnt(x, y, z))
+                    pts.append(row)
+                # Create faces between grid points
+                from OCC.Core.TColgp import TColgp_Array2OfPnt
+                arr = TColgp_Array2OfPnt(1, n_u, 1, n_v)
+                for i in range(n_u):
+                    for j in range(n_v):
+                        arr.SetValue(i+1, j+1, pts[j][i])
+                face = BRepBuilderAPI_MakeFace(arr, 1e-6).Face()
+                return face
+
+            def rebuild(self):
+                self.shape = self._make_shape(self.params)
+
+        class NewPiCurveShellCmd:
+            def __init__(self):
+                pass
+            def run(self, mw):
+                from PySide6.QtWidgets import QDialog, QFormLayout, QDialogButtonBox, QDoubleSpinBox, QSpinBox
+                class ParamDialog(QDialog):
+                    def __init__(self, parent=None):
+                        super().__init__(parent)
+                        self.setWindowTitle("Adaptive Pi Curve Shell Parameters")
+                        layout = QFormLayout(self)
+                        self.base_radius = QDoubleSpinBox()
+                        self.base_radius.setRange(0.1, 1000)
+                        self.base_radius.setValue(20.0)
+                        self.height = QDoubleSpinBox()
+                        self.height.setRange(0.1, 1000)
+                        self.height.setValue(40.0)
+                        self.freq = QDoubleSpinBox()
+                        self.freq.setRange(0.1, 20.0)
+                        self.freq.setValue(3.0)
+                        self.amp = QDoubleSpinBox()
+                        self.amp.setRange(0.0, 20.0)
+                        self.amp.setValue(5.0)
+                        self.phase = QDoubleSpinBox()
+                        self.phase.setRange(-10.0, 10.0)
+                        self.phase.setValue(0.0)
+                        self.n_u = QSpinBox()
+                        self.n_u.setRange(8, 200)
+                        self.n_u.setValue(60)
+                        self.n_v = QSpinBox()
+                        self.n_v.setRange(4, 100)
+                        self.n_v.setValue(30)
+                        layout.addRow("Base Radius", self.base_radius)
+                        layout.addRow("Height", self.height)
+                        layout.addRow("Frequency (πₐ)", self.freq)
+                        layout.addRow("Amplitude", self.amp)
+                        layout.addRow("Phase", self.phase)
+                        layout.addRow("Segments U", self.n_u)
+                        layout.addRow("Segments V", self.n_v)
+                        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+                        buttons.accepted.connect(self.accept)
+                        buttons.rejected.connect(self.reject)
+                        layout.addWidget(buttons)
+                dlg = ParamDialog(mw.win)
+                if not dlg.exec():
+                    return
+                base_radius = dlg.base_radius.value()
+                height = dlg.height.value()
+                freq = dlg.freq.value()
+                amp = dlg.amp.value()
+                phase = dlg.phase.value()
+                n_u = dlg.n_u.value()
+                n_v = dlg.n_v.value()
+                feat = PiCurveShellFeature(base_radius, height, freq, amp, phase, n_u, n_v)
+                try:
+                    from adaptivecad.command_defs import DOCUMENT
+                    DOCUMENT.append(feat)
+                except Exception:
+                    pass
+                mw.view._display.EraseAll()
+                mw.view._display.DisplayShape(feat.shape, update=True)
+                mw.view._display.FitAll()
+                mw.win.statusBar().showMessage(f"Pi Curve Shell created: r={base_radius}, h={height}, freq={freq}, amp={amp}", 3000)
+
+        add_shape_tool("Pi Curve Shell", "adacurve", NewPiCurveShellCmd, True)
+
+        # Capsule tool is now registered below using add_shape_tool
+
+        # --- TAPERED CYLINDER / CONE SHAPE TOOL ---
+        from adaptivecad.command_defs import Feature
+        class TaperedCylinderFeature(Feature):
+            def __init__(self, height, radius1, radius2):
+                params = {
+                    "height": height,
+                    "radius1": radius1,
+                    "radius2": radius2,
+                }
+                shape = self._make_shape(params)
+                super().__init__("Tapered Cylinder", params, shape)
+
+            @staticmethod
+            def _make_shape(params):
+                from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeCone
+                height = params["height"]
+                r1 = params["radius1"]
+                r2 = params["radius2"]
+                # OCC's MakeCone: (bottom_radius, top_radius, height)
+                return BRepPrimAPI_MakeCone(r1, r2, height).Shape()
+
+            def rebuild(self):
+                self.shape = self._make_shape(self.params)
+
+        class NewTaperedCylinderCmd:
+            def __init__(self):
+                pass
+            def run(self, mw):
+                from PySide6.QtWidgets import QDialog, QFormLayout, QDialogButtonBox, QDoubleSpinBox
+                class ParamDialog(QDialog):
+                    def __init__(self, parent=None):
+                        super().__init__(parent)
+                        self.setWindowTitle("Tapered Cylinder / Cone Parameters")
+                        layout = QFormLayout(self)
+                        self.height = QDoubleSpinBox()
+                        self.height.setRange(1, 1000)
+                        self.height.setValue(40.0)
+                        self.radius1 = QDoubleSpinBox()
+                        self.radius1.setRange(0, 1000)
+                        self.radius1.setValue(10.0)
+                        self.radius2 = QDoubleSpinBox()
+                        self.radius2.setRange(0, 1000)
+                        self.radius2.setValue(5.0)
+                        layout.addRow("Height", self.height)
+                        layout.addRow("Bottom Radius", self.radius1)
+                        layout.addRow("Top Radius", self.radius2)
+                        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+                        buttons.accepted.connect(self.accept)
+                        buttons.rejected.connect(self.reject)
+                        layout.addWidget(buttons)
+                dlg = ParamDialog(mw.win)
+                if not dlg.exec():
+                    return
+                height = dlg.height.value()
+                radius1 = dlg.radius1.value()
+                radius2 = dlg.radius2.value()
+                feat = TaperedCylinderFeature(height, radius1, radius2)
+                # Add to document if available
+                try:
+                    from adaptivecad.command_defs import DOCUMENT
+                    DOCUMENT.append(feat)
+                except Exception:
+                    pass
+                # Clear previous shapes for consistency with other shape tools
+                mw.view._display.EraseAll()
+                mw.view._display.DisplayShape(feat.shape, update=True)
+                mw.view._display.FitAll()
+                mw.win.statusBar().showMessage(f"Tapered Cylinder created: height={height}, r1={radius1}, r2={radius2}", 3000)
+
+
+        add_shape_tool("Box", "view-cube", NewBoxCmd)
+        add_shape_tool("Cylinder", "media-optical", NewCylCmd)
+        add_shape_tool("Tapered Cylinder", "media-eject", NewTaperedCylinderCmd)
+        add_shape_tool("Bezier Curve", "adacurve", NewBezierCmd, True)
+        add_shape_tool("B-spline Curve", "adacurve", NewBSplineCmd, True)
+        add_shape_tool("ND Box", "cube1", NewNDBoxCmd, True)
+        add_shape_tool("ND Field", "view-list-tree", NewNDFieldCmd)
+        add_shape_tool("Ball", "media-record", NewBallCmd)
+        add_shape_tool("Torus", "preferences-desktop-theme", NewTorusCmd)
+        add_shape_tool("Cone", "media-eject", NewConeCmd)
+        add_shape_tool("Revolve", "object-rotate-right", RevolveCmd)
+
+        # --- ROUNDED BOX SHAPE TOOL (Selectable, like other shapes) ---
+        from adaptivecad.command_defs import Feature
+        class RoundedBoxFeature(Feature):
+            def __init__(self, length, width, height, fillet):
+                params = {
+                    "length": length,
+                    "width": width,
+                    "height": height,
+                    "fillet": fillet,
+                }
+                shape = self._make_shape(params)
+                super().__init__("Rounded Box", params, shape)
+
+            @staticmethod
+            def _make_shape(params):
+                from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
+                from OCC.Core.BRepFilletAPI import BRepFilletAPI_MakeFillet
+                from OCC.Core.TopExp import TopExp_Explorer
+                from OCC.Core.TopAbs import TopAbs_EDGE
+                length = params["length"]
+                width = params["width"]
+                height = params["height"]
+                fillet = params["fillet"]
+                box = BRepPrimAPI_MakeBox(length, width, height).Shape()
+                if fillet > 0:
+                    mk_fillet = BRepFilletAPI_MakeFillet(box)
+                    exp = TopExp_Explorer(box, TopAbs_EDGE)
+                    while exp.More():
+                        edge = exp.Current()
+                        mk_fillet.Add(fillet, edge)
+                        exp.Next()
+                    return mk_fillet.Shape()
+                else:
+                    return box
+
+            def rebuild(self):
+                self.shape = self._make_shape(self.params)
+
+        class NewRoundedBoxCmd:
+            def __init__(self):
+                pass
+            def run(self, mw):
+                from PySide6.QtWidgets import QDialog, QFormLayout, QDialogButtonBox, QDoubleSpinBox
+                class ParamDialog(QDialog):
+                    def __init__(self, parent=None):
+                        super().__init__(parent)
+                        self.setWindowTitle("Rounded Box Parameters")
+                        layout = QFormLayout(self)
+                        self.length = QDoubleSpinBox()
+                        self.length.setRange(1, 1000)
+                        self.length.setValue(40.0)
+                        self.width = QDoubleSpinBox()
+                        self.width.setRange(1, 1000)
+                        self.width.setValue(30.0)
+                        self.height = QDoubleSpinBox()
+                        self.height.setRange(1, 1000)
+                        self.height.setValue(20.0)
+                        self.fillet = QDoubleSpinBox()
+                        self.fillet.setRange(0, 100)
+                        self.fillet.setValue(4.0)
+                        layout.addRow("Length", self.length)
+                        layout.addRow("Width", self.width)
+                        layout.addRow("Height", self.height)
+                        layout.addRow("Fillet Radius", self.fillet)
+                        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+                        buttons.accepted.connect(self.accept)
+                        buttons.rejected.connect(self.reject)
+                        layout.addWidget(buttons)
+                dlg = ParamDialog(mw.win)
+                if not dlg.exec():
+                    return
+                length = dlg.length.value()
+                width = dlg.width.value()
+                height = dlg.height.value()
+                fillet = dlg.fillet.value()
+                feat = RoundedBoxFeature(length, width, height, fillet)
+                # Add to document if available
+                try:
+                    from adaptivecad.command_defs import DOCUMENT
+                    DOCUMENT.append(feat)
+                except Exception:
+                    pass
+                # Clear previous shapes for consistency with other shape tools
+                mw.view._display.EraseAll()
+                mw.view._display.DisplayShape(feat.shape, update=True)
+                mw.view._display.FitAll()
+                mw.win.statusBar().showMessage(f"Rounded Box created: {length}×{width}×{height}, fillet={fillet}", 3000)
+        add_shape_tool("Rounded Box", "view-cube", NewRoundedBoxCmd)
+
+        # --- TAPERED CYLINDER / CONE SHAPE TOOL (Selectable, like other shapes) ---
+        class TaperedCylinderFeature(Feature):
+            def __init__(self, height, radius1, radius2):
+                params = {
+                    "height": height,
+                    "radius1": radius1,
+                    "radius2": radius2,
+                }
+                shape = self._make_shape(params)
+                super().__init__("Tapered Cylinder", params, shape)
+
+            @staticmethod
+            def _make_shape(params):
+                from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeCone
+                height = params["height"]
+                radius1 = params["radius1"]
+                radius2 = params["radius2"]
+                # OCC expects bottom radius, top radius, height
+                return BRepPrimAPI_MakeCone(radius1, radius2, height).Shape()
+
+            def rebuild(self):
+                self.shape = self._make_shape(self.params)
+
+        class NewTaperedCylinderCmd:
+            def __init__(self):
+                pass
+            def run(self, mw):
+                from PySide6.QtWidgets import QDialog, QFormLayout, QDialogButtonBox, QDoubleSpinBox
+                class ParamDialog(QDialog):
+                    def __init__(self, parent=None):
+                        super().__init__(parent)
+                        self.setWindowTitle("Tapered Cylinder / Cone Parameters")
+                        layout = QFormLayout(self)
+                        self.height = QDoubleSpinBox()
+                        self.height.setRange(1, 1000)
+                        self.height.setValue(40.0)
+                        self.radius1 = QDoubleSpinBox()
+                        self.radius1.setRange(0, 1000)
+                        self.radius1.setValue(10.0)
+                        self.radius2 = QDoubleSpinBox()
+                        self.radius2.setRange(0, 1000)
+                        self.radius2.setValue(5.0)
+                        layout.addRow("Height", self.height)
+                        layout.addRow("Bottom Radius", self.radius1)
+                        layout.addRow("Top Radius", self.radius2)
+                        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+                        buttons.accepted.connect(self.accept)
+                        buttons.rejected.connect(self.reject)
+                        layout.addWidget(buttons)
+                dlg = ParamDialog(mw.win)
+                if not dlg.exec():
+                    return
+                height = dlg.height.value()
+                radius1 = dlg.radius1.value()
+                radius2 = dlg.radius2.value()
+                feat = TaperedCylinderFeature(height, radius1, radius2)
+                # Add to document if available
+                try:
+                    from adaptivecad.command_defs import DOCUMENT
+                    DOCUMENT.append(feat)
+                except Exception:
+                    pass
+                # Clear previous shapes for consistency with other shape tools
+                mw.view._display.EraseAll()
+                mw.view._display.DisplayShape(feat.shape, update=True)
+                mw.view._display.FitAll()
+                mw.win.statusBar().showMessage(f"Tapered Cylinder created: height={height}, bottom radius={radius1}, top radius={radius2}", 3000)
+        add_shape_tool("Tapered Cylinder", "media-eject", NewTaperedCylinderCmd)
+        add_shape_tool("π‑Square", "draw-rectangle", PiSquareCmd)
+        add_shape_tool("Draped Sheet", "adasurface", DrapedSheetCmd, True)
+
+        # Tools menu
         tools_menu = QMenu("Tools", self.win)
 
         def add_tool_action(text, icon_name, handler, use_custom=False):
