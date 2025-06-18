@@ -6,8 +6,8 @@ light cone exploration, and curvature simulation capabilities.
 
 import numpy as np
 import math
-from typing import List, Tuple, Optional, Dict, Any
-from dataclasses import dataclass
+from typing import List, Tuple, Optional, Dict, Any, Callable
+from dataclasses import dataclass, field
 
 try:
     from adaptivecad.spacetime import Event, minkowski_interval, light_cone, apply_boost
@@ -317,6 +317,36 @@ class SpacetimeVisualizationCmd:
                     buttons.accepted.connect(self.accept)
                     buttons.rejected.connect(self.reject)
                     layout.addRow(buttons)
+                    
+                    # Add unselect button
+                    from PySide6.QtWidgets import QPushButton, QHBoxLayout, QWidget
+                    button_widget = QWidget()
+                    button_layout = QHBoxLayout(button_widget)
+                    
+                    self.unselect_button = QPushButton("Unselect All Objects")
+                    self.unselect_button.clicked.connect(self.unselect_all_objects)
+                    button_layout.addWidget(self.unselect_button)
+                    
+                    layout.addRow("Actions:", button_widget)
+                
+                def unselect_all_objects(self):
+                    """Unselect all objects in the display."""
+                    try:
+                        # Get the main window from parent hierarchy
+                        parent = self.parent()
+                        while parent and not hasattr(parent, 'view'):
+                            parent = parent.parent()
+                        
+                        if parent and hasattr(parent, 'view') and hasattr(parent.view, '_display'):
+                            parent.view._display.ClearSelected()
+                            parent.view._display.Context.ClearSelected(True)
+                            parent.view._display.Repaint()
+                            
+                        # Update status
+                        if parent and hasattr(parent, 'statusBar'):
+                            parent.statusBar().showMessage("All objects unselected", 2000)
+                    except Exception as e:
+                        print(f"Error unselecting objects: {e}")
             
             dlg = LightConeDialog(mw.win)
             if not dlg.exec():
@@ -448,6 +478,36 @@ class LightConeDisplayBoxCmd:
                     buttons.accepted.connect(self.accept)
                     buttons.rejected.connect(self.reject)
                     layout.addRow(buttons)
+                    
+                    # Add unselect button
+                    from PySide6.QtWidgets import QPushButton, QHBoxLayout, QWidget
+                    button_widget = QWidget()
+                    button_layout = QHBoxLayout(button_widget)
+                    
+                    self.unselect_button = QPushButton("Unselect All Objects")
+                    self.unselect_button.clicked.connect(self.unselect_all_objects)
+                    button_layout.addWidget(self.unselect_button)
+                    
+                    layout.addRow("Actions:", button_widget)
+                
+                def unselect_all_objects(self):
+                    """Unselect all objects in the display."""
+                    try:
+                        # Get the main window from parent hierarchy
+                        parent = self.parent()
+                        while parent and not hasattr(parent, 'view'):
+                            parent = parent.parent()
+                        
+                        if parent and hasattr(parent, 'view') and hasattr(parent.view, '_display'):
+                            parent.view._display.ClearSelected()
+                            parent.view._display.Context.ClearSelected(True)
+                            parent.view._display.Repaint()
+                            
+                        # Update status
+                        if parent and hasattr(parent, 'statusBar'):
+                            parent.statusBar().showMessage("All objects unselected", 2000)
+                    except Exception as e:
+                        print(f"Error unselecting objects: {e}")
             
             dlg = DisplayBoxDialog(mw.win)
             if not dlg.exec():
@@ -600,4 +660,796 @@ class LightConeDisplayBoxCmd:
             return []
 
 
-# ...existing code...
+def unselect_all_objects_utility(display_object):
+    """Utility function to unselect all objects from any display object.
+    
+    Args:
+        display_object: The display object (usually mw.view._display)
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        if hasattr(display_object, 'ClearSelected'):
+            display_object.ClearSelected()
+            
+        if hasattr(display_object, 'Context'):
+            display_object.Context.ClearSelected(True)
+            
+        if hasattr(display_object, 'Repaint'):
+            display_object.Repaint()
+            
+        return True
+        
+    except Exception as e:
+        print(f"Error in unselect_all_objects_utility: {e}")
+        return False
+
+
+class UnselectAllObjectsCmd:
+    """Command to unselect all objects in the display."""
+    
+    def __init__(self):
+        self.name = "Unselect All Objects"
+        
+    def run(self, mw):
+        """Unselect all objects in the main window display."""
+        try:
+            if hasattr(mw, 'view') and hasattr(mw.view, '_display'):
+                # Clear selection in the display
+                mw.view._display.ClearSelected()
+                
+                # Also clear from context if available
+                if hasattr(mw.view._display, 'Context'):
+                    mw.view._display.Context.ClearSelected(True)
+                
+                # Repaint the display to show changes
+                mw.view._display.Repaint()
+                
+                # Update status bar
+                if hasattr(mw, 'win') and hasattr(mw.win, 'statusBar'):
+                    mw.win.statusBar().showMessage("All objects unselected", 2000)
+                else:
+                    print("All objects unselected")
+                    
+            else:
+                error_msg = "No display available for unselecting objects"
+                if hasattr(mw, 'win'):
+                    from PySide6.QtWidgets import QMessageBox
+                    QMessageBox.information(mw.win, "Information", error_msg)
+                else:
+                    print(error_msg)
+                    
+        except Exception as e:
+            error_msg = f"Error unselecting objects: {str(e)}"
+            if hasattr(mw, 'win'):
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.critical(mw.win, "Error", error_msg)
+            else:
+                print(error_msg)
+
+
+class ToolbarUnselectCmd:
+    """Toolbar command to unselect all objects and clear selection errors."""
+    
+    def __init__(self):
+        self.name = "Unselect All"
+        self.tooltip = "Unselect all objects and clear selection errors"
+        self.icon = None  # Can be set to an icon path if available
+        self.shortcut = "Ctrl+D"  # Keyboard shortcut
+        
+    def run(self, mw):
+        """Execute the unselect command from toolbar."""
+        try:
+            success = False
+            
+            # Method 1: Try clearing through the display
+            if hasattr(mw, 'view') and hasattr(mw.view, '_display'):
+                display = mw.view._display
+                
+                # Clear selected objects
+                if hasattr(display, 'ClearSelected'):
+                    display.ClearSelected()
+                    success = True
+                
+                # Clear from interactive context
+                if hasattr(display, 'Context'):
+                    try:
+                        display.Context.ClearSelected(True)
+                        # Also try to clear any highlighted objects
+                        if hasattr(display.Context, 'ClearDetected'):
+                            display.Context.ClearDetected()
+                    except:
+                        pass
+                
+                # Clear any error highlighting
+                if hasattr(display, 'EraseSelected'):
+                    try:
+                        display.EraseSelected()
+                    except:
+                        pass
+                
+                # Force repaint to clear visual artifacts
+                if hasattr(display, 'Repaint'):
+                    display.Repaint()
+                elif hasattr(display, 'Update'):
+                    display.Update()
+                
+                # Try to fit all objects in view to refresh display
+                if hasattr(display, 'FitAll'):
+                    try:
+                        display.FitAll()
+                    except:
+                        pass
+            
+            # Method 2: Try clearing through document if available
+            try:
+                from adaptivecad.command_defs import DOCUMENT
+                if DOCUMENT:
+                    # Clear any selection state in document features
+                    for feature in DOCUMENT:
+                        if hasattr(feature, 'selected'):
+                            feature.selected = False
+            except ImportError:
+                pass
+            
+            # Method 3: Try to clear Qt selection models if available
+            if hasattr(mw, 'win'):
+                try:
+                    # Clear any QTreeView or QListView selections
+                    for child in mw.win.findChildren('QAbstractItemView'):
+                        if hasattr(child, 'clearSelection'):
+                            child.clearSelection()
+                except:
+                    pass
+            
+            # Update status with feedback
+            if hasattr(mw, 'win') and hasattr(mw.win, 'statusBar'):
+                if success:
+                    mw.win.statusBar().showMessage("All objects unselected - selection errors cleared", 3000)
+                else:
+                    mw.win.statusBar().showMessage("Attempted to clear selections", 2000)
+            else:
+                print("Unselect all: Selection cleared and errors removed")
+                
+        except Exception as e:
+            error_msg = f"Error clearing selections: {str(e)}"
+            if hasattr(mw, 'win'):
+                try:
+                    from PySide6.QtWidgets import QMessageBox
+                    QMessageBox.warning(mw.win, "Unselect Warning", error_msg)
+                except:
+                    print(error_msg)
+            else:
+                print(error_msg)
+
+
+class QuickUnselectCmd:
+    """Quick unselect command with minimal overhead for frequent use."""
+    
+    def __init__(self):
+        self.name = "Quick Unselect"
+        self.tooltip = "Quick unselect (no confirmation)"
+        
+    def run(self, mw):
+        """Quick unselect without status messages."""
+        try:
+            if hasattr(mw, 'view') and hasattr(mw.view, '_display'):
+                display = mw.view._display
+                display.ClearSelected()
+                if hasattr(display, 'Context'):
+                    display.Context.ClearSelected(True)
+                display.Repaint()
+        except:
+            pass  # Fail silently for quick operation
+
+
+def clear_all_selection_errors(display_object, verbose=False):
+    """Comprehensive function to clear all types of selection errors and visual artifacts.
+    
+    Args:
+        display_object: The OpenCASCADE display object
+        verbose (bool): If True, print detailed status messages
+        
+    Returns:
+        list: List of actions taken to clear errors
+    """
+    actions_taken = []
+    
+    try:
+        if not display_object:
+            return ["Error: No display object provided"]
+        
+        # 1. Clear basic selections
+        if hasattr(display_object, 'ClearSelected'):
+            display_object.ClearSelected()
+            actions_taken.append("Cleared basic selections")
+        
+        # 2. Clear context selections
+        if hasattr(display_object, 'Context'):
+            context = display_object.Context
+            
+            # Clear selected objects
+            if hasattr(context, 'ClearSelected'):
+                context.ClearSelected(True)
+                actions_taken.append("Cleared context selections")
+            
+            # Clear detected/highlighted objects
+            if hasattr(context, 'ClearDetected'):
+                context.ClearDetected()
+                actions_taken.append("Cleared detected objects")
+            
+            # Clear any pre-selection highlighting
+            if hasattr(context, 'ClearPrs'):
+                try:
+                    context.ClearPrs()
+                    actions_taken.append("Cleared presentation objects")
+                except:
+                    pass
+        
+        # 3. Clear displayed shapes with errors
+        if hasattr(display_object, 'EraseSelected'):
+            try:
+                display_object.EraseSelected()
+                actions_taken.append("Erased selected shapes")
+            except:
+                pass
+        
+        # 4. Try to clear all and redisplay (nuclear option)
+        if hasattr(display_object, 'EraseAll'):
+            try:
+                # Store current shapes before erasing
+                displayed_shapes = []
+                if hasattr(display_object, 'DisplayedShapes'):
+                    displayed_shapes = display_object.DisplayedShapes()
+                
+                # Clear everything
+                display_object.EraseAll()
+                actions_taken.append("Cleared all displayed objects")
+                
+                # Redisplay without selection
+                for shape in displayed_shapes:
+                    if hasattr(display_object, 'DisplayShape'):
+                        display_object.DisplayShape(shape, update=False)
+                
+                if displayed_shapes:
+                    actions_taken.append(f"Redisplayed {len(displayed_shapes)} objects")
+                    
+            except Exception as e:
+                actions_taken.append(f"Error during full refresh: {e}")
+        
+        # 5. Force display update
+        update_methods = ['Repaint', 'Update', 'UpdateCurrentViewer', 'Redraw']
+        for method in update_methods:
+            if hasattr(display_object, method):
+                try:
+                    getattr(display_object, method)()
+                    actions_taken.append(f"Called {method}")
+                    break
+                except:
+                    continue
+        
+        # 6. Reset view if needed
+        if hasattr(display_object, 'FitAll'):
+            try:
+                display_object.FitAll()
+                actions_taken.append("Reset view to fit all objects")
+            except:
+                pass
+        
+        if verbose:
+            for action in actions_taken:
+                print(f"Selection Error Clear: {action}")
+                
+    except Exception as e:
+        error_msg = f"Error in clear_all_selection_errors: {e}"
+        actions_taken.append(error_msg)
+        if verbose:
+            print(error_msg)
+    
+    return actions_taken
+
+
+class ErrorClearingUnselectCmd:
+    """Advanced unselect command specifically designed to clear selection errors."""
+    
+    def __init__(self):
+        self.name = "Clear Selection Errors"
+        self.tooltip = "Clear all selection errors and visual artifacts"
+        
+    def run(self, mw):
+        """Run comprehensive error clearing."""
+        try:
+            if not (hasattr(mw, 'view') and hasattr(mw.view, '_display')):
+                raise Exception("No display available")
+            
+            # Run comprehensive error clearing
+            actions = clear_all_selection_errors(mw.view._display, verbose=True)
+            
+            # Report results
+            if hasattr(mw, 'win') and hasattr(mw.win, 'statusBar'):
+                success_count = len([a for a in actions if not a.startswith("Error")])
+                mw.win.statusBar().showMessage(
+                    f"Selection errors cleared: {success_count} actions completed", 
+                    4000
+                )
+            
+            # Show detailed results in console
+            print("=== Selection Error Clearing Results ===")
+            for action in actions:
+                print(f"  • {action}")
+            print("========================================")
+            
+        except Exception as e:
+            error_msg = f"Failed to clear selection errors: {str(e)}"
+            if hasattr(mw, 'win'):
+                try:
+                    from PySide6.QtWidgets import QMessageBox
+                    QMessageBox.critical(mw.win, "Error Clearing Failed", error_msg)
+                except:
+                    print(error_msg)
+            else:
+                print(error_msg)
+
+
+# Enhanced Multiverse Exploration Toolkit
+@dataclass
+class Config:
+    """Configuration constants for multiverse exploration."""
+    TEMP_MIN_COMPLEXITY: float = 1e-4
+    TEMP_MAX_COMPLEXITY: float = 1e12
+    DEFAULT_GRID_SIZE: int = 10
+    ANTHROPIC_THRESHOLD: float = 0.3
+    UNIVERSE_AGE: float = 13.8e9
+    FINE_STRUCTURE_CONSTANT: float = 1.0/137
+    STELLAR_LIFETIME_MIN: float = 1e8
+    STELLAR_LIFETIME_MAX: float = 1e11
+    NUCLEAR_FUSION_MIN: float = 1e-4
+    NUCLEAR_FUSION_MAX: float = 1e-2
+
+
+def gaussian_weight(value: float, optimal: float, scale: float) -> float:
+    """Calculate a Gaussian weight for a parameter relative to its optimal value."""
+    return math.exp(-scale * (value - optimal) ** 2)
+
+
+@dataclass
+class UniverseParameters:
+    """Enhanced universe parameters with validation and extensibility."""
+    
+    # Core physical constants
+    constants: Dict[str, float] = field(default_factory=lambda: {
+        "c": 1.0,
+        "hbar": 1.0, 
+        "G": 1.0,
+        "alpha": Config.FINE_STRUCTURE_CONSTANT,
+        "m_electron": 1.0,
+        "m_proton": 1836.0,  # Proton-electron mass ratio
+        "Lambda": 0.0,
+        "g_weak": 1.0,
+        "g_strong": 1.0
+    })
+    
+    # Spacetime structure
+    spacetime_dimensions: int = 4
+    signature: Tuple[int, int] = (1, 3)  # (timelike, spacelike)
+    
+    # Initial conditions
+    initial_entropy: float = 1.0
+    initial_temperature: float = 1.0
+    
+    # Computed metrics (not set during initialization)
+    stability_score: float = field(default=0.0, init=False)
+    complexity_measure: float = field(default=0.0, init=False) 
+    habitability_index: float = field(default=0.0, init=False)
+    
+    def __post_init__(self):
+        """Validate physical constraints."""
+        if self.constants["c"] <= 0:
+            raise ValueError("Speed of light must be positive")
+        if self.spacetime_dimensions < 1:
+            raise ValueError("Spacetime dimensions must be at least 1")
+        if self.constants["G"] <= 0:
+            raise ValueError("Gravitational constant must be positive")
+        if self.constants["alpha"] <= 0:
+            raise ValueError("Fine structure constant must be positive")
+    
+    @property
+    def alpha(self) -> float:
+        return self.constants["alpha"]
+    
+    @property 
+    def G(self) -> float:
+        return self.constants["G"]
+    
+    @property
+    def Lambda(self) -> float:
+        return self.constants["Lambda"]
+    
+    @property
+    def m_proton(self) -> float:
+        return self.constants["m_proton"]
+    
+    @property
+    def m_electron(self) -> float:
+        return self.constants["m_electron"]
+    
+    def to_tuple(self) -> tuple:
+        """Convert to tuple for caching purposes."""
+        return tuple(sorted(self.constants.items())) + (
+            self.spacetime_dimensions,
+            self.signature,
+            self.initial_entropy,
+            self.initial_temperature
+        )
+
+
+class UniverseSimulator:
+    """Enhanced universe simulator with improved physics and performance."""
+    
+    def __init__(self, config: Optional[Config] = None):
+        self.config = config or Config()
+        self._cache = {}
+    
+    def simulate_universe_evolution(self, params: UniverseParameters, time_steps: int = 100) -> Dict[str, List[float]]:
+        """Simulate universe evolution with improved cosmological model."""
+        evolution = {
+            "time": [],
+            "scale_factor": [], 
+            "temperature": [],
+            "entropy": [],
+            "complexity": []
+        }
+        
+        a_0 = 1.0
+        T_0 = params.initial_temperature
+        S_0 = params.initial_entropy
+        
+        for step in range(time_steps):
+            t = step / time_steps * self.config.UNIVERSE_AGE
+            
+            # Enhanced Friedmann equation evolution
+            if params.Lambda > 0:
+                # De Sitter expansion
+                H = math.sqrt(params.Lambda / 3)
+                a_t = a_0 * math.exp(H * t / 1e9)
+            elif params.Lambda < 0:
+                # Big Crunch scenario
+                H = math.sqrt(-params.Lambda / 3)
+                t_collapse = math.pi / (2 * H * 1e9)
+                if t < t_collapse:
+                    a_t = a_0 * math.sin(H * t / 1e9)
+                else:
+                    a_t = 0  # Universe has collapsed
+            else:
+                # Matter-dominated expansion
+                a_t = a_0 * (t / 1e9) ** (2/3) if t > 0 else a_0
+            
+            # Temperature evolution (adiabatic cooling)
+            T_t = T_0 / a_t if a_t > 0 else 0
+            
+            # Entropy evolution (comoving volume)
+            S_t = S_0 * a_t**3 if a_t > 0 else S_0
+            
+            # Enhanced complexity calculation
+            complexity_t = self._calculate_complexity(params, t, a_t, T_t)
+            
+            evolution["time"].append(t)
+            evolution["scale_factor"].append(a_t)
+            evolution["temperature"].append(T_t)
+            evolution["entropy"].append(S_t)
+            evolution["complexity"].append(complexity_t)
+        
+        return evolution
+    
+    def _calculate_complexity(self, params: UniverseParameters, time: float, 
+                            scale_factor: float, temperature: float) -> float:
+        """Enhanced complexity calculation based on physical processes."""
+        complexity = 0.0
+        
+        if scale_factor <= 0:
+            return 0.0
+        
+        # Nuclear fusion feasibility
+        nuclear_rate = (params.constants["g_strong"] * params.alpha**2 * 
+                       math.exp(-params.m_proton / max(temperature, 1e-10)))
+        
+        if self.config.NUCLEAR_FUSION_MIN < nuclear_rate < self.config.NUCLEAR_FUSION_MAX:
+            complexity += 0.4
+        
+        # Gravitational structure formation
+        jeans_mass = (temperature / (params.G * params.m_proton))**(3/2)
+        if 1e-6 < jeans_mass < 1e6:  # Suitable for star formation
+            complexity += 0.3
+        
+        # Chemical complexity (molecular formation)
+        binding_energy = params.alpha**2 * params.m_electron
+        if temperature < binding_energy and temperature > binding_energy / 100:
+            complexity += 0.2
+        
+        # Electromagnetic interactions
+        em_factor = gaussian_weight(params.alpha, self.config.FINE_STRUCTURE_CONSTANT, 100)
+        complexity += 0.1 * em_factor
+        
+        return min(1.0, complexity)
+    
+    def calculate_stability_score(self, params: UniverseParameters) -> float:
+        """Enhanced stability calculation with physical grounding."""
+        stability = 0.0
+        
+        # Electromagnetic stability
+        alpha_factor = gaussian_weight(params.alpha, self.config.FINE_STRUCTURE_CONSTANT, 100)
+        stability += 0.25 * alpha_factor
+        
+        # Gravitational stability (prevent immediate collapse or runaway expansion)
+        if abs(params.Lambda) < 1.0:  # Reasonable cosmological constant
+            lambda_factor = gaussian_weight(params.Lambda, 0.0, 1.0)
+            stability += 0.25 * lambda_factor
+        
+        # Nuclear stability
+        if 0.1 < params.constants["g_strong"] < 10.0:
+            stability += 0.25
+        
+        # Mass ratio stability
+        mass_ratio = params.m_proton / params.m_electron
+        if 1000 < mass_ratio < 10000:  # Allows for atomic structure
+            stability += 0.25
+        
+        return min(1.0, stability)
+    
+    def calculate_habitability_index(self, params: UniverseParameters) -> float:
+        """Enhanced habitability calculation with anthropic constraints."""
+        habitability = 0.0
+        
+        # Stellar lifetime constraint
+        stellar_lifetime = 1.0 / (params.G * params.alpha**2 * params.m_proton)
+        if self.config.STELLAR_LIFETIME_MIN < stellar_lifetime < self.config.STELLAR_LIFETIME_MAX:
+            habitability += 0.3
+        
+        # Spacetime dimensionality (3+1 optimal for stable orbits and waves)
+        if params.spacetime_dimensions == 4 and params.signature == (1, 3):
+            habitability += 0.2
+        
+        # Chemical complexity potential
+        if 0.5 < params.alpha / self.config.FINE_STRUCTURE_CONSTANT < 2.0:
+            habitability += 0.2
+        
+        # Gravitational binding vs expansion
+        if -0.1 < params.Lambda < 0.1:
+            habitability += 0.15
+        
+        # Nuclear processes (allows for element formation)
+        if 0.5 < params.constants["g_strong"] < 2.0:
+            habitability += 0.15
+        
+        return min(1.0, habitability)
+
+
+class ParameterSpaceExplorer:
+    """Enhanced parameter space exploration with performance optimizations."""
+    
+    def __init__(self, simulator: UniverseSimulator):
+        self.simulator = simulator
+        self._cache = {}
+    
+    def generate_parameter_grid(self, parameter_ranges: Dict[str, Tuple[float, float]], 
+                              n_samples: int = 100, method: str = "latin_hypercube") -> List[UniverseParameters]:
+        """Generate parameter grid using efficient sampling methods."""
+        try:
+            if method == "latin_hypercube":
+                from scipy.stats import qmc
+                sampler = qmc.LatinHypercube(d=len(parameter_ranges))
+                samples = sampler.random(n=n_samples)
+            else:
+                # Fallback to uniform random sampling
+                samples = np.random.random((n_samples, len(parameter_ranges)))
+        except ImportError:
+            # Fallback if scipy not available
+            samples = np.random.random((n_samples, len(parameter_ranges)))
+        
+        universes = []
+        param_names = list(parameter_ranges.keys())
+        
+        for sample in samples:
+            params = UniverseParameters()
+            
+            # Set parameter values
+            for i, param_name in enumerate(param_names):
+                min_val, max_val = parameter_ranges[param_name]
+                value = min_val + sample[i] * (max_val - min_val)
+                
+                if param_name in params.constants:
+                    params.constants[param_name] = value
+                else:
+                    setattr(params, param_name, value)
+            
+            # Calculate metrics
+            try:
+                params.stability_score = self.simulator.calculate_stability_score(params)
+                params.complexity_measure = self._estimate_max_complexity_cached(params)
+                params.habitability_index = self.simulator.calculate_habitability_index(params)
+                universes.append(params)
+            except Exception as e:
+                print(f"Error evaluating universe parameters: {e}")
+                continue
+        
+        return universes
+    
+    def _estimate_max_complexity_cached(self, params: UniverseParameters) -> float:
+        """Cached complexity estimation to improve performance."""
+        params_key = params.to_tuple()
+        
+        if params_key in self._cache:
+            return self._cache[params_key]
+        
+        try:
+            evolution = self.simulator.simulate_universe_evolution(params, 50)
+            max_complexity = max(evolution["complexity"]) if evolution["complexity"] else 0.0
+            self._cache[params_key] = max_complexity
+            return max_complexity
+        except Exception as e:
+            print(f"Error in complexity estimation: {e}")
+            return 0.0
+    
+    def analyze_parameter_sensitivity(self, base_params: UniverseParameters, 
+                                    parameter_name: str, variation_range: Tuple[float, float],
+                                    steps: int = 20) -> Dict[str, List[float]]:
+        """Analyze sensitivity of universe properties to parameter changes."""
+        min_val, max_val = variation_range
+        parameter_values = np.linspace(min_val, max_val, steps)
+        
+        results = {
+            "parameter_values": [],
+            "stability_scores": [],
+            "habitability_indices": [],
+            "complexity_measures": []
+        }
+        
+        for value in parameter_values:
+            # Create modified parameters
+            test_params = UniverseParameters()
+            test_params.constants.update(base_params.constants)
+            test_params.spacetime_dimensions = base_params.spacetime_dimensions
+            test_params.signature = base_params.signature
+            
+            if parameter_name in test_params.constants:
+                test_params.constants[parameter_name] = value
+            else:
+                setattr(test_params, parameter_name, value)
+            
+            try:
+                # Calculate metrics
+                stability = self.simulator.calculate_stability_score(test_params)
+                habitability = self.simulator.calculate_habitability_index(test_params)
+                complexity = self._estimate_max_complexity_cached(test_params)
+                
+                results["parameter_values"].append(value)
+                results["stability_scores"].append(stability)
+                results["habitability_indices"].append(habitability)
+                results["complexity_measures"].append(complexity)
+                
+            except Exception as e:
+                print(f"Error in sensitivity analysis at {parameter_name}={value}: {e}")
+                continue
+        
+        return results
+    
+    def find_optimal_universes(self, universes: List[UniverseParameters], 
+                             criteria: Optional[callable] = None) -> List[UniverseParameters]:
+        """Find optimal universes using custom or default criteria."""
+        if criteria is None:
+            # Default: weighted combination of all metrics
+            criteria = lambda u: (0.4 * u.habitability_index + 
+                                0.3 * u.stability_score + 
+                                0.3 * u.complexity_measure)
+        
+        try:
+            sorted_universes = sorted(universes, key=criteria, reverse=True)
+            top_count = max(1, len(sorted_universes) // 10)
+            return sorted_universes[:top_count]
+        except Exception as e:
+            print(f"Error in optimization: {e}")
+            return universes[:min(10, len(universes))]
+
+
+class MultiverseLandscape:
+    """Enhanced multiverse landscape with robust visualization."""
+    
+    def __init__(self):
+        self.universes: List[UniverseParameters] = []
+    
+    def add_universe_sample(self, universe: UniverseParameters):
+        """Add a universe sample to the landscape."""
+        self.universes.append(universe)
+    
+    def create_landscape_field(self, parameter1: str, parameter2: str, 
+                             metric: str = "habitability") -> Optional['NDField']:
+        """Create a landscape field with robust interpolation."""
+        if not self.universes:
+            raise ValueError("No universes in landscape")
+        
+        try:
+            # Extract parameter and metric values
+            param1_vals = np.array([getattr(u, parameter1) if hasattr(u, parameter1) 
+                                  else u.constants.get(parameter1, 0) for u in self.universes])
+            param2_vals = np.array([getattr(u, parameter2) if hasattr(u, parameter2)
+                                  else u.constants.get(parameter2, 0) for u in self.universes])
+            
+            metric_attr = f"{metric}_index" if metric == "habitability" else f"{metric}_score"
+            if metric == "complexity":
+                metric_attr = "complexity_measure"
+            
+            metric_vals = np.array([getattr(u, metric_attr, 0) for u in self.universes])
+            
+            # Create regular grid with interpolation
+            try:
+                from scipy.interpolate import griddata
+                grid_size = 50
+                grid_x, grid_y = np.meshgrid(
+                    np.linspace(np.min(param1_vals), np.max(param1_vals), grid_size),
+                    np.linspace(np.min(param2_vals), np.max(param2_vals), grid_size)
+                )
+                grid_z = griddata((param1_vals, param2_vals), metric_vals, 
+                                (grid_x, grid_y), method="cubic", fill_value=0)
+                
+                if HAS_SPACETIME:
+                    from adaptivecad.ndfield import NDField
+                    return NDField((grid_size, grid_size), grid_z.flatten())
+                else:
+                    # Fallback implementation
+                    return type('NDField', (), {
+                        'grid_shape': (grid_size, grid_size),
+                        'data': grid_z.flatten()
+                    })()
+                    
+            except ImportError:
+                # Fallback without scipy interpolation
+                grid_size = int(math.sqrt(len(self.universes)))
+                if grid_size * grid_size != len(self.universes):
+                    grid_size = max(1, int(math.sqrt(len(self.universes))))
+                
+                if HAS_SPACETIME:
+                    from adaptivecad.ndfield import NDField
+                    return NDField((grid_size, grid_size), metric_vals[:grid_size*grid_size])
+                else:
+                    return type('NDField', (), {
+                        'grid_shape': (grid_size, grid_size),
+                        'data': metric_vals[:grid_size*grid_size]
+                    })()
+                    
+        except Exception as e:
+            print(f"Error creating landscape field: {e}")
+            return None
+    
+    def find_anthropic_islands(self, threshold: float = 0.3) -> List[List[UniverseParameters]]:
+        """Find clusters of universes with high habitability."""
+        if not self.universes:
+            return []
+        
+        # Filter universes above threshold
+        viable_universes = [u for u in self.universes if u.habitability_index >= threshold]
+        
+        if not viable_universes:
+            return []
+        
+        # Simple clustering based on parameter distance
+        islands = []
+        processed = set()
+        
+        for universe in viable_universes:
+            if id(universe) in processed:
+                continue
+            
+            # Start new island
+            island = [universe]
+            processed.add(id(universe))
+            
+            # Find nearby universes
+            for other in viable_universes:
+                if id(other) in processed:
+                    continue
+                
+                if self._parameter_distance(universe, other) < 0.3:
+                    island.append(other)
+                    processed.add(id(other))            
+            islands.append(island)
