@@ -14,3 +14,6 @@ dependencies = [
     "sympy>=1.13",
 ]
 optional-dependencies = { gui = ["PySide6", "pythonocc-core"] }
+
+[project.scripts]
+export-slices = "export_slices:main"
