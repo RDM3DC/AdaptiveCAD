@@ -671,10 +671,49 @@ class ScaleCmd(BaseCmd):
             mw.win.statusBar().showMessage("Select object to scale!")
             return
         from PySide6.QtWidgets import QInputDialog
-        factor, ok = QInputDialog.getDouble(mw.win, "Scale", "Scale factor:", 1.5, 0.1, 10.0, 2)
+
+        # Ask user if scaling should be uniform or per-axis
+        mode, ok = QInputDialog.getItem(
+            mw.win,
+            "Scale",
+            "Scale mode:",
+            ["Uniform", "Per-axis"],
+            0,
+            False,
+        )
         if not ok:
             return
-        mw.selected_feature.apply_scale(factor)
+
+        if mode == "Uniform":
+            factor, ok = QInputDialog.getDouble(
+                mw.win, "Scale", "Scale factor:", 1.0, 0.1, 10.0, 2
+            )
+            if not ok:
+                return
+            scale_value: float | list[float] = factor
+        else:
+            dim = getattr(mw.selected_feature, "dim", 3)
+            factors_str, ok = QInputDialog.getText(
+                mw.win,
+                "Scale",
+                f"Scale factors (comma-separated, {dim} values):",
+                text=','.join(['1.0'] * dim),
+            )
+            if not ok:
+                return
+            try:
+                parts = [float(x) for x in factors_str.split(',')]
+                if len(parts) != dim:
+                    mw.win.statusBar().showMessage(
+                        f"Expected {dim} values, got {len(parts)}"
+                    )
+                    return
+                scale_value = parts
+            except ValueError:
+                mw.win.statusBar().showMessage("Invalid scale factors!")
+                return
+
+        mw.selected_feature.apply_scale(scale_value)
         rebuild_scene(mw.view._display)
 
 
