@@ -1,5 +1,6 @@
 from OCC.Core.gp import gp_Pnt
-from OCC.Core.AIS import AIS_Point
+from OCC.Core.AIS import AIS_Point, AIS_Shape
+from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
 from OCC.Display.OCCViewer import Viewer3d
 
 class SnapStrategy:
@@ -59,7 +60,7 @@ class SnapManager:
         self.viewer_display = viewer_display
         self.strategies: list[SnapStrategy] = []
         self.snap_tolerance_pixels = 8 # As per blueprint
-        self._current_snap_marker = None
+        self._current_snap_marker: list[AIS_Shape] | None = None
 
     def add_strategy(self, strategy: SnapStrategy):
         self.strategies.append(strategy)
@@ -84,15 +85,15 @@ class SnapManager:
                     break # First active strategy that snaps wins
 
         if self._current_snap_marker:
-            self.viewer_display.Context.Remove(self._current_snap_marker, True)
+            for marker in self._current_snap_marker:
+                self.viewer_display.Context.Remove(marker, True)
             self._current_snap_marker = None
 
         if snapped_point:
             # print(f"SnapManager: Snapped to {snapped_point.X():.2f}, {snapped_point.Y():.2f}, {snapped_point.Z():.2f} using {active_strategy.name if hasattr(active_strategy, 'name') else active_strategy.__class__.__name__}")
-            # Display small crosshair (AIS_Point for now)
-            self._current_snap_marker = AIS_Point(snapped_point)
-            self.viewer_display.Context.Display(self._current_snap_marker, True)
-            # TODO: Make it a crosshair, not just a point
+            self._current_snap_marker = create_crosshair_at_point(snapped_point)
+            for marker in self._current_snap_marker:
+                self.viewer_display.Context.Display(marker, True)
         
         return snapped_point
 
@@ -102,8 +103,9 @@ class SnapManager:
             is_now_active = grid_strategy.toggle()
             print(f"Grid Snap {'activated' if is_now_active else 'deactivated'}")
             if not is_now_active and self._current_snap_marker: # Clear marker if grid snap deactivated
-                 self.viewer_display.Context.Remove(self._current_snap_marker, True)
-                 self._current_snap_marker = None
+                for marker in self._current_snap_marker:
+                    self.viewer_display.Context.Remove(marker, True)
+                self._current_snap_marker = None
             return is_now_active
         return False
 
@@ -136,21 +138,18 @@ class SnapManager:
             pass
 
 
-# Example of how to make a crosshair (more involved, AIS_Shape or custom drawing)
-# For now, AIS_Point is a placeholder.
-# from OCC.Core.gp import gp_Dir, gp_Ax1
-# from OCC.Core.Geom import Geom_Line
-# from OCC.Core.AIS import AIS_Line
-# def create_crosshair_at_point(point: gp_Pnt, size: float = 1.0):
-#     ais_group = AIS_Group()
-#     line_x = Geom_Line(gp_Pnt(point.X() - size/2, point.Y(), point.Z()), gp_Dir(1,0,0))
-#     line_y = Geom_Line(gp_Pnt(point.X(), point.Y() - size/2, point.Z()), gp_Dir(0,1,0))
-#     # line_z = Geom_Line(gp_Pnt(point.X(), point.Y(), point.Z() - size/2), gp_Dir(0,0,1)) # if 3D crosshair
-    
-#     ais_line_x = AIS_Line(line_x)
-#     ais_line_y = AIS_Line(line_y)
-    
-#     # Set length for display if needed, or use AIS_Segment
-#     # ais_group.Add(ais_line_x)
-#     # ais_group.Add(ais_line_y)
-#     return ais_line_x # For simplicity, just return one line for now or an AIS_Point
+def create_crosshair_at_point(point: gp_Pnt, size: float = 2.0) -> list[AIS_Shape]:
+    """Create a simple two-line crosshair at ``point``."""
+    half = size / 2.0
+    edge_x = BRepBuilderAPI_MakeEdge(
+        gp_Pnt(point.X() - half, point.Y(), point.Z()),
+        gp_Pnt(point.X() + half, point.Y(), point.Z()),
+    ).Edge()
+    edge_y = BRepBuilderAPI_MakeEdge(
+        gp_Pnt(point.X(), point.Y() - half, point.Z()),
+        gp_Pnt(point.X(), point.Y() + half, point.Z()),
+    ).Edge()
+    return [AIS_Shape(edge_x), AIS_Shape(edge_y)]
+
+
+
