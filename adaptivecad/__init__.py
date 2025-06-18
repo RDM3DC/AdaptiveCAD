@@ -13,9 +13,15 @@ __all__ = [
     "lorentz_boost_x",
     "apply_boost",
     "light_cone",
+    # Cosmic curve tools
     "BizarreCurveFeature",
     "CosmicSplineFeature",
     "NDFieldExplorerFeature",
+    # Quantum helpers
+    "QuantumState",
+    "WavefunctionVisualizer",
+    "EntanglementVisualizer",
+    "QuantumFieldVisualizer",
 ]
 
 from .params import ParamEnv
@@ -30,6 +36,12 @@ from .cosmic_curve_tools import (
     BizarreCurveFeature,
     CosmicSplineFeature,
     NDFieldExplorerFeature,
+)
+from .quantum_visualization import (
+    QuantumState,
+    WavefunctionVisualizer,
+    EntanglementVisualizer,
+    QuantumFieldVisualizer,
 )
 
 
