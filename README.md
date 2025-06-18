@@ -28,6 +28,7 @@ examples and unit tests without a large toolchain.  Current features include:
   Scale, Mirror, Union, Cut, Intersect, Shell plus advanced parametric shapes like
   Superellipse, Pi Curve Shell, Helix, Tapered Cylinder, Capsule and Ellipsoid.
 - Command‑line tools `ama_to_gcode_converter.py` and `ama2gcode.py`
+- Command‑line tool `export_slices.py` for generating BREP or STL slices from an AMA file
 - Example script `example_script.py` demonstrating curve evaluation
 - Unit tests in the `tests` folder (`python -m pytest`)
 

@@ -6,6 +6,7 @@ __all__ = [
     "generate_gcode_from_ama_data",
     "ParamEnv",
     "load_stl",
+    "export_slices_from_ama",
 ]
 
 from .params import ParamEnv
@@ -30,3 +31,9 @@ def load_stl(*args, **kwargs):
     """Convenience wrapper for :func:`simple_stl.load_stl`."""
     from .simple_stl import load_stl as _load_stl
     return _load_stl(*args, **kwargs)
+
+
+def export_slices_from_ama(*args, **kwargs):
+    """Convenience wrapper for :func:`slice_export.export_slices_from_ama`."""
+    from .slice_export import export_slices_from_ama as _export
+    return _export(*args, **kwargs)
