@@ -13,6 +13,9 @@ __all__ = [
     "lorentz_boost_x",
     "apply_boost",
     "light_cone",
+    "BizarreCurveFeature",
+    "CosmicSplineFeature",
+    "NDFieldExplorerFeature",
 ]
 
 from .params import ParamEnv
@@ -22,6 +25,11 @@ from .spacetime import (
     lorentz_boost_x,
     apply_boost,
     light_cone,
+)
+from .cosmic_curve_tools import (
+    BizarreCurveFeature,
+    CosmicSplineFeature,
+    NDFieldExplorerFeature,
 )
 
 

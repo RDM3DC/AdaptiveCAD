@@ -38,6 +38,17 @@ except Exception:  # optional OCC deps may be missing
     DrapedSheetCmd = None
     # Do not assign ImportConformalCmd = None; let import fail if missing
 
+try:
+    from .cosmic_curve_cmds import (
+        BizarreCurveCmd,
+        CosmicSplineCmd,
+        NDFieldExplorerCmd,
+    )
+except Exception:
+    BizarreCurveCmd = None
+    CosmicSplineCmd = None
+    NDFieldExplorerCmd = None
+
 __all__ = [
     "BaseCmd",
     "Feature",
@@ -72,3 +83,10 @@ if PiSquareCmd is not None:
 if DrapedSheetCmd is not None:
     __all__.append("DrapedSheetCmd")
 __all__.append("ImportConformalCmd")
+
+if BizarreCurveCmd is not None:
+    __all__.append("BizarreCurveCmd")
+if CosmicSplineCmd is not None:
+    __all__.append("CosmicSplineCmd")
+if NDFieldExplorerCmd is not None:
+    __all__.append("NDFieldExplorerCmd")
