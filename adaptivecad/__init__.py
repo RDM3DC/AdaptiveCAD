@@ -13,6 +13,10 @@ __all__ = [
     "lorentz_boost_x",
     "apply_boost",
     "light_cone",
+    # Cosmic curve tools
+    "BizarreCurveFeature",
+    "CosmicSplineFeature",
+    "NDFieldExplorerFeature",
     # Quantum helpers
     "QuantumState",
     "WavefunctionVisualizer",
@@ -27,6 +31,11 @@ from .spacetime import (
     lorentz_boost_x,
     apply_boost,
     light_cone,
+)
+from .cosmic_curve_tools import (
+    BizarreCurveFeature,
+    CosmicSplineFeature,
+    NDFieldExplorerFeature,
 )
 from .quantum_visualization import (
     QuantumState,

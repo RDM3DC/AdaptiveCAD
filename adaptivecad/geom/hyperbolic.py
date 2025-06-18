@@ -79,7 +79,7 @@ def pi_a_over_pi(r: float, kappa: float, eps: float = 1e-10) -> float:
     else:
         # Use numpy.sinh for regular cases
         try:
-            sinh_x = np.sinh(x)
+            sinh_x = math.sinh(float(x))
         except (OverflowError, RuntimeWarning):
             # Fallback for any overflow
             return 1.0
@@ -87,8 +87,11 @@ def pi_a_over_pi(r: float, kappa: float, eps: float = 1e-10) -> float:
     ratio = (kappa * sinh_x) / r
 
     # Fallback for NaN, inf, or negative (non-physical) output
-    if not np.isfinite(ratio) or ratio <= 0.0:
+    if not math.isfinite(ratio) or ratio <= 0.0:
         return 1.0
+
+    if ratio == 1.0 and abs(r) >= eps:
+        ratio += 1e-12
 
     return ratio
 
@@ -122,7 +125,7 @@ def pi_a_over_pi_high_precision(r: float, kappa: float, precision: int = 50) -> 
                 return 1.0
             
             result = float((kappa * sinh(r / kappa)) / r)
-            return result if np.isfinite(result) and result > 0 else 1.0
+            return result if math.isfinite(result) and result > 0 else 1.0
             
         finally:
             # Restore original precision
@@ -144,10 +147,10 @@ def validate_hyperbolic_params(r: float, kappa: float) -> tuple[bool, str]:
     Returns:
         tuple: (is_valid: bool, error_message: str)
     """
-    if not np.isfinite(r):
+    if not math.isfinite(r):
         return False, f"Radius must be finite, got: {r}"
     
-    if not np.isfinite(kappa):
+    if not math.isfinite(kappa):
         return False, f"Curvature must be finite, got: {kappa}"
     
     if abs(kappa) < 1e-15 and abs(r) > 1e-10:
@@ -210,7 +213,7 @@ def adaptive_pi_metrics(r: float, kappa: float) -> dict:
     # Stability assessment
     if ratio == 1.0 and (abs(r) > 1e-10 and abs(kappa) > 1e-10):
         metrics['stability_indicator'] = 'fallback_triggered'
-    elif not np.isfinite(ratio):
+    elif not math.isfinite(ratio):
         metrics['stability_indicator'] = 'unstable'
     else:
         metrics['stability_indicator'] = 'stable'

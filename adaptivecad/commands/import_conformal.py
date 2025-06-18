@@ -600,26 +600,8 @@ class ImportConformalCmd(BaseCmd):
             self._on_error(f"{error_msg}{file_info}")
         finally:
             self._cleanup_thread()
-                self.mw.win.statusBar().showMessage(
-                    f"Import completed: {file_basename} ({face_count} faces processed)", 4000
-                )
-                self.add_shape_btn.setEnabled(False)
 
-            self.add_shape_btn.clicked.connect(add_shape_to_doc)
-
-        except Exception as e:
-            # Construct an informative error message
-            error_msg_detail = f"Error during final import completion or display: {str(e)}"
-            file_info = ""
-            if hasattr(self, 'file_path') and self.file_path:
-                try:
-                    file_info = f" (File: {os.path.basename(self.file_path)})"
-                except Exception:
-                    file_info = f" (File: {self.file_path})"
-            self._on_error(f"{error_msg_detail}{file_info}")
-        finally:
-            self._cleanup_thread()
-      def _cleanup_thread(self):
+    def _cleanup_thread(self):
         """Clean up the import thread properly."""
         
         # Clean up progress dialog
