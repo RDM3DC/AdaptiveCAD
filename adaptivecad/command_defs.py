@@ -200,16 +200,43 @@ class Feature:
 
         try:
             return util(self)
-        except Exception:
-            return []
+        except Exception:            return []
 
     def apply_translation(self, delta):
+        print(f"[DEBUG] apply_translation called on {self.name} with delta: {delta}")
         from adaptivecad.nd_math import translationN
         import numpy as np
         if hasattr(self, 'local_transform') and self.local_transform is not None:
+            print(f"[DEBUG] Applying translation to local_transform matrix")
             self.local_transform = np.dot(translationN(delta), self.local_transform)
+            print(f"[DEBUG] Local transform updated")
+        else:
+            print(f"[DEBUG] No local_transform found, initializing...")
+            # Initialize local_transform if it doesn't exist
+            self.local_transform = np.eye(4)  # 4x4 identity matrix
+            self.local_transform = np.dot(translationN(delta), self.local_transform)
+            print(f"[DEBUG] Local transform initialized and updated")
+        
         # For OCC shapes, you may need to rebuild the shape at the new position
-        # ...add OCC-specific logic if needed...
+        print(f"[DEBUG] Checking if shape rebuild is needed...")
+        if hasattr(self, 'shape') and self.shape is not None:
+            try:
+                print(f"[DEBUG] Attempting to rebuild shape with new translation...")
+                from OCC.Core.gp import gp_Trsf, gp_Vec
+                from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
+                
+                # Apply the translation to the actual OCC shape
+                trsf = gp_Trsf()
+                trsf.SetTranslation(gp_Vec(float(delta[0]), float(delta[1]), float(delta[2])))
+                new_shape = BRepBuilderAPI_Transform(self.shape, trsf, True).Shape()
+                self.shape = new_shape
+                print(f"[DEBUG] Shape rebuilt successfully with translation")
+            except Exception as e:
+                print(f"[DEBUG] Error rebuilding shape: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            print(f"[DEBUG] No shape to rebuild")
 
     def apply_scale(self, factor):
         """Uniform or per-axis scaling of the feature."""
@@ -687,37 +714,66 @@ class MoveCmd(BaseCmd):
     title = "Move"
 
     def run(self, mw) -> None:
+        print("[DEBUG] MoveCmd.run() called")
         if not DOCUMENT:
+            print("[DEBUG] No shapes in DOCUMENT to move")
             mw.win.statusBar().showMessage("No shapes to move!")
             return
+        print(f"[DEBUG] DOCUMENT has {len(DOCUMENT)} shapes")
+        
         # Let user select a shape by index (simple for now)
         from PySide6.QtWidgets import QInputDialog
         items = [f"{i}: {feat.name}" for i, feat in enumerate(DOCUMENT)]
+        print(f"[DEBUG] Available shapes: {items}")
         idx, ok = QInputDialog.getItem(mw.win, "Select Shape to Move", "Shape:", items, 0, False)
         if not ok:
+            print("[DEBUG] User cancelled shape selection")
             return
         shape_idx = int(idx.split(":")[0])
+        print(f"[DEBUG] Selected shape index: {shape_idx}")
         shape = DOCUMENT[shape_idx].shape
+        print(f"[DEBUG] Selected shape: {DOCUMENT[shape_idx].name}")
+        
         # Get translation values
         dx, ok = QInputDialog.getDouble(mw.win, "Move", "dx (mm)", 10.0)
         if not ok:
+            print("[DEBUG] User cancelled dx input")
             return
+        print(f"[DEBUG] dx = {dx}")
+        
         dy, ok = QInputDialog.getDouble(mw.win, "Move", "dy (mm)", 0.0)
         if not ok:
+            print("[DEBUG] User cancelled dy input")
             return
+        print(f"[DEBUG] dy = {dy}")
+        
         dz, ok = QInputDialog.getDouble(mw.win, "Move", "dz (mm)", 0.0)
         if not ok:
-            return        # Apply translation
+            print("[DEBUG] User cancelled dz input")
+            return
+        print(f"[DEBUG] dz = {dz}")
+        
+        # Apply translation
+        print("[DEBUG] Applying translation using OpenCascade...")
         from OCC.Core.gp import gp_Trsf, gp_Vec
         from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
         trsf = gp_Trsf(); trsf.SetTranslation(gp_Vec(dx, dy, dz))
         moved_shape = BRepBuilderAPI_Transform(shape, trsf, True).Shape()
+        print("[DEBUG] Translation applied successfully")
+        
         # Mark the source shape as consumed (hidden)
         if hasattr(DOCUMENT[shape_idx], 'params'):
             DOCUMENT[shape_idx].params['consumed'] = True
             print(f"[MoveCmd] Feature '{DOCUMENT[shape_idx].name}' (index {shape_idx}) marked as consumed: {DOCUMENT[shape_idx].params}") # DEBUG
-        DOCUMENT.append(Feature("Move", {"target": shape_idx, "dx": dx, "dy": dy, "dz": dz}, moved_shape))
+        
+        # Create new moved feature
+        new_feature = Feature("Move", {"target": shape_idx, "dx": dx, "dy": dy, "dz": dz}, moved_shape)
+        DOCUMENT.append(new_feature)
+        print(f"[DEBUG] Created new moved feature: {new_feature.name}")
+        
+        print("[DEBUG] Rebuilding scene...")
         rebuild_scene(mw.view._display)
+        print("[DEBUG] MoveCmd completed successfully")
 
 
 class ScaleCmd(BaseCmd):
