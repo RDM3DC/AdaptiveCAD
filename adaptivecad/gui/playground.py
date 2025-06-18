@@ -754,10 +754,12 @@ class OpenProjectCmd:
 # --- MAIN WINDOW AND APPLICATION ---
 class MainWindow:
     def __init__(self):
+        print("[DEBUG] MainWindow.__init__() called")
         if not HAS_GUI:
             print("GUI dependencies not available. Cannot create MainWindow.")
             return
             
+        print("[DEBUG] GUI dependencies available, initializing...")
         # Initialize the application
         self.app = QApplication.instance() or QApplication([])
         
@@ -765,11 +767,13 @@ class MainWindow:
         self.selected_feature = None
         self.property_panel = None
         self.dimension_panel = None
+        print("[DEBUG] State variables initialized")
         
         # Create the main window
         self.win = QMainWindow()
         self.win.setWindowTitle("AdaptiveCAD - Advanced Shapes & Modeling Tools")
         self.win.resize(1024, 768)
+        print("[DEBUG] Main window created")
         
         # Create central widget with the OpenCascade viewer
         from OCC.Display.qtDisplay import qtViewer3d
@@ -778,12 +782,34 @@ class MainWindow:
         self.view = qtViewer3d(central)
         layout.addWidget(self.view)
         self.win.setCentralWidget(central)
+        # Explicitly enable shape selection mode (fix for lost selection after repo update)
+        if hasattr(self.view, '_display') and hasattr(self.view._display, 'SetSelectionMode'):
+            print("[DEBUG] Setting selection mode to 1 (shape selection mode)")
+            self.view._display.SetSelectionMode(1)  # 1 = shape selection mode
+        else:
+            print("[DEBUG] Selection mode method not found on display object")
         
         # Initialize view
         self.view._display.set_bg_gradient_color([50, 50, 50], [10, 10, 10])
         self.view._display.display_triedron()
         self.view._display.View.SetProj(1, 1, 1)
         self.view._display.View.SetScale(300)
+        # --- Ensure selection mode is enabled for shapes ---
+        try:
+            # For OCC Display, enable selection mode for faces and shapes
+            if hasattr(self.view._display, 'EnableSelection'):
+                print("[DEBUG] Calling EnableSelection() on display")
+                self.view._display.EnableSelection()
+            elif hasattr(self.view._display, 'SetSelectionModeFace'):
+                print("[DEBUG] Calling SetSelectionModeFace() on display")
+                self.view._display.SetSelectionModeFace()
+            elif hasattr(self.view._display, 'Context') and hasattr(self.view._display.Context, 'ActivateStandardMode'):
+                print("[DEBUG] Calling ActivateStandardMode(0) on display.Context")
+                self.view._display.Context.ActivateStandardMode(0)  # 0 = selection mode
+            else:
+                print("[DEBUG] No known selection mode method found on display")
+        except Exception as e:
+            print(f"[DEBUG] Warning: Could not enable selection mode: {e}")
         
         # Initialize ViewCube
         self.viewcube = ViewCubeWidget(self.view._display, self.view)
@@ -797,41 +823,70 @@ class MainWindow:
         # Setup UI
         self._create_menus_and_toolbar()
         
-        # Create status bar
-        self.win.statusBar().showMessage("AdaptiveCAD Advanced Shapes & Modeling Tools Ready")
+        # Create status bar        self.win.statusBar().showMessage("AdaptiveCAD Advanced Shapes & Modeling Tools Ready")
         
     def _setup_selection_handling(self):
         """Setup selection handling for objects in the 3D view."""
         try:
+            print("[DEBUG] Setting up selection handling (register_select_callback)")
             # Connect selection changed signal
-            def on_selection_changed():
+            def on_selection_changed(*args, **kwargs):
+                print(f"[DEBUG] Selection callback triggered: args={args}, kwargs={kwargs}")
                 self._on_object_selected()
 
             # Set up mouse click handling for selection
-            self.view._display.register_select_callback(on_selection_changed)
+            if hasattr(self.view._display, 'register_select_callback'):
+                self.view._display.register_select_callback(on_selection_changed)
+                print("[DEBUG] register_select_callback connected successfully")
+            else:
+                print("[DEBUG] register_select_callback not found on display")
+                
+            # Try additional selection setup methods
+            if hasattr(self.view._display, 'SetSelectionModeVertex'):
+                print("[DEBUG] Attempting SetSelectionModeVertex")
+                try:
+                    self.view._display.SetSelectionModeVertex()
+                except Exception as e:
+                    print(f"[DEBUG] SetSelectionModeVertex failed: {e}")
+                    
+            if hasattr(self.view._display, 'SetSelectionModeShape'):
+                print("[DEBUG] Attempting SetSelectionModeShape")
+                try:
+                    self.view._display.SetSelectionModeShape()
+                except Exception as e:
+                    print(f"[DEBUG] SetSelectionModeShape failed: {e}")                    
         except Exception as e:
-            print(f"Warning: Could not setup selection handling: {e}")
+            print(f"[DEBUG] Warning: Could not setup selection handling: {e}")
     
     def _on_object_selected(self):
         """Handle object selection in the 3D view."""
+        print("[DEBUG] _on_object_selected called")
         try:
             from adaptivecad.command_defs import DOCUMENT
             
             # Get selected objects from the display
             selected_shapes = self.view._display.GetSelectedShapes()
+            print(f"[DEBUG] Selected shapes: {selected_shapes}")
+            print(f"[DEBUG] Number of selected shapes: {len(selected_shapes) if selected_shapes else 0}")
 
             # Handle clicks on move arrows first
             if selected_shapes and hasattr(self, 'arrow_shapes'):
+                print(f"[DEBUG] Checking for arrow selection. Arrow shapes: {list(self.arrow_shapes.keys()) if hasattr(self, 'arrow_shapes') else 'None'}")
                 for axis, info in self.arrow_shapes.items():
                     if info['shape'] in selected_shapes:
+                        print(f"[DEBUG] Arrow {axis} selected! Moving along axis.")
                         self._move_along_axis(axis)
                         self.view._display.Context.ClearSelected()
                         return
 
             if selected_shapes:
+                print(f"[DEBUG] Processing {len(selected_shapes)} selected shapes")
+                print(f"[DEBUG] DOCUMENT has {len(DOCUMENT)} features")
                 # Find the feature that corresponds to the selected shape
                 for i, feature in enumerate(DOCUMENT):
+                    print(f"[DEBUG] Checking feature {i}: {feature.name}")
                     if hasattr(feature, 'shape') and feature.shape in selected_shapes:
+                        print(f"[DEBUG] Found matching feature: {feature.name}")
                         self.selected_feature = feature
                         self._update_property_panel(feature)
                         self._create_move_arrows(feature)
@@ -839,16 +894,20 @@ class MainWindow:
                         return
 
                 # If no matching feature found, clear selection
+                print("[DEBUG] No matching feature found for selected shapes")
                 self.selected_feature = None
                 self._clear_property_panel()
                 self._remove_move_arrows()
             else:
+                print("[DEBUG] No shapes selected, clearing selection")
                 self.selected_feature = None
                 self._clear_property_panel()
                 self._remove_move_arrows()
 
         except Exception as e:
-            print(f"Error handling selection: {e}")
+            print(f"[DEBUG] Error handling selection: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _update_property_panel(self, feature):
         """Update the property panel with the selected feature's properties."""
@@ -1016,31 +1075,99 @@ class MainWindow:
         super_action = QAction("Superellipse", self.win)
         super_action.triggered.connect(lambda: self._run_command(NewSuperellipseCmd()))
         adv_menu.addAction(super_action)
-        
+
         # Add Pi Curve Shell tool
         pi_shell_action = QAction("Pi Curve Shell (πₐ)", self.win)
         pi_shell_action.triggered.connect(lambda: self._run_command(NewPiCurveShellCmd()))
         adv_menu.addAction(pi_shell_action)
-        
+
         # Add Helix tool
         helix_action = QAction("Helix/Spiral", self.win)
         helix_action.triggered.connect(lambda: self._run_command(NewHelixCmd()))
         adv_menu.addAction(helix_action)
-        
+
         # Add Tapered Cylinder tool
         tapered_action = QAction("Tapered Cylinder", self.win)
         tapered_action.triggered.connect(lambda: self._run_command(NewTaperedCylinderCmd()))
         adv_menu.addAction(tapered_action)
-        
+
         # Add Capsule tool
         capsule_action = QAction("Capsule/Pill", self.win)
         capsule_action.triggered.connect(lambda: self._run_command(NewCapsuleCmd()))
         adv_menu.addAction(capsule_action)
-        
+
         # Add Ellipsoid tool
         ellipsoid_action = QAction("Ellipsoid", self.win)
         ellipsoid_action.triggered.connect(lambda: self._run_command(NewEllipsoidCmd()))
         adv_menu.addAction(ellipsoid_action)
+
+        # --- Restore ND Field, B Curve, and Spline tools ---
+        try:
+            from adaptivecad.command_defs import NewFieldCmd
+            field_action = QAction("ND Field", self.win)
+            field_action.triggered.connect(lambda: self._run_command(NewFieldCmd()))
+            adv_menu.addAction(field_action)
+        except Exception:
+            pass
+
+        try:
+            from adaptivecad.command_defs import NewBCurveCmd
+            bcurve_action = QAction("B Curve", self.win)
+            bcurve_action.triggered.connect(lambda: self._run_command(NewBCurveCmd()))
+            adv_menu.addAction(bcurve_action)
+        except Exception:
+            pass
+
+        try:
+            from adaptivecad.command_defs import NewNDSplineCmd
+            spline_action = QAction("ND Spline", self.win)
+            spline_action.triggered.connect(lambda: self._run_command(NewNDSplineCmd()))
+            adv_menu.addAction(spline_action)
+        except Exception:
+            pass
+
+        try:
+            from adaptivecad.command_defs import NewNDSplineSurfaceCmd
+            spline_surface_action = QAction("ND Spline Surface", self.win)
+            spline_surface_action.triggered.connect(lambda: self._run_command(NewNDSplineSurfaceCmd()))
+            adv_menu.addAction(spline_surface_action)
+        except Exception:
+            pass
+
+        # --- B Curve Tools and ND/Field Tools ---
+        # Try to import all advanced shape commands, but add buttons only for those that import successfully
+        # Add any additional stashed advanced tools here
+        advanced_tools = [
+            ("B Curve", "NewBCurveCmd"),
+            ("B Curve Surface", "NewBCurveSurfaceCmd"),
+            ("ND Box", "NewNDBoxCmd"),
+            ("Field", "NewFieldCmd"),
+            ("ND Ball", "NewNDBallCmd"),
+            ("ND Torus", "NewNDTorusCmd"),
+            ("ND Cylinder", "NewNDCylinderCmd"),
+            # --- RESTORED STASHED TOOLS ---
+            ("ND Superellipse", "NewNDSuperellipseCmd"),
+            ("ND Capsule", "NewNDCapsuleCmd"),
+            ("ND Ellipsoid", "NewNDEllipsoidCmd"),
+            ("ND Pi Shell", "NewNDPiShellCmd"),
+            ("ND Helix", "NewNDHelixCmd"),
+            ("ND Field Surface", "NewNDFieldSurfaceCmd"),
+            ("ND Spline", "NewNDSplineCmd"),
+            ("ND Spline Surface", "NewNDSplineSurfaceCmd"),
+            ("ND Patch", "NewNDPatchCmd"),
+            ("ND Patch Surface", "NewNDPatchSurfaceCmd"),
+        ]
+        for label, cmd_name in advanced_tools:
+            try:
+                cmd = getattr(__import__('adaptivecad.command_defs', fromlist=[cmd_name]), cmd_name)
+                action = QAction(label, self.win)
+                # Use a default argument in a function to capture the current cmd
+                def make_trigger(cmd_class):
+                    return lambda checked=False: self._run_command(cmd_class())
+                action.triggered.connect(make_trigger(cmd))
+                adv_menu.addAction(action)
+            except Exception:
+                pass
         
         # Create Modeling Tools menu
         modeling_menu = menubar.addMenu("Modeling Tools")
@@ -1293,13 +1420,12 @@ class MainWindow:
             while self.property_layout.count() > 3:  # Keep label, instructions, and stretch
                 child = self.property_layout.takeAt(2)  # Remove items after instructions
                 if child.widget():
-                    child.widget().deleteLater()
-
-    # ------------------------------------------------------------------
+                    child.widget().deleteLater()    # ------------------------------------------------------------------
     # Move arrows helpers
     # ------------------------------------------------------------------
     def _create_move_arrows(self, feature):
         """Display simple X/Y/Z arrows at the feature center for quick moves."""
+        print(f"[DEBUG] _create_move_arrows called for feature: {feature.name}")
         try:
             from OCC.Core.Bnd import Bnd_Box
             from OCC.Core.BRepBndLib import brepbndlib_Add
@@ -1319,12 +1445,15 @@ class MainWindow:
             cy = (ymin + ymax) / 2.0
             cz = (zmin + zmax) / 2.0
             size = max(xmax - xmin, ymax - ymin, zmax - zmin) * 0.6
+            print(f"[DEBUG] Arrow placement: center=({cx:.2f}, {cy:.2f}, {cz:.2f}), size={size:.2f}")
+            
             cyl_r = size * 0.03
             cyl_h = size * 0.8
             cone_r = size * 0.06
             cone_h = size * 0.2
 
             def make_arrow(axis):
+                print(f"[DEBUG] Creating arrow for axis: {axis}")
                 cyl = BRepPrimAPI_MakeCylinder(cyl_r, cyl_h).Shape()
                 cone = BRepPrimAPI_MakeCone(cone_r, 0, cone_h).Shape()
                 tr = gp_Trsf(); tr.SetTranslation(gp_Vec(0, 0, cyl_h))
@@ -1338,6 +1467,7 @@ class MainWindow:
                     comp = BRepBuilderAPI_Transform(comp, rot, True).Shape()
                 tr2 = gp_Trsf(); tr2.SetTranslation(gp_Vec(cx, cy, cz))
                 comp = BRepBuilderAPI_Transform(comp, tr2, True).Shape()
+                print(f"[DEBUG] Arrow {axis} created successfully")
                 return comp
 
             colors = {'x': 'RED', 'y': 'GREEN', 'z': 'BLUE'}
@@ -1346,28 +1476,45 @@ class MainWindow:
                 shp = make_arrow(ax)
                 ais = self.view._display.DisplayShape(shp, color=colors[ax], update=False)
                 self.arrow_shapes[ax] = {'ais': ais, 'shape': shp}
+                print(f"[DEBUG] Arrow {ax} displayed with AIS: {ais}")
             self.view._display.Repaint()
+            print(f"[DEBUG] All arrows created. Arrow shapes dict: {list(self.arrow_shapes.keys())}")
         except Exception as e:
-            print(f"Error creating move arrows: {e}")
+            print(f"[DEBUG] Error creating move arrows: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _remove_move_arrows(self):
+        print("[DEBUG] _remove_move_arrows called")
         if hasattr(self, 'arrow_shapes'):
+            print(f"[DEBUG] Removing {len(self.arrow_shapes)} arrow shapes")
             for info in self.arrow_shapes.values():
                 try:
                     if self.view._display.Context.IsDisplayed(info['ais']):
                         self.view._display.Context.Remove(info['ais'], True)
-                except Exception:
-                    pass
+                        print("[DEBUG] Arrow removed from display")
+                except Exception as e:
+                    print(f"[DEBUG] Error removing arrow: {e}")
             self.arrow_shapes = {}
+            print("[DEBUG] Arrow shapes dictionary cleared")
+        else:
+            print("[DEBUG] No arrow shapes to remove")
 
     def _move_along_axis(self, axis):
         """Prompt for distance and move selected feature along given axis."""
+        print(f"[DEBUG] _move_along_axis called with axis: {axis}")
         if self.selected_feature is None:
+            print("[DEBUG] No selected feature to move")
             return
+        print(f"[DEBUG] Moving feature: {self.selected_feature.name}")
+        
         from PySide6.QtWidgets import QInputDialog
         dist, ok = QInputDialog.getDouble(self.win, "Move", f"Distance along {axis.upper()} (mm)", 10.0)
         if not ok:
+            print("[DEBUG] User cancelled move dialog")
             return
+        print(f"[DEBUG] User entered distance: {dist}")
+        
         dx = dy = dz = 0.0
         if axis == 'x':
             dx = dist
@@ -1375,13 +1522,21 @@ class MainWindow:
             dy = dist
         else:
             dz = dist
+        print(f"[DEBUG] Translation vector: dx={dx}, dy={dy}, dz={dz}")
+        
         try:
+            print(f"[DEBUG] Calling apply_translation on feature")
             self.selected_feature.apply_translation([dx, dy, dz])
+            print(f"[DEBUG] apply_translation completed, rebuilding scene")
             from adaptivecad.command_defs import rebuild_scene
             rebuild_scene(self.view._display)
+            print(f"[DEBUG] Scene rebuilt, recreating move arrows")
             self._create_move_arrows(self.selected_feature)
+            print(f"[DEBUG] Move operation completed successfully")
         except Exception as e:
-            print(f"Error moving feature: {e}")
+            print(f"[DEBUG] Error moving feature: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _toggle_dimension_panel(self, checked):
         """Toggle the dimension selector panel visibility."""
