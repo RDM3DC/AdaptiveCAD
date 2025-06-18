@@ -721,7 +721,7 @@ class OpenProjectCmd:
                         )
                     # For basic shapes, we'll need to import them from command_defs
                     else:
-                        # Try to create basic shapes using the existing command system
+                        # Try to create basic features using the existing command system
                         from adaptivecad.command_defs import Feature
                         
                         # Create a generic feature - this won't have the actual shape
@@ -767,6 +767,9 @@ class MainWindow:
         self.selected_feature = None
         self.property_panel = None
         self.dimension_panel = None
+        # Initialize recent files functionality
+        self.recent_file_actions = []
+        self.max_recent_files = 5
         print("[DEBUG] State variables initialized")
         
         # Create the main window
@@ -1099,9 +1102,7 @@ class MainWindow:
         # Add Ellipsoid tool
         ellipsoid_action = QAction("Ellipsoid", self.win)
         ellipsoid_action.triggered.connect(lambda: self._run_command(NewEllipsoidCmd()))
-        adv_menu.addAction(ellipsoid_action)
-
-        # --- Restore ND Field, B Curve, and Spline tools ---
+        adv_menu.addAction(ellipsoid_action)        # --- Restore ND Field, B Curve, and Spline tools ---
         try:
             from adaptivecad.command_defs import NewFieldCmd
             field_action = QAction("ND Field", self.win)
@@ -1132,6 +1133,29 @@ class MainWindow:
             spline_surface_action.triggered.connect(lambda: self._run_command(NewNDSplineSurfaceCmd()))
             adv_menu.addAction(spline_surface_action)
         except Exception:
+            pass
+
+        # Add separator for cosmic curve tools
+        adv_menu.addSeparator()
+
+        # --- Add Cosmic Curve Tools ---
+        try:
+            from adaptivecad.cosmic.curve_tools import BizarreCurveCmd, CosmicSplineCmd, NDFieldExplorerCmd
+            
+            bizarre_curve_action = QAction("Bizarre Curve", self.win)
+            bizarre_curve_action.triggered.connect(lambda: self._run_command(BizarreCurveCmd()))
+            adv_menu.addAction(bizarre_curve_action)
+            
+            cosmic_spline_action = QAction("Cosmic Spline", self.win)
+            cosmic_spline_action.triggered.connect(lambda: self._run_command(CosmicSplineCmd()))
+            adv_menu.addAction(cosmic_spline_action)
+            
+            ndfield_explorer_action = QAction("ND Field Explorer", self.win)
+            ndfield_explorer_action.triggered.connect(lambda: self._run_command(NDFieldExplorerCmd()))
+            adv_menu.addAction(ndfield_explorer_action)
+            
+        except Exception as e:
+            print(f"Could not load cosmic curve tools: {e}")
             pass
 
         # --- B Curve Tools and ND/Field Tools ---
@@ -1331,6 +1355,105 @@ class MainWindow:
             "Please see MODELING_TOOLS.md in the project root directory for details on all available modeling tools."))
         docs_menu.addAction(modeling_tools_action)
     
+        # Create Cosmic Exploration menu
+        cosmic_menu = menubar.addMenu("Cosmic Exploration")
+          # Try to import cosmic exploration tools
+        try:
+            from adaptivecad.cosmic import HAS_COSMIC_MODULES, COSMIC_COMMANDS
+            
+            if HAS_COSMIC_MODULES:
+                # Add cosmic exploration commands
+                from adaptivecad.cosmic.spacetime_viz import SpacetimeVisualizationCmd, LightConeDisplayBoxCmd
+                from adaptivecad.cosmic.quantum_geometry import QuantumVisualizationCmd
+                from adaptivecad.cosmic.cosmological_sims import CosmologicalSimulationCmd
+                from adaptivecad.cosmic.topology_tools import TopologyExplorationCmd
+                from adaptivecad.cosmic.multiverse_explorer import MultiverseExplorationCmd
+                
+                # Spacetime & Relativity submenu
+                spacetime_submenu = cosmic_menu.addMenu("Spacetime & Relativity")
+                
+                spacetime_action = QAction("Spacetime Visualization", self.win)
+                spacetime_action.triggered.connect(lambda: self._run_command(SpacetimeVisualizationCmd()))
+                spacetime_submenu.addAction(spacetime_action)
+                
+                lightcone_box_action = QAction("Light Cone Display Box", self.win)
+                lightcone_box_action.triggered.connect(lambda: self._run_command(LightConeDisplayBoxCmd()))
+                spacetime_submenu.addAction(lightcone_box_action)
+                
+                # Quantum Physics submenu  
+                quantum_submenu = cosmic_menu.addMenu("Quantum Physics")
+                
+                quantum_action = QAction("Quantum Geometry", self.win)
+                quantum_action.triggered.connect(lambda: self._run_command(QuantumVisualizationCmd()))
+                quantum_submenu.addAction(quantum_action)
+                
+                # Cosmology submenu
+                cosmology_submenu = cosmic_menu.addMenu("Cosmology")
+                
+                cosmology_action = QAction("Universe Simulation", self.win)
+                cosmology_action.triggered.connect(lambda: self._run_command(CosmologicalSimulationCmd()))
+                cosmology_submenu.addAction(cosmology_action)
+                
+                # Topology submenu
+                topology_submenu = cosmic_menu.addMenu("Topology")
+                
+                topology_action = QAction("Topological Analysis", self.win)
+                topology_action.triggered.connect(lambda: self._run_command(TopologyExplorationCmd()))
+                topology_submenu.addAction(topology_action)
+                  # Multiverse submenu
+                multiverse_submenu = cosmic_menu.addMenu("Multiverse")
+                
+                multiverse_action = QAction("Parameter Space Explorer", self.win)
+                multiverse_action.triggered.connect(lambda: self._run_command(MultiverseExplorationCmd()))
+                multiverse_submenu.addAction(multiverse_action)
+                
+                # Add separator
+                cosmic_menu.addSeparator()
+                
+                # Curve Tools submenu
+                curve_tools_submenu = cosmic_menu.addMenu("Cosmic Curve Tools")
+                
+                try:
+                    from adaptivecad.cosmic.curve_tools import BizarreCurveCmd, CosmicSplineCmd, NDFieldExplorerCmd
+                    
+                    bizarre_curve_action = QAction("Bizarre Curve", self.win)
+                    bizarre_curve_action.triggered.connect(lambda: self._run_command(BizarreCurveCmd()))
+                    curve_tools_submenu.addAction(bizarre_curve_action)
+                    
+                    cosmic_spline_action = QAction("Cosmic Spline", self.win)
+                    cosmic_spline_action.triggered.connect(lambda: self._run_command(CosmicSplineCmd()))
+                    curve_tools_submenu.addAction(cosmic_spline_action)
+                    
+                    ndfield_action = QAction("ND Field Explorer", self.win)
+                    ndfield_action.triggered.connect(lambda: self._run_command(NDFieldExplorerCmd()))
+                    curve_tools_submenu.addAction(ndfield_action)
+                    
+                except ImportError:
+                    curve_error_action = QAction("Curve Tools (Import Error)", self.win)
+                    curve_error_action.setEnabled(False)
+                    curve_tools_submenu.addAction(curve_error_action)
+                
+            else:
+                # Add placeholder action if cosmic modules not available
+                placeholder_action = QAction("Cosmic Tools (Not Available)", self.win)
+                placeholder_action.setEnabled(False)
+                cosmic_menu.addAction(placeholder_action)
+                
+        except ImportError:
+            # Add error message if cosmic module can't be imported
+            error_action = QAction("Cosmic Tools (Import Error)", self.win)
+            error_action.setEnabled(False)
+            cosmic_menu.addAction(error_action)        # --- END OF MENU CREATION ---
+        
+        # --- Connect recent files actions to slots ---
+        # Note: Using lambda to create a closure for each action's slot
+        if hasattr(self, 'recent_file_actions') and self.recent_file_actions:
+            for i, action in enumerate(self.recent_file_actions):
+                action.triggered.connect(lambda checked, idx=i: self._open_recent_file(idx))
+        
+        # --- Restore recent files menu state ---
+        self._update_recent_files_menu()
+        
     def _run_command(self, cmd):
         try:
             # Store reference to command to prevent garbage collection during execution
@@ -1724,6 +1847,9 @@ class MainWindow:
             self._position_viewcube()
         self.view.resizeEvent = new_resize
             
+   
+
+    
     def _show_about(self):
         QMessageBox.about(self.win, "About AdaptiveCAD",
             """<h2>AdaptiveCAD</h2>
@@ -1735,6 +1861,18 @@ that implement the πₐ (Adaptive Pi) geometry principles.</p>
             
     def _show_doc_message(self, title, message):
         QMessageBox.information(self.win, title, message)
+    
+    def _update_recent_files_menu(self):
+        """Update the recent files menu (placeholder implementation)."""
+        # Placeholder for recent files functionality
+        # In a full implementation, this would load and update recent file list
+        pass
+    
+    def _open_recent_file(self, file_index: int):
+        """Open a recent file by index (placeholder implementation)."""
+        # Placeholder for recent files functionality
+        # In a full implementation, this would open the file at the given index
+        pass
     
 def main() -> None:
     MainWindow().run()
