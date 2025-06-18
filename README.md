@@ -25,7 +25,7 @@ examples and unit tests without a large toolchain.  Current features include:
 - `adaptivecad.gui.playground` – PySide6 viewer with a rich toolbar for Box,
   Cylinder, Bézier and B‑spline curves, push‑pull editing and export commands
   (STL, AMA and G‑code). The toolbar now offers constructive tools like Move,
-  Scale, Union, Cut, Intersect, Shell plus advanced parametric shapes like
+  Scale, Mirror, Union, Cut, Intersect, Shell plus advanced parametric shapes like
   Superellipse, Pi Curve Shell, Helix, Tapered Cylinder, Capsule and Ellipsoid.
 - Command‑line tools `ama_to_gcode_converter.py` and `ama2gcode.py`
 - Example script `example_script.py` demonstrating curve evaluation

@@ -48,6 +48,7 @@ else:
         CutCmd,
         IntersectCmd,
         ScaleCmd,
+        MirrorCmd,
         NewBallCmd,
         NewTorusCmd,
         NewConeCmd,
@@ -1043,6 +1044,11 @@ class MainWindow:
         scale_action = QAction("Scale", self.win)
         scale_action.triggered.connect(lambda: self._run_command(ScaleCmd()))
         modeling_menu.addAction(scale_action)
+
+        # Add Mirror tool
+        mirror_action = QAction("Mirror", self.win)
+        mirror_action.triggered.connect(lambda: self._run_command(MirrorCmd()))
+        modeling_menu.addAction(mirror_action)
         
         # Add separator
         modeling_menu.addSeparator()
@@ -1157,6 +1163,7 @@ class MainWindow:
         
         # Add common modeling tools to toolbar
         self.toolbar.addAction(move_action)
+        self.toolbar.addAction(mirror_action)
         self.toolbar.addAction(union_action)
         self.toolbar.addAction(cut_action)
         self.toolbar.addAction(delete_action)
