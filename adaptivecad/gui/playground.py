@@ -806,7 +806,7 @@ class MainWindow:
             # Connect selection changed signal
             def on_selection_changed():
                 self._on_object_selected()
-            
+
             # Set up mouse click handling for selection
             self.view._display.register_select_callback(on_selection_changed)
         except Exception as e:
@@ -819,23 +819,34 @@ class MainWindow:
             
             # Get selected objects from the display
             selected_shapes = self.view._display.GetSelectedShapes()
-            
+
+            # Handle clicks on move arrows first
+            if selected_shapes and hasattr(self, 'arrow_shapes'):
+                for axis, info in self.arrow_shapes.items():
+                    if info['shape'] in selected_shapes:
+                        self._move_along_axis(axis)
+                        self.view._display.Context.ClearSelected()
+                        return
+
             if selected_shapes:
                 # Find the feature that corresponds to the selected shape
                 for i, feature in enumerate(DOCUMENT):
                     if hasattr(feature, 'shape') and feature.shape in selected_shapes:
                         self.selected_feature = feature
                         self._update_property_panel(feature)
+                        self._create_move_arrows(feature)
                         self.win.statusBar().showMessage(f"Selected: {feature.name}", 3000)
                         return
-                        
+
                 # If no matching feature found, clear selection
                 self.selected_feature = None
                 self._clear_property_panel()
+                self._remove_move_arrows()
             else:
                 self.selected_feature = None
                 self._clear_property_panel()
-                
+                self._remove_move_arrows()
+
         except Exception as e:
             print(f"Error handling selection: {e}")
     
@@ -1216,6 +1227,7 @@ class MainWindow:
                 DOCUMENT.remove(self.selected_feature)
                 self.selected_feature = None
                 self._clear_property_panel()
+                self._remove_move_arrows()
                 rebuild_scene(self.view._display)
                 self.win.statusBar().showMessage("Object deleted.", 2000)
             else:
@@ -1276,6 +1288,94 @@ class MainWindow:
                 child = self.property_layout.takeAt(2)  # Remove items after instructions
                 if child.widget():
                     child.widget().deleteLater()
+
+    # ------------------------------------------------------------------
+    # Move arrows helpers
+    # ------------------------------------------------------------------
+    def _create_move_arrows(self, feature):
+        """Display simple X/Y/Z arrows at the feature center for quick moves."""
+        try:
+            from OCC.Core.Bnd import Bnd_Box
+            from OCC.Core.BRepBndLib import brepbndlib_Add
+            from OCC.Core.gp import gp_Pnt, gp_Vec, gp_Trsf, gp_Dir, gp_Ax1
+            from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeCylinder, BRepPrimAPI_MakeCone
+            from OCC.Core.BRep import BRep_Builder
+            from OCC.Core.TopoDS import TopoDS_Compound
+            from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
+            from math import pi
+
+            self._remove_move_arrows()
+
+            box = Bnd_Box()
+            brepbndlib_Add(feature.shape, box)
+            xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
+            cx = (xmin + xmax) / 2.0
+            cy = (ymin + ymax) / 2.0
+            cz = (zmin + zmax) / 2.0
+            size = max(xmax - xmin, ymax - ymin, zmax - zmin) * 0.6
+            cyl_r = size * 0.03
+            cyl_h = size * 0.8
+            cone_r = size * 0.06
+            cone_h = size * 0.2
+
+            def make_arrow(axis):
+                cyl = BRepPrimAPI_MakeCylinder(cyl_r, cyl_h).Shape()
+                cone = BRepPrimAPI_MakeCone(cone_r, 0, cone_h).Shape()
+                tr = gp_Trsf(); tr.SetTranslation(gp_Vec(0, 0, cyl_h))
+                cone = BRepBuilderAPI_Transform(cone, tr, True).Shape()
+                comp = TopoDS_Compound(); builder = BRep_Builder(); builder.MakeCompound(comp); builder.Add(comp, cyl); builder.Add(comp, cone)
+                if axis == 'x':
+                    rot = gp_Trsf(); rot.SetRotation(gp_Ax1(gp_Pnt(0,0,0), gp_Dir(0,1,0)), -pi/2)
+                    comp = BRepBuilderAPI_Transform(comp, rot, True).Shape()
+                elif axis == 'y':
+                    rot = gp_Trsf(); rot.SetRotation(gp_Ax1(gp_Pnt(0,0,0), gp_Dir(1,0,0)), pi/2)
+                    comp = BRepBuilderAPI_Transform(comp, rot, True).Shape()
+                tr2 = gp_Trsf(); tr2.SetTranslation(gp_Vec(cx, cy, cz))
+                comp = BRepBuilderAPI_Transform(comp, tr2, True).Shape()
+                return comp
+
+            colors = {'x': 'RED', 'y': 'GREEN', 'z': 'BLUE'}
+            self.arrow_shapes = {}
+            for ax in ('x', 'y', 'z'):
+                shp = make_arrow(ax)
+                ais = self.view._display.DisplayShape(shp, color=colors[ax], update=False)
+                self.arrow_shapes[ax] = {'ais': ais, 'shape': shp}
+            self.view._display.Repaint()
+        except Exception as e:
+            print(f"Error creating move arrows: {e}")
+
+    def _remove_move_arrows(self):
+        if hasattr(self, 'arrow_shapes'):
+            for info in self.arrow_shapes.values():
+                try:
+                    if self.view._display.Context.IsDisplayed(info['ais']):
+                        self.view._display.Context.Remove(info['ais'], True)
+                except Exception:
+                    pass
+            self.arrow_shapes = {}
+
+    def _move_along_axis(self, axis):
+        """Prompt for distance and move selected feature along given axis."""
+        if self.selected_feature is None:
+            return
+        from PySide6.QtWidgets import QInputDialog
+        dist, ok = QInputDialog.getDouble(self.win, "Move", f"Distance along {axis.upper()} (mm)", 10.0)
+        if not ok:
+            return
+        dx = dy = dz = 0.0
+        if axis == 'x':
+            dx = dist
+        elif axis == 'y':
+            dy = dist
+        else:
+            dz = dist
+        try:
+            self.selected_feature.apply_translation([dx, dy, dz])
+            from adaptivecad.command_defs import rebuild_scene
+            rebuild_scene(self.view._display)
+            self._create_move_arrows(self.selected_feature)
+        except Exception as e:
+            print(f"Error moving feature: {e}")
     
     def _toggle_dimension_panel(self, checked):
         """Toggle the dimension selector panel visibility."""
