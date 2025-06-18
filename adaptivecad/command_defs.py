@@ -343,7 +343,7 @@ class ExportStlCmd(BaseCmd):
 
     def run(self, mw) -> None:  # pragma: no cover - runtime GUI path
         (
-            _,
+            QInputDialog,
             QFileDialog,
             _,
             _,
@@ -359,8 +359,28 @@ class ExportStlCmd(BaseCmd):
         if not path:
             return
 
+        unit, ok = QInputDialog.getItem(
+            mw.win,
+            "Units",
+            "Select export units:",
+            ["mm", "inch"],
+            0,
+            False,
+        )
+        if not ok:
+            return
+
+        scale = 1.0 if unit == "mm" else 1.0 / 25.4
+        shape = DOCUMENT[-1].shape
+        if scale != 1.0:
+            from OCC.Core.gp import gp_Trsf, gp_Pnt
+            from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
+            trsf = gp_Trsf()
+            trsf.SetScale(gp_Pnt(0, 0, 0), scale)
+            shape = BRepBuilderAPI_Transform(shape, trsf, True).Shape()
+
         writer = StlAPI_Writer()
-        err = writer.Write(DOCUMENT[-1].shape, path)
+        err = writer.Write(shape, path)
         if err == 1:
             mw.win.statusBar().showMessage(f"STL saved ➡ {path}")
         else:
@@ -388,8 +408,19 @@ class ExportAmaCmd(BaseCmd):
         if not path:
             return
 
+        unit, ok = QInputDialog.getItem(
+            mw.win,
+            "Units",
+            "Select export units:",
+            ["mm", "inch"],
+            0,
+            False,
+        )
+        if not ok:
+            return
+
         from adaptivecad.io.ama_writer import write_ama
-        write_ama(DOCUMENT, path)
+        write_ama(DOCUMENT, path, units=unit)
         mw.win.statusBar().showMessage(f"AMA saved ➡ {path}")
 
 
@@ -447,6 +478,18 @@ class ExportGCodeCmd(BaseCmd):
             os.remove(tmp_ama_path)
             return
 
+        unit, oku = QInputDialog.getItem(
+            mw.win,
+            "Units",
+            "Select export units:",
+            ["mm", "inch"],
+            0,
+            False,
+        )
+        if not oku:
+            os.remove(tmp_ama_path)
+            return
+
         # Get the output path for the G-code
         path, _filter = QFileDialog.getSaveFileName(
             mw.win, "Save G-code", filter="G-code (*.gcode *.nc)"
@@ -462,11 +505,12 @@ class ExportGCodeCmd(BaseCmd):
                 safe_height=safe_height,
                 cut_depth=cut_depth,
                 feed_rate=feed_rate,
-                tool_diameter=tool_diameter
+                tool_diameter=tool_diameter,
+                use_mm=(unit == "mm"),
             )
 
             # Generate G-code
-            ama_to_gcode(tmp_ama_path, path, strategy)
+            ama_to_gcode(tmp_ama_path, path, strategy, use_mm=(unit == "mm"))
             mw.win.statusBar().showMessage(f"G-code saved ➡ {path}")
         except Exception as e:
             mw.win.statusBar().showMessage(f"Failed to save G-code: {str(e)}")
@@ -516,6 +560,17 @@ class ExportGCodeDirectCmd(BaseCmd):
         if not ok3:
             return
 
+        unit, oku = QInputDialog.getItem(
+            mw.win,
+            "Units",
+            "Select export units:",
+            ["mm", "inch"],
+            0,
+            False,
+        )
+        if not oku:
+            return
+
         # Get the output path
         path, _filter = QFileDialog.getSaveFileName(
             mw.win, "Save G-code", filter="G-code (*.gcode *.nc)"
@@ -526,7 +581,9 @@ class ExportGCodeDirectCmd(BaseCmd):
         # Generate G-code directly from the shape
         try:
             # Generate G-code string
-            gcode = generate_gcode_from_shape(shape, shape_name, tool_diameter)
+            gcode = generate_gcode_from_shape(
+                shape, shape_name, tool_diameter, use_mm=(unit == "mm")
+            )
             
             # Save to file
             with open(path, 'w') as f:
