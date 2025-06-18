@@ -22,6 +22,7 @@ The AdaptiveCAD Playground interface consists of:
 - **Toolbar**: Quick access to common shapes and modeling operations
 - **3D Viewer**: Main area showing the 3D scene
 - **Status Bar**: Shows messages and current operations
+- **Grid Toggle**: Enable or disable the viewport grid from *Settings → View → Show Grid*
 
 ## Basic Shapes
 
