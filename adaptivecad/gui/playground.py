@@ -1110,7 +1110,7 @@ class MainWindow:
         view_menu.addAction(dimension_action)
         
         view_menu.addSeparator()
-        
+
         # Add View Cube toggle
         viewcube_action = QAction("Show View Cube", self.win, checkable=True)
         viewcube_action.setChecked(True)
@@ -1118,6 +1118,12 @@ class MainWindow:
             self.viewcube.setVisible(checked)
         viewcube_action.triggered.connect(toggle_cube)
         view_menu.addAction(viewcube_action)
+
+        # Add Grid display toggle
+        grid_view_action = QAction("Show Grid", self.win, checkable=True)
+        grid_view_action.setChecked(False)
+        grid_view_action.triggered.connect(self._toggle_grid_display)
+        view_menu.addAction(grid_view_action)
         
         # Add View Background settings
         view_bg_menu = view_menu.addMenu("Background Color")
@@ -1488,6 +1494,35 @@ class MainWindow:
             self.dimension_panel.hide()
             self.win.removeDockWidget(self.dimension_panel)
             self.dimension_panel = None
+
+    def _toggle_grid_display(self, checked: bool) -> None:
+        """Show or hide the viewer grid based on the action state."""
+        try:
+            if checked:
+                if hasattr(self.view._display, "enable_grid"):
+                    self.view._display.enable_grid()
+                elif hasattr(self.view._display, "display_grid"):
+                    self.view._display.display_grid()
+                else:
+                    self.win.statusBar().showMessage("Grid enable method not found", 2000)
+                    return
+            else:
+                if hasattr(self.view._display, "disable_grid"):
+                    self.view._display.disable_grid()
+                elif hasattr(self.view._display, "erase_grid"):
+                    self.view._display.erase_grid()
+                elif hasattr(self.view._display, "display_grid"):
+                    try:
+                        self.view._display.display_grid(False)
+                    except Exception:
+                        pass
+                else:
+                    self.win.statusBar().showMessage("Grid disable method not found", 2000)
+                    return
+            self.win.statusBar().showMessage(f"Grid {'shown' if checked else 'hidden'}", 2000)
+        except Exception as e:
+            print(f"Warning: Could not toggle grid: {e}")
+            self.win.statusBar().showMessage(f"Error toggling grid: {e}", 3000)
 
     def _set_view_preset(self, preset):
         """Set a view preset for the 3D view."""
