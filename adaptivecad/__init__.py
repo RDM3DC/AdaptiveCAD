@@ -7,9 +7,22 @@ __all__ = [
     "ParamEnv",
     "load_stl",
     "export_slices_from_ama",
+    # Spacetime helpers
+    "Event",
+    "minkowski_interval",
+    "lorentz_boost_x",
+    "apply_boost",
+    "light_cone",
 ]
 
 from .params import ParamEnv
+from .spacetime import (
+    Event,
+    minkowski_interval,
+    lorentz_boost_x,
+    apply_boost,
+    light_cone,
+)
 
 
 def generate_gcode_from_shape(*args, **kwargs):

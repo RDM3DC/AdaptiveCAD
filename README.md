@@ -22,6 +22,7 @@ examples and unit tests without a large toolchain.  Current features include:
 - `adaptivecad.gcode_generator` – placeholder G‑code generation routines
   including `SimpleMilling` and a stub `WaterlineMilling` strategy
 - `adaptivecad.analytic_slicer` – helper for analytic B‑rep slicing
+- `adaptivecad.spacetime` – lightweight Minkowski helpers for relativistic experiments
 - `adaptivecad.gui.playground` – PySide6 viewer with a rich toolbar for Box,
   Cylinder, Bézier and B‑spline curves, push‑pull editing and export commands
   (STL, AMA and G‑code). The toolbar now offers constructive tools like Move,
@@ -33,6 +34,14 @@ examples and unit tests without a large toolchain.  Current features include:
 - Command‑line tool `export_slices.py` for generating BREP or STL slices from an AMA file
 - Example script `example_script.py` demonstrating curve evaluation
 - Unit tests in the `tests` folder (`python -m pytest`)
+
+## Spacetime Utilities
+The new `adaptivecad.spacetime` module offers simple Minkowski helpers for
+relativistic experiments:
+
+- `Event` class representing events `(t, x, y, z)`
+- `minkowski_interval` and `apply_boost` for Lorentz transforms
+- `light_cone` sample generator for visualization
 
 
 ## AdaptiveCAD Playground
