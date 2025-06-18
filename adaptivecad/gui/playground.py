@@ -57,8 +57,12 @@ else:
     )
     from adaptivecad.commands.minimal_import import MinimalImportCmd
 
-# Define SuperellipseFeature at module level regardless of GUI availability
-from adaptivecad.command_defs import Feature
+
+# Import all basic shape commands and their dependencies
+from adaptivecad.command_defs import (
+    Feature, DOCUMENT, rebuild_scene,
+    NewBoxCmd, NewCylCmd, NewBallCmd, NewTorusCmd, NewConeCmd
+)
 
 # --- PI CURVE SHELL SHAPE TOOL (Parametric πₐ-based surface) ---
 class PiCurveShellFeature(Feature):
@@ -1613,9 +1617,12 @@ class MainWindow:
             print(f"[DEBUG] Removing {len(self.arrow_shapes)} arrow shapes")
             for info in self.arrow_shapes.values():
                 try:
+                    # Fix: IsDisplayed only takes one argument (the AIS object)
                     if self.view._display.Context.IsDisplayed(info['ais']):
                         self.view._display.Context.Remove(info['ais'], True)
                         print("[DEBUG] Arrow removed from display")
+                    else:
+                        print("[DEBUG] Arrow was not displayed")
                 except Exception as e:
                     print(f"[DEBUG] Error removing arrow: {e}")
             self.arrow_shapes = {}
@@ -1730,7 +1737,6 @@ class MainWindow:
         
         # Add projection controls
         layout.addWidget(QLabel("Projection:"))
-        
         projection_combo = QComboBox()
         projection_combo.addItems(['Orthographic', 'Perspective', 'Isometric'])
         layout.addWidget(projection_combo)

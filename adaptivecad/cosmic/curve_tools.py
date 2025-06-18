@@ -19,18 +19,19 @@ try:
 except ImportError:
     HAS_DEPENDENCIES = False
 
-if HAS_DEPENDENCIES:
-    try:
-        from OCC.Core.gp import gp_Pnt
-        from OCC.Core.TColgp import TColgp_Array1OfPnt
-        from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire
-        from OCC.Core.GeomAPI import GeomAPI_PointsToBSplineCurve
-        from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
-        HAS_OCC = True
-    except ImportError:
-        HAS_OCC = False
-else:
+# Try to import OpenCascade independently of other dependencies
+# This ensures we can create shapes even if some internal modules are missing
+try:
+    from OCC.Core.gp import gp_Pnt
+    from OCC.Core.TColgp import TColgp_Array1OfPnt
+    from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire
+    from OCC.Core.GeomAPI import GeomAPI_PointsToBSpline  # Fixed: correct class name is GeomAPI_PointsToBSpline
+    from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
+    HAS_OCC = True
+    print("[curve_tools] Successfully imported OpenCascade modules (HAS_OCC = True)")
+except ImportError as e:
     HAS_OCC = False
+    print(f"[curve_tools] Failed to import OpenCascade modules: {e} (HAS_OCC = False)")
 
 
 class BizarreCurveFeature(Feature):
@@ -38,6 +39,7 @@ class BizarreCurveFeature(Feature):
     
     def __init__(self, base_radius: float, height: float, frequency: float, 
                  distortion: float, segments: int):
+        print(f"[BizarreCurveFeature] __init__ called with base_radius={base_radius}, height={height}, frequency={frequency}, distortion={distortion}, segments={segments}")
         params = {
             "base_radius": base_radius,
             "height": height, 
@@ -46,58 +48,60 @@ class BizarreCurveFeature(Feature):
             "segments": segments
         }
         shape = self._make_shape(params)
+        print(f"[BizarreCurveFeature] Shape created: {shape}")
         super().__init__("BizarreCurve", params, shape)
-    
+        
     def _make_shape(self, params):
         """Create the bizarre curve shape using mathematical distortions."""
+        print(f"[BizarreCurveFeature] _make_shape called with params: {params}")
         if not HAS_OCC:
+            print("[BizarreCurveFeature] HAS_OCC is False, returning None")
+            print("[BizarreCurveFeature] This means OpenCascade (pythonocc-core) was not detected")
+            print("[BizarreCurveFeature] Ensure the correct conda environment with pythonocc-core is active")
             return None
-            
+        
+        # If we get here, HAS_OCC is True
+        print("[BizarreCurveFeature] HAS_OCC is True, creating shape...")
         base_radius = params["base_radius"]
         height = params["height"]
         frequency = params["frequency"]
         distortion = params["distortion"]
         segments = params["segments"]
-        
         points = TColgp_Array1OfPnt(1, segments)
-        
         for i in range(segments):
             t = i / (segments - 1)  # Parameter from 0 to 1
-            
-            # Bizarre mathematical transformation
             angle = 2 * math.pi * frequency * t
-            
-            # Apply hyperbolic distortion using pi_a_over_pi
             try:
-                hyperbolic_factor = pi_a_over_pi(t * distortion)
-            except:
+                # Add default kappa=1.0 parameter to pi_a_over_pi call
+                hyperbolic_factor = pi_a_over_pi(t * distortion, kappa=1.0)
+            except Exception as e:
+                print(f"[BizarreCurveFeature] pi_a_over_pi exception: {e}")
                 hyperbolic_factor = 1.0
-            
-            # Complex transcendental curve
             x = base_radius * math.cos(angle) * hyperbolic_factor
             y = base_radius * math.sin(angle) * hyperbolic_factor
             z = height * t + distortion * math.sin(10 * angle) * math.exp(-2 * t)
-            
-            # Add chaotic perturbations
             chaos_x = 0.1 * distortion * math.sin(23 * angle + t)
             chaos_y = 0.1 * distortion * math.cos(17 * angle - t)
             chaos_z = 0.05 * distortion * math.sin(13 * angle * t)
-            
-            points.SetValue(i + 1, gp_Pnt(x + chaos_x, y + chaos_y, z + chaos_z))
-        
-        # Create B-spline curve
+            pt = gp_Pnt(x + chaos_x, y + chaos_y, z + chaos_z)
+            points.SetValue(i + 1, pt)
+            print(f"[BizarreCurveFeature] Point {i}: {pt}")        # Create B-spline curve
         try:
-            spline_builder = GeomAPI_PointsToBSplineCurve(points, 3, 8, False, 1.0e-6)
+            # Using GeomAPI_PointsToBSpline (correct class name)
+            spline_builder = GeomAPI_PointsToBSpline(points, 3, 8, False, 1.0e-6)
             spline = spline_builder.Curve()
             edge = BRepBuilderAPI_MakeEdge(spline).Edge()
+            print(f"[BizarreCurveFeature] Spline edge created: {edge}")
             return edge
-        except:
-            # Fallback to simple polyline if spline fails
+        except Exception as e:
+            print(f"[BizarreCurveFeature] Spline creation failed: {e}")
             wire_builder = BRepBuilderAPI_MakeWire()
             for i in range(segments - 1):
                 edge = BRepBuilderAPI_MakeEdge(points.Value(i + 1), points.Value(i + 2)).Edge()
                 wire_builder.Add(edge)
-            return wire_builder.Wire()
+            wire = wire_builder.Wire()
+            print(f"[BizarreCurveFeature] Polyline wire created: {wire}")
+            return wire
 
 
 class CosmicSplineFeature(Feature):
@@ -151,7 +155,7 @@ class CosmicSplineFeature(Feature):
         
         # Create cosmic spline
         try:
-            spline_builder = GeomAPI_PointsToBSplineCurve(points, min(degree, len(transformed_points) - 1), 8, False, 1.0e-6)
+            spline_builder = GeomAPI_PointsToBSpline(points, min(degree, len(transformed_points) - 1), 8, False, 1.0e-6)
             spline = spline_builder.Curve()
             edge = BRepBuilderAPI_MakeEdge(spline).Edge()
             return edge
@@ -304,14 +308,20 @@ class BizarreCurveCmd(BaseCmd):
             dlg.distortion.value(),
             dlg.segments.value()
         )
-        
+        print(f"[BizarreCurveCmd] Feature created: {feat}")
+        print(f"[BizarreCurveCmd] Feature shape: {feat.shape}")
         try:
             DOCUMENT.append(feat)
+            print("[BizarreCurveCmd] Added feature to DOCUMENT")
             mw.view._display.EraseAll()
+            print("[BizarreCurveCmd] Erased all shapes from display")
             mw.view._display.DisplayShape(feat.shape, update=True)
+            print("[BizarreCurveCmd] Displayed shape")
             mw.view._display.FitAll()
+            print("[BizarreCurveCmd] FitAll called")
             mw.win.statusBar().showMessage("Bizarre Curve created!", 3000)
         except Exception as e:
+            print(f"[BizarreCurveCmd] Exception during display: {e}")
             mw.win.statusBar().showMessage(f"Error creating bizarre curve: {e}", 5000)
 
 
