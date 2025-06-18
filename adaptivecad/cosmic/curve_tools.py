@@ -10,7 +10,22 @@ from typing import List, Tuple, Optional, Dict, Any
 
 try:
     from PySide6.QtWidgets import QDialog, QFormLayout, QDialogButtonBox, QDoubleSpinBox, QSpinBox, QComboBox, QLabel
-    from adaptivecad.command_defs import Feature, DOCUMENT, BaseCmd, rebuild_scene
+    
+    # Load command_defs.py module directly to avoid package naming conflict
+    import importlib.util
+    import sys
+    import os
+    command_defs_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'command_defs.py')
+    spec = importlib.util.spec_from_file_location("command_defs_module", command_defs_path)
+    command_defs = importlib.util.module_from_spec(spec)
+    sys.modules['command_defs_module'] = command_defs
+    spec.loader.exec_module(command_defs)
+    
+    Feature = command_defs.Feature
+    DOCUMENT = command_defs.DOCUMENT
+    BaseCmd = command_defs.BaseCmd
+    rebuild_scene = command_defs.rebuild_scene
+    
     from adaptivecad.ndfield import NDField
     from adaptivecad.geom.bspline import BSplineCurve
     from adaptivecad.linalg import Vec3

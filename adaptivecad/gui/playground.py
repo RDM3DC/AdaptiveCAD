@@ -36,33 +36,44 @@ else:
     from OCC.Core.TopoDS import TopoDS_Face
     from OCC.Core.TopExp import TopExp_Explorer
     from OCC.Core.TopAbs import TopAbs_FACE
-    from adaptivecad.command_defs import (
-        Feature,
-        NewBoxCmd,
-        NewCylCmd,
-        ExportStlCmd,
-        ExportAmaCmd,
-        ExportGCodeCmd,
-        ExportGCodeDirectCmd,
-        MoveCmd,
-        UnionCmd,
-        CutCmd,
-        IntersectCmd,
-        ScaleCmd,
-        MirrorCmd,
-        NewBallCmd,
-        NewTorusCmd,
-        NewConeCmd,
-        ShellCmd
-    )
-    from adaptivecad.commands.minimal_import import MinimalImportCmd
+import importlib.util
+import sys
+import os
+
+# Load command_defs.py module directly to avoid package naming conflict
+command_defs_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'command_defs.py')
+spec = importlib.util.spec_from_file_location("command_defs_module", command_defs_path)
+command_defs = importlib.util.module_from_spec(spec)
+sys.modules['command_defs_module'] = command_defs
+spec.loader.exec_module(command_defs)
+
+# Import the symbols we need
+NewBoxCmd = command_defs.NewBoxCmd
+NewCylCmd = command_defs.NewCylCmd
+ExportStlCmd = command_defs.ExportStlCmd
+ExportAmaCmd = command_defs.ExportAmaCmd
+ExportGCodeCmd = command_defs.ExportGCodeCmd
+ExportGCodeDirectCmd = command_defs.ExportGCodeDirectCmd
+MoveCmd = command_defs.MoveCmd
+UnionCmd = command_defs.UnionCmd
+CutCmd = command_defs.CutCmd
+IntersectCmd = command_defs.IntersectCmd
+ScaleCmd = command_defs.ScaleCmd
+MirrorCmd = command_defs.MirrorCmd
+NewBallCmd = command_defs.NewBallCmd
+NewTorusCmd = command_defs.NewTorusCmd
+NewConeCmd = command_defs.NewConeCmd
+ShellCmd = command_defs.ShellCmd
+DOCUMENT = command_defs.DOCUMENT
+rebuild_scene = command_defs.rebuild_scene
+Feature = command_defs.Feature
+
+from adaptivecad.commands.minimal_import import MinimalImportCmd
 
 
 # Import all basic shape commands and their dependencies
-from adaptivecad.command_defs import (
-    Feature, DOCUMENT, rebuild_scene,
-    NewBoxCmd, NewCylCmd, NewBallCmd, NewTorusCmd, NewConeCmd
-)
+
+
 
 # --- PI CURVE SHELL SHAPE TOOL (Parametric πₐ-based surface) ---
 class PiCurveShellFeature(Feature):

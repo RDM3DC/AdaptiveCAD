@@ -2,12 +2,25 @@
 Minimal import command that skips mesh processing to avoid hangs.
 """
 import os
+import importlib.util
+import sys
 from PySide6.QtWidgets import QFileDialog, QInputDialog, QMessageBox
 from PySide6.QtCore import QThread, Signal, Qt
 from OCC.Core.StlAPI import StlAPI_Reader
 from OCC.Core.STEPCAFControl import STEPCAFControl_Reader
 from OCC.Core.TopoDS import TopoDS_Shape
-from ..command_defs import Feature, DOCUMENT, rebuild_scene
+
+# Load command_defs.py module directly to avoid package naming conflict
+command_defs_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'command_defs.py')
+spec = importlib.util.spec_from_file_location("command_defs_module", command_defs_path)
+command_defs = importlib.util.module_from_spec(spec)
+sys.modules['command_defs_module'] = command_defs
+spec.loader.exec_module(command_defs)
+
+Feature = command_defs.Feature
+DOCUMENT = command_defs.DOCUMENT
+rebuild_scene = command_defs.rebuild_scene
+
 from ..commands import BaseCmd
 from ..gui.import_progress_dialog import ImportProgressDialog
 import time
