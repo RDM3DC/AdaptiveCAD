@@ -13,10 +13,11 @@ __all__ = [
     "lorentz_boost_x",
     "apply_boost",
     "light_cone",
-    "QuantumConfig",
+    # Quantum helpers
+    "QuantumState",
     "WavefunctionVisualizer",
     "EntanglementVisualizer",
-    "QuantumState",
+    "QuantumFieldVisualizer",
 ]
 
 from .params import ParamEnv
@@ -27,11 +28,11 @@ from .spacetime import (
     apply_boost,
     light_cone,
 )
-from .quantum import (
-    QuantumConfig,
+from .quantum_visualization import (
+    QuantumState,
     WavefunctionVisualizer,
     EntanglementVisualizer,
-    QuantumState,
+    QuantumFieldVisualizer,
 )
 
 
