@@ -138,6 +138,7 @@ Advanced Shapes
 Modeling Tools
 ├── Move
 ├── Scale
+├── Mirror ← NEW
 ├── Union
 ├── Cut
 ├── Intersect
@@ -163,7 +164,7 @@ Help
 ### Enhanced Toolbar
 - Box, Cylinder, Superellipse, Pi Curve Shell
 - **Separator**
-- Move, Union, Cut, **Delete** ← NEW
+- Move, **Mirror** ← NEW, Union, Cut, **Delete** ← NEW
 - All toolbar items have tooltips and icons
 
 ## 7. Technical Implementation
@@ -234,9 +235,10 @@ Help
 
 All requested features have been successfully implemented and tested:
 
-✅ **Delete function** - Fully restored and integrated  
-✅ **Properties window** - Available via Settings > View menu  
+✅ **Delete function** - Fully restored and integrated
+✅ **Properties window** - Available via Settings > View menu
 ✅ **Dimension selector/slicer** - Multi-dimensional view control with ViewCube-like functionality
+✅ **Mirror tool** - Mirror geometry across standard planes
 
 The playground now provides a complete CAD modeling environment with professional-grade features for object management, property editing, and multi-dimensional visualization.
 

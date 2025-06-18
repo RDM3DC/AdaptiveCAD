@@ -678,6 +678,50 @@ class ScaleCmd(BaseCmd):
         rebuild_scene(mw.view._display)
 
 
+class MirrorCmd(BaseCmd):
+    title = "Mirror"
+
+    def run(self, mw) -> None:
+        if mw.selected_feature is None:
+            mw.win.statusBar().showMessage("Select object to mirror!")
+            return
+
+        from PySide6.QtWidgets import QInputDialog
+        from OCC.Core.gp import gp_Trsf, gp_Ax2, gp_Pnt, gp_Dir
+        from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
+
+        plane, ok = QInputDialog.getItem(
+            mw.win,
+            "Mirror",
+            "Mirror plane:",
+            ["XY", "YZ", "XZ"],
+            0,
+            False,
+        )
+        if not ok:
+            return
+
+        axes = {
+            "XY": gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)),
+            "YZ": gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0)),
+            "XZ": gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 1, 0)),
+        }
+
+        trsf = gp_Trsf()
+        trsf.SetMirror(axes[plane])
+
+        mirrored_shape = BRepBuilderAPI_Transform(
+            mw.selected_feature.shape, trsf, True
+        ).Shape()
+
+        idx = DOCUMENT.index(mw.selected_feature)
+        if hasattr(mw.selected_feature, "params"):
+            mw.selected_feature.params["consumed"] = True
+
+        DOCUMENT.append(Feature("Mirror", {"target": idx, "plane": plane}, mirrored_shape))
+        rebuild_scene(mw.view._display)
+
+
 # ---------------------------------------------------------------------------
 # Boolean (Union, Cut) commands
 # ---------------------------------------------------------------------------

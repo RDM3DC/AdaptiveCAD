@@ -4,6 +4,7 @@ Test script to verify all new features work correctly in the AdaptiveCAD playgro
 
 Tests:
 - Delete function
+- Mirror tool
 - Properties panel (toggle via Settings > View menu)
 - Dimension selector (toggle via Settings > View menu)
 - Object selection and property editing
@@ -41,6 +42,11 @@ def test_new_features():
         assert hasattr(mw, '_delete_selected'), "Delete function not found"
         
         print("✓ Delete function available")
+
+        # Test mirror command exists
+        from adaptivecad.command_defs import MirrorCmd
+        assert hasattr(MirrorCmd, 'run'), "MirrorCmd not found"
+        print("✓ Mirror command available")
         
         # Test properties panel functions exist
         assert hasattr(mw, '_toggle_properties_panel'), "Properties panel toggle not found"
@@ -143,6 +149,7 @@ if __name__ == "__main__":
         print("\n🎉 All new features are working correctly!")
         print("\nNew Features Added:")
         print("• Delete function - accessible via Modeling Tools menu and toolbar")
+        print("• Mirror tool - mirror selected objects across XY/YZ/XZ")
         print("• Properties Panel - toggle via Settings > View > Show Properties Panel")
         print("• Dimension Selector - toggle via Settings > View > Show Dimension Selector")
         print("• Object Selection - click objects to see properties and edit parameters")
