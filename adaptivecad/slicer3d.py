@@ -18,13 +18,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, Union, Callable, Protocol
 
 import numpy as np
+from tkinter import Tk, filedialog
 
 try:
     from OCC.Core.BRep import BRep_Builder
     from OCC.Core.BRepTools import breptools_Read, breptools_Write
     from OCC.Core.TopoDS import TopoDS_Shape, TopoDS_Compound
     from OCC.Core.Bnd import Bnd_Box
-    from OCC.Core.BRepBndLib import brepbndlib_Add
+    from OCC.Core.BRepBndLib import brepbndlib
     from OCC.Core.gp import gp_Pnt, gp_Dir, gp_Ax3, gp_Pln
     from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Section
     # Check if we have GPU acceleration available
@@ -105,7 +106,7 @@ class Slicer3D:
             try:
                 # Use OCC bounding box
                 bbox = Bnd_Box()
-                brepbndlib_Add(self.model, bbox)
+                brepbndlib.Add(self.model, bbox)
                 xmin, ymin, zmin, xmax, ymax, zmax = bbox.Get()
                 self._bounds = ((xmin, ymin, zmin), (xmax, ymax, zmax))
             except Exception as e:
@@ -225,27 +226,36 @@ class Slicer3D:
         # For demonstration, we'll return a placeholder implementation
         try:
             from OCC.Core.TopExp import TopExp_Explorer
-            from OCC.Core.TopAbs import TopAbs_EDGE, TopAbs_VERTEX
-            from OCC.Core.TopoDS import topods_Edge, topods_Vertex
+            from OCC.Core.TopAbs import TopAbs_EDGE
             from OCC.Core.BRep import BRep_Tool
             from OCC.Core.GeomAdaptor import GeomAdaptor_Curve
             from OCC.Core.GCPnts import GCPnts_QuasiUniformDeflection
-            
+
             contours = []
             explorer = TopExp_Explorer(section_shape, TopAbs_EDGE)
-            
+
             # Group connected edges into contours
             while explorer.More():
-                edge = topods_Edge(explorer.Current())
-                curve, u_min, u_max = BRep_Tool.Curve(edge)
-                
+                edge = explorer.Current()  # Do NOT cast to TopoDS_Edge; explorer.Current() is already the correct type
+                try:
+                    curve, u_min, u_max = BRep_Tool.Curve(edge)
+                except Exception as e:
+                    print(f"Error getting curve from edge: {e}")
+                    explorer.Next()
+                    continue
+
                 if curve is None:
                     explorer.Next()
                     continue
-                    
-                adaptor = GeomAdaptor_Curve(curve)
-                discretizer = GCPnts_QuasiUniformDeflection(adaptor, 0.01, u_min, u_max)
-                
+
+                try:
+                    adaptor = GeomAdaptor_Curve(curve)
+                    discretizer = GCPnts_QuasiUniformDeflection(adaptor, 0.01, u_min, u_max)
+                except Exception as e:
+                    print(f"Error discretizing curve: {e}")
+                    explorer.Next()
+                    continue
+
                 if discretizer.IsDone() and discretizer.NbPoints() > 1:
                     contour = []
                     for i in range(1, discretizer.NbPoints() + 1):
@@ -253,11 +263,11 @@ class Slicer3D:
                         # Extract X and Y, ignore Z since we're in a plane
                         contour.append((point.X(), point.Y()))
                     contours.append(contour)
-                    
+
                 explorer.Next()
-                
+
             return contours
-            
+
         except Exception as e:
             print(f"Error extracting contours: {e}")
             return []
@@ -603,46 +613,64 @@ class GCodeExporter:
             Generated G-code as a string.
         """
         gcode_lines = []
-        
+
         # Add header
         self._add_header(gcode_lines, include_comments, printer_type)
-        
+
         # Process each layer
         for i, layer_data in enumerate(self.path_data):
-            z_height = layer_data["z_height"]
-            is_first_layer = layer_data["is_first_layer"]
-            print_speed = layer_data["print_speed"]
-            
+            z_height = layer_data.get("z_height")
+            is_first_layer = layer_data.get("is_first_layer", False)
+            print_speed = layer_data.get("print_speed")
+
+            # Validate layer data
+            if z_height is None or print_speed is None:
+                print(f"[ERROR] Invalid layer data: z_height={z_height}, print_speed={print_speed}")
+                continue
+
+            # Validate settings
+            if self.settings.bed_temperature is None or self.settings.extruder_temperature is None:
+                print(f"[ERROR] Invalid printer settings: bed_temperature={self.settings.bed_temperature}, extruder_temperature={self.settings.extruder_temperature}")
+                return ""
+
             # Add layer comment
             if include_comments:
                 gcode_lines.append(f"\n; LAYER {i}: Z = {z_height:.3f}")
-                
+
             # Add layer change command
-            if is_first_layer:
-                gcode_lines.append(f"G1 Z{z_height:.3f} F{self.settings.travel_speed * 60}")
-            else:
-                gcode_lines.append(f"G1 Z{z_height:.3f}")
-                
+            try:
+                if is_first_layer:
+                    gcode_lines.append(f"G1 Z{z_height:.3f} F{self.settings.travel_speed * 60}")
+                else:
+                    gcode_lines.append(f"G1 Z{z_height:.3f}")
+            except TypeError as e:
+                print(f"[ERROR] Failed to format layer change command: {e}")
+                continue
+
             # Fan control
-            if is_first_layer:
-                gcode_lines.append("M106 S0 ; Turn off fan for first layer")
-            elif self.settings.fan_speed > 0:
-                fan_value = min(255, self.settings.fan_speed)
-                gcode_lines.append(f"M106 S{fan_value} ; Set fan speed")
-                
+            try:
+                if is_first_layer:
+                    gcode_lines.append("M106 S0 ; Turn off fan for first layer")
+                elif self.settings.fan_speed > 0:
+                    fan_value = min(255, self.settings.fan_speed)
+                    gcode_lines.append(f"M106 S{fan_value} ; Set fan speed")
+            except Exception as e:
+                print(f"[ERROR] Failed to format fan control command: {e}")
+                continue
+
             # Process paths for this layer
             self._process_layer_paths(
-                layer_data["paths"], 
+                layer_data.get("paths", []), 
                 gcode_lines, 
                 z_height, 
                 include_comments, 
                 minimize_file_size,
                 print_speed
             )
-                
+
         # Add footer
         self._add_footer(gcode_lines, include_comments, printer_type)
-        
+
         return "\n".join(gcode_lines)
     
     def _add_header(self, gcode_lines: List[str], include_comments: bool, printer_type: str):
@@ -651,71 +679,112 @@ class GCodeExporter:
         
         if include_comments:
             gcode_lines.extend([
-                "; G-code generated by AdaptiveCAD Slicer",
+                ";FLAVOR:Marlin",
+                f";TIME:{int(self._estimate_print_time())}",
+                f";Filament used: {self._estimate_filament_usage():.3f}m",
+                f";Layer height: {self.settings.layer_height:.2f}",
+                ";MINX:0.0",
+                ";MINY:0.0", 
+                ";MINZ:0.0",
+                ";MAXX:100.0",
+                ";MAXY:100.0",
+                f";MAXZ:{len(self.path_data) * self.settings.layer_height:.2f}",
+                ";TARGET_MACHINE.NAME:AdaptiveCAD Printer",
+                "; Generated by AdaptiveCAD Slicer",
                 f"; Generated on: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}",
-                f"; Layer Height: {self.settings.layer_height:.3f}mm",
-                f"; Nozzle Diameter: {self.settings.nozzle_diameter:.2f}mm",
-                f"; Filament Diameter: {self.settings.filament_diameter:.2f}mm",
-                "; Print Settings:",
-                f";   - Print Speed: {self.settings.print_speed:.1f}mm/s",
-                f";   - First Layer Speed: {self.settings.first_layer_speed:.1f}mm/s",
-                f";   - Travel Speed: {self.settings.travel_speed:.1f}mm/s",
-                f";   - Bed Temperature: {self.settings.bed_temperature:.1f}°C",
-                f";   - Extruder Temperature: {self.settings.extruder_temperature:.1f}°C",
-                f";   - Infill: {self.settings.infill_percentage:.1f}%",
-                f";   - Walls: {self.settings.wall_count}",
                 ""
             ])
         
-        # Standard G-code header
+        # Initial heating and setup
         gcode_lines.extend([
-            "M201 X500 Y500 Z100 E5000 ; Set acceleration",
-            "M203 X500 Y500 Z10 E50 ; Set maximum feedrates",
-            "G21 ; Set units to millimeters",
-            "G90 ; Use absolute coordinates",
-            "M83 ; Use relative distances for extrusion",
+            f"M140 S{self.settings.bed_temperature}",
+            "M105",
+            f"M190 S{self.settings.bed_temperature}",
+            f"M104 S{self.settings.extruder_temperature}",
+            "M105", 
+            f"M109 S{self.settings.extruder_temperature}",
+            "G21 ;metric values",
+            "G90 ;absolute positioning",
+            "M82 ;set extruder to absolute mode",
+            "M107 ;start with the fan off"
         ])
         
-        # Heating commands
+        # Homing and preparation
         gcode_lines.extend([
-            f"M140 S{self.settings.bed_temperature} ; Set bed temperature",
-            f"M104 S{self.settings.extruder_temperature} ; Set extruder temperature",
-            "M190 S{self.settings.bed_temperature} ; Wait for bed temperature",
-            "M109 S{self.settings.extruder_temperature} ; Wait for extruder temperature"
-        ])
-        
-        # Home and prepare
-        gcode_lines.extend([
-            "G28 ; Home all axes",
-            "G1 Z5 F1200 ; Move Z up a bit",
-            "G1 X0 Y0 F3000 ; Move to front corner",
-            "G92 E0 ; Reset extruder position",
-            "G1 Z0.2 F1200 ; Get ready to prime",
-            "G1 X100 E12 F1000 ; Prime",
-            "G92 E0 ; Reset extruder position again",
-            "G1 F200 E-1 ; Retract a bit to prevent oozing",
-            "G1 X120 F5000 ; Quickly wipe away from prime line",
+            "G28 X0 Y0 ;move X/Y to min endstops",
+            "M300 S1318 P266",
+            "G28 Z0 ;move Z to min endstops",
+            "G0 Z0.2",
+            "G92 E0 ;zero the extruded length",
+            "G1 X40 E25 F400 ; Extrude 25mm of filament in a 4cm line",
+            "G92 E0 ;zero the extruded length again",
+            "G1 E-1 F500 ; Retract a little",
+            "G1 X80 F4000 ; Quickly wipe away from the filament line",
+            "M117 ; Printing…",
+            "G5",
+            "M82 ;absolute extrusion mode",
+            "G92 E0",
+            "G92 E0",
+            "G1 F1500 E-6.5",
+            f";LAYER_COUNT:{len(self.path_data)}",
             ""
         ])
+        
+    def _estimate_print_time(self) -> float:
+        """Estimate print time in seconds."""
+        # Simple estimation based on layer count and speeds
+        total_time = 0
+        for layer_data in self.path_data:
+            # Estimate time for this layer based on path lengths and speeds
+            layer_time = 60  # Base time per layer in seconds
+            total_time += layer_time
+        return total_time
+        
+    def _estimate_filament_usage(self) -> float:
+        """Estimate filament usage in meters."""
+        # Simple estimation based on extrusion calculations
+        total_extrusion = 0
+        for layer_data in self.path_data:
+            for path in layer_data.get("paths", []):
+                if path.get("extrusion", False):
+                    points = path.get("points", [])
+                    for i in range(1, len(points)):
+                        x1, y1 = points[i-1]
+                        x2, y2 = points[i]
+                        distance = ((x2-x1)**2 + (y2-y1)**2)**0.5
+                        total_extrusion += distance * 0.001  # Convert to rough filament usage        return total_extrusion
         
     def _add_footer(self, gcode_lines: List[str], include_comments: bool, printer_type: str):
         """Add footer G-code."""
         if include_comments:
-            gcode_lines.append("\n; End G-Code")
+            gcode_lines.extend([
+                "",
+                f";TIME_ELAPSED:{int(self._estimate_print_time())}.0"
+            ])
             
-        # Standard end G-code
+        # Retract and finish
         gcode_lines.extend([
-            "G91 ; Relative positioning",
-            "G1 E-2 F2700 ; Retract",
-            "G1 Z10 ; Raise Z",
-            "G90 ; Absolute positioning",
-            "G1 X0 Y220 ; Present print",
-            "M106 S0 ; Turn off fan",
-            "M104 S0 ; Turn off extruder",
-            "M140 S0 ; Turn off bed",
-            "M84 ; Disable motors",
-            "M300 S440 P200 ; Beep to notify print is done"
+            f"G1 F1500 E{self.extrusion_amount - 6.0:.5f}",
+            "M140 S0",
+            "M107",
+            "M104 S0 ; turn off extruder",
+            "M140 S0 ; turn off bed", 
+            "M84 ; disable motors",
+            "M107",
+            "G91 ;relative positioning",
+            "G1 E-1 F300 ;retract the filament a bit before lifting the nozzle",
+            "G1 Z+0.5 E-5 ;move Z up a bit and retract filament even more",
+            "G28 X0 ;move X to min endstops",
+            "G1 Y180 F2000",
+            "M84 ;steppers off",
+            "G90",
+            "M300 S1318 P266",
+            "M82 ;absolute extrusion mode",
+            "M104 S0"
         ])
+        
+        if include_comments:
+            gcode_lines.append(";End of Gcode")
         
     def _process_layer_paths(self, 
                             paths: List[Dict], 
@@ -853,7 +922,6 @@ class ParametricSurface(Protocol):
         Tuple[float, float]
             (v_min, v_max) parameter bounds.
         """
-        ...
 
 
 class ParametricSlicer:
@@ -1153,7 +1221,8 @@ def slice_model_to_gcode(
     model: Any,
     output_path: str,
     settings: Optional[PrinterSettings] = None,
-    show_progress: bool = True
+    show_progress: bool = True,
+    progress_callback: callable = None
 ) -> str:
     """
     Slice a 3D model and generate G-code in one operation.
@@ -1174,40 +1243,89 @@ def slice_model_to_gcode(
     str
         Path to the generated G-code file.
     """
+    print(f"[DEBUG] slice_model_to_gcode called with output_path: '{output_path}'")
+    if not output_path or not isinstance(output_path, str) or output_path.strip() == '':
+        print("[ERROR] No valid output_path provided to slice_model_to_gcode! Export aborted.")
+        return None
     settings = settings or PrinterSettings()
-    
+
     # Progress callback
-    def progress_callback(current, total):
+    def default_progress_callback(current, total):
         if show_progress:
             print(f"Progress: {current}/{total} ({current/total*100:.1f}%)")
-    
+
+    cb = progress_callback if progress_callback is not None else default_progress_callback
+
     # Create slicer and slice model
     if show_progress:
         print("Slicing model...")
     slicer = Slicer3D(model, settings)
-    slice_contours = slicer.slice_model(callback=progress_callback if show_progress else None)
-    
+    slice_contours = slicer.slice_model(callback=cb)
+    print(f"[DEBUG] Number of layers: {len(slice_contours)}")
+    if len(slice_contours) == 0:
+        print("[ERROR] No layers generated. Slicing failed or model is empty.")
+        return None
+
     if show_progress:
         print(f"Generated {len(slice_contours)} layers")
         print("Planning tool paths...")
-    
+
     # Plan tool paths
     path_planner = PathPlanner(slice_contours, settings)
-    paths = path_planner.plan_paths(callback=progress_callback if show_progress else None)
-    
+    paths = path_planner.plan_paths(callback=cb)
+    print(f"[DEBUG] Number of planned layers: {len(paths)}")
+    if len(paths) == 0:
+        print("[ERROR] No tool paths planned. Check if contours are being generated.")
+        return None
+
     if show_progress:
         print("Generating G-code...")
-    
+
     # Generate G-code
     gcode_exporter = GCodeExporter(paths, settings)
     gcode = gcode_exporter.generate_gcode()
-    
-    # Save to file
-    with open(output_path, 'w') as f:
-        f.write(gcode)
-    
-    if show_progress:
-        print(f"G-code saved to: {output_path}")
-        print(slicer.get_performance_report())
-    
+    print(f"[DEBUG] G-code length: {len(gcode)} characters")
+    if not gcode.strip():
+        print("[ERROR] G-code is empty! Check previous steps.")
+        return None
+
+    # Prompt user to select save location
+    root = Tk()
+    root.withdraw()  # Hide the main tkinter window
+    output_path = filedialog.asksaveasfilename(
+        title="Save G-code File",
+        defaultextension=".gcode",
+        filetypes=[("G-code files", "*.gcode"), ("All files", "*.*")]
+    )
+    root.destroy()
+
+    if not output_path:
+        print("[ERROR] No file selected for saving. Export aborted.")
+        return None
+
+    # Ensure export folder exists and is writable
+    export_dir = os.path.dirname(output_path)
+    if not export_dir:
+        export_dir = os.getcwd()
+    if not os.path.exists(export_dir):
+        try:
+            os.makedirs(export_dir, exist_ok=True)
+            print(f"[INFO] Created export directory: {export_dir}")
+        except Exception as dir_err:
+            print(f"[ERROR] Could not create export directory '{export_dir}': {dir_err}")
+            return None
+    if not os.access(export_dir, os.W_OK):
+        print(f"[ERROR] Export directory '{export_dir}' is not writable.")
+        return None
+
+    # Write G-code to file
+    try:
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(gcode)
+            print(f"[DEBUG] G-code written to {output_path}")
+    except Exception as file_err:
+        print(f"[ERROR] Failed to write G-code to file: {file_err}")
+        return None
+
+    print(f"[TRACE] End of slice_model_to_gcode reached for: {output_path}")
     return output_path

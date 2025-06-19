@@ -566,25 +566,29 @@ class ExportGCodeDirectCmd(BaseCmd):
         # Get the last shape in DOCUMENT for this example
         # In a more complex application, you'd let the user select which shape to export
         shape = DOCUMENT[-1].shape
-        shape_name = DOCUMENT[-1].name
-
-        # Ask for G-code parameters
-        safe_height, ok1 = QInputDialog.getDouble(
-            mw.win, "Safe Height (mm)", "Enter safe height for rapid movements:", 10.0, 1.0, 100.0, 1
+        shape_name = DOCUMENT[-1].name        # Ask for 3D printing parameters
+        layer_height, ok1 = QInputDialog.getDouble(
+            mw.win, "Layer Height (mm)", "Enter layer height:", 0.2, 0.1, 0.5, 2
         )
         if not ok1:
             return
             
-        cut_depth, ok2 = QInputDialog.getDouble(
-            mw.win, "Cut Depth (mm)", "Enter cutting depth:", 1.0, 0.1, 20.0, 1
+        nozzle_diameter, ok2 = QInputDialog.getDouble(
+            mw.win, "Nozzle Diameter (mm)", "Enter nozzle diameter:", 0.4, 0.2, 1.0, 2
         )
         if not ok2:
             return
             
-        tool_diameter, ok3 = QInputDialog.getDouble(
-            mw.win, "Tool Diameter (mm)", "Enter tool diameter:", 6.0, 0.1, 20.0, 1
+        infill_percentage, ok3 = QInputDialog.getDouble(
+            mw.win, "Infill %", "Enter infill percentage:", 20.0, 0.0, 100.0, 1
         )
         if not ok3:
+            return
+            
+        extruder_temp, ok4 = QInputDialog.getDouble(
+            mw.win, "Extruder Temp (°C)", "Enter extruder temperature:", 200.0, 150.0, 300.0, 1
+        )
+        if not ok4:
             return
 
         unit, oku = QInputDialog.getItem(
@@ -605,18 +609,63 @@ class ExportGCodeDirectCmd(BaseCmd):
         if not path:
             return
 
-        # Generate G-code directly from the shape
         try:
-            # Generate G-code string
-            gcode = generate_gcode_from_shape(
-                shape, shape_name, tool_diameter, use_mm=(unit == "mm")
+            from adaptivecad.slicer3d import slice_model_to_gcode, PrinterSettings
+            from adaptivecad.gui.slicer_progress_dialog import SlicerProgressDialog
+            from PySide6.QtCore import QCoreApplication
+            # Create printer settings from the dialog inputs
+            settings = PrinterSettings(
+                layer_height=layer_height,
+                nozzle_diameter=nozzle_diameter,
+                print_speed=60.0,
+                extruder_temperature=extruder_temp,
+                bed_temperature=60.0,
+                infill_percentage=infill_percentage
             )
+
+            # Show progress dialog
+            progress_dialog = SlicerProgressDialog(parent=mw.win)
+            progress_dialog.show()
+            QCoreApplication.processEvents()
+
+            cancelled = False
+            def progress_callback(current, total):
+                progress_dialog.update_progress(current, total)
+                QCoreApplication.processEvents()
+                if progress_dialog.cancelled:
+                    nonlocal cancelled
+                    cancelled = True
             
-            # Save to file
+            # Generate G-code using the improved slicer, with progress
+            gcode_path = None
+            try:
+                gcode_path = slice_model_to_gcode(
+                    model=shape,
+                    output_path=path,
+                    settings=settings,
+                    show_progress=False,  # We'll use our own callback
+                    progress_callback=progress_callback
+                )
+            except Exception as e:
+                progress_dialog.close()
+                mw.win.statusBar().showMessage(f"Failed to generate G-code: {str(e)}")
+                return
+
+            progress_dialog.close()
+            if cancelled:
+                mw.win.statusBar().showMessage("Slicing cancelled.")
+                return
+            mw.win.statusBar().showMessage(f"3D Print G-code saved ➡ {gcode_path}")
+
+        except ImportError:
+            # Fallback to the old method if slicer is not available
+            gcode = generate_gcode_from_shape(
+                shape, shape_name, nozzle_diameter, use_mm=(unit == "mm")
+            )
             with open(path, 'w') as f:
                 f.write(gcode)
-                
-            mw.win.statusBar().showMessage(f"G-code (direct) saved ➡ {path}")
+            mw.win.statusBar().showMessage(f"G-code (2.5D) saved ➡ {path}")
+
         except Exception as e:
             mw.win.statusBar().showMessage(f"Failed to generate G-code: {str(e)}")
 
