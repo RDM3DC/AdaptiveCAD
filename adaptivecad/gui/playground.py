@@ -24,6 +24,11 @@ else:
     import traceback
     from adaptivecad import settings
     from adaptivecad.gui.viewcube_widget import ViewCubeWidget
+    # Optional ND Chess widget
+    try:
+        from adaptivecad.gui.nd_chess_widget import NDChessWidget
+    except Exception:  # pragma: no cover - missing deps
+        NDChessWidget = None
     from PySide6.QtWidgets import (
         QApplication, QMainWindow, QInputDialog, QMessageBox, QCheckBox, 
         QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QComboBox, 
@@ -767,6 +772,7 @@ class MainWindow:
         self.selected_feature = None
         self.property_panel = None
         self.dimension_panel = None
+        self.chess_dock = None
         print("[DEBUG] State variables initialized")
         
         # Create the main window
@@ -1310,7 +1316,14 @@ class MainWindow:
         self.toolbar.addAction(union_action)
         self.toolbar.addAction(cut_action)
         self.toolbar.addAction(delete_action)
-          # Create Help menu
+
+        # --- Games / Extras Menu ---
+        games_menu = menubar.addMenu("Games")
+        chess_action = QAction("Play 4D Chess", self.win)
+        chess_action.triggered.connect(self._open_chess_widget)
+        games_menu.addAction(chess_action)
+
+        # Create Help menu
         help_menu = menubar.addMenu("Help")
         
         # Add About action
@@ -1649,6 +1662,19 @@ class MainWindow:
             self.dimension_panel.hide()
             self.win.removeDockWidget(self.dimension_panel)
             self.dimension_panel = None
+
+    def _open_chess_widget(self):
+        """Open the ND chess widget in a dock window."""
+        if NDChessWidget is None:
+            QMessageBox.information(self.win, "4D Chess", "Chess widget not available.")
+            return
+        if self.chess_dock is None:
+            self.chess_widget = NDChessWidget()
+            self.chess_dock = QDockWidget("4D Chess", self.win)
+            self.chess_dock.setWidget(self.chess_widget)
+            self.win.addDockWidget(Qt.RightDockWidgetArea, self.chess_dock)
+        else:
+            self.chess_dock.show()
 
     def _toggle_grid_display(self, checked: bool) -> None:
         """Show or hide the viewer grid based on the action state."""
