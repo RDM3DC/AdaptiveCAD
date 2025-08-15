@@ -1,6 +1,16 @@
 ---
-const { title = 'Adaptive Resistance Principle', description = 'Exploring the Adaptive Resistance Principle (ARP)', meta = [] } = Astro.props;
-const fullTitle = title === 'Adaptive Resistance Principle' ? title : `${title} • Adaptive Resistance Principle`;
+import { getRelativeLocaleUrl } from 'astro:i18n';
+
+const { title = 'AdaptiveCAD', description = 'A curvature-first CAD/CAM system built on Adaptive Pi geometry', meta = [] } = Astro.props;
+const fullTitle = title === 'AdaptiveCAD' ? title : `${title} • AdaptiveCAD`;
+
+// Helper to create proper base paths
+const basePath = import.meta.env.BASE_URL || '/';
+const assetPath = (path: string) => {
+  const cleanPath = path.replace(/^\//, '');
+  return basePath.endsWith('/') ? basePath + cleanPath : basePath + '/' + cleanPath;
+};
+const linkPath = (path: string) => basePath.replace(/\/$/, '') + path;
 ---
 <!DOCTYPE html>
 <html lang="en">
@@ -9,21 +19,21 @@ const fullTitle = title === 'Adaptive Resistance Principle' ? title : `${title} 
   <title>{fullTitle}</title>
   <meta name="description" content={description} />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="icon" type="image/svg+xml" href={assetPath('favicon.svg')} />
   {meta.map(m => <meta {...m} />)}
-  <link rel="stylesheet" href="/fonts.css" />
-  <link rel="stylesheet" href="/global.css" />
+  <link rel="stylesheet" href={assetPath('fonts.css')} />
+  <link rel="stylesheet" href={assetPath('global.css')} />
 </head>
 <body>
   <header class="site-header">
     <div class="container">
       <nav class="main-nav">
-        <a href="/" class="brand">ARP</a>
+        <a href={linkPath('/')} class="brand">AdaptiveCAD</a>
         <div class="nav-links">
-          <a href="/concept">Concept</a>
-            <a href="/research">Research</a>
-          <a href="/blog">Blog</a>
-          <a href="https://github.com/RDM3DC/Adaptive-Resistance-Principle-ARP-" target="_blank" rel="noopener">GitHub</a>
+          <a href={linkPath('/concept')}>Concept</a>
+            <a href={linkPath('/research')}>Research</a>
+          <a href={linkPath('/blog')}>Blog</a>
+          <a href="https://github.com/RDM3DC/AdaptiveCAD" target="_blank" rel="noopener">GitHub</a>
         </div>
       </nav>
     </div>
@@ -32,7 +42,7 @@ const fullTitle = title === 'Adaptive Resistance Principle' ? title : `${title} 
     <slot />
   </main>
   <footer>
-    <p>&copy; {new Date().getFullYear()} Adaptive Resistance Principle (ARP). All rights reserved.</p>
+    <p>&copy; {new Date().getFullYear()} AdaptiveCAD. All rights reserved.</p>
   </footer>
 </body>
 </html>

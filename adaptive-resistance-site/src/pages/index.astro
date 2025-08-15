@@ -1,33 +1,37 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+
+// Helper to create proper base paths  
+const basePath = import.meta.env.BASE_URL || '/';
+const linkPath = (path: string) => basePath.replace(/\/$/, '') + path;
 ---
-<BaseLayout title="Adaptive Resistance Principle" description="High-level introduction to the Adaptive Resistance Principle (ARP)">
+<BaseLayout title="AdaptiveCAD" description="A curvature-first CAD/CAM system built on Adaptive Pi geometry">
   <section class="hero">
-    <h1>Adaptive Resistance <br />Principle (ARP)</h1>
-    <p>A framework exploring how systems evolve resilience in dynamic, adversarial or resource‑constrained environments. (Refine this line to your canonical definition.)</p>
+    <h1>AdaptiveCAD</h1>
+    <p>A curvature-first CAD/CAM system built on Adaptive Pi (πₐ) geometry, where curves—not straight lines—are the fundamental primitives.</p>
     <p>
-      <a class="button" href="/concept">Explore the Concept</a>
+      <a class="button" href={linkPath('/concept')}>Explore the Concept</a>
     </p>
   </section>
 
   <section>
-    <h2>Why ARP?</h2>
+    <h2>Why AdaptiveCAD?</h2>
     <div class="grid">
       <div class="card">
-        <h3>Resilience</h3>
-        <p>Model how resistance adapts over time under pressure or perturbation.</p>
+        <h3>Curvature-First</h3>
+        <p>Built on πₐ (Adaptive Pi) geometry where curves are fundamental primitives, reflecting the reality that nature contains no true straight lines.</p>
       </div>
       <div class="card">
-        <h3>Optimization Insight</h3>
-        <p>Generate strategies for balancing adaptation, stability, and efficiency.</p>
+        <h3>Manufacturing-Aligned</h3>
+        <p>Toolpaths naturally follow curves; AdaptiveCAD aligns CAD models with manufacturing reality for more efficient production.</p>
       </div>
       <div class="card">
-        <h3>Cross-Domain</h3>
-        <p>Applies to biological, computational, economic, and organizational systems.</p>
+        <h3>Parametric Control</h3>
+        <p>Advanced parametric shapes including Superellipse, Pi Curve Shell, and Helix with precise curvature control.</p>
       </div>
       <div class="card">
-        <h3>Composable</h3>
-        <p>Integrate into existing simulation, ML, or control workflows.</p>
+        <h3>Open Source</h3>
+        <p>Full Python implementation with GUI playground, command-line tools, and extensible architecture.</p>
       </div>
     </div>
   </section>
@@ -35,7 +39,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
   <section>
     <h2>Latest Updates</h2>
     <div id="blog-preview">
-      <p>Coming soon. <a href="/blog">View blog</a>.</p>
+      <p>AdaptiveCAD is fully operational with core features working! <a href={linkPath('/blog')}>View blog</a>.</p>
     </div>
   </section>
 </BaseLayout>

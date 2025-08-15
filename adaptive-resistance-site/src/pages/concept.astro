@@ -1,27 +1,45 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 ---
-<BaseLayout title="Concept Overview" description="Conceptual overview of the Adaptive Resistance Principle">
-  <h1>Concept Overview</h1>
-  <p class="meta">Foundations</p>
-  <p>Provide a concise, rigorous definition of ARP. Outline the core variables, governing dynamics, and theoretical backbone. You can convert this page to MD/MDX later if you want heavy math notation.</p>
+<BaseLayout title="Concept Overview" description="Conceptual overview of AdaptiveCAD and Adaptive Pi geometry">
+  <h1>AdaptiveCAD Concept Overview</h1>
+  <p class="meta">Foundations of πₐ (Adaptive Pi) Geometry</p>
+  <p>AdaptiveCAD is built on the revolutionary concept of "Adaptive Pi Geometry" (πₐ), a curvature-first approach where curves—not straight lines—are the fundamental primitive objects.</p>
 
-  <h2>Core Elements</h2>
+  <h2>Core Principles</h2>
   <ul>
-    <li><strong>Adaptive Pressure:</strong> The driving force altering system configuration.</li>
-    <li><strong>Resistance Metric:</strong> Quantitative measure capturing robustness or inertia.</li>
-    <li><strong>Feedback Loop:</strong> Mechanism linking resistance changes to environmental signals.</li>
-    <li><strong>Phase Behavior:</strong> Regimes of stability vs. transition.</li>
+    <li><strong>Curvature-First Design:</strong> Curves are the fundamental primitives, reflecting physical reality where no perfect straight lines exist.</li>
+    <li><strong>Adaptive Pi (πₐ) Geometry:</strong> Dynamic metric tensor allowing location-dependent curvature for more realistic modeling.</li>
+    <li><strong>Manufacturing Alignment:</strong> CAD models naturally align with manufacturing toolpaths and processes.</li>
+    <li><strong>Parametric Control:</strong> Precise control over curve properties including curvature, torsion, and continuity.</li>
   </ul>
 
-  <h2>High-Level Equation / Pseudocode</h2>
-  <pre><code>// Pseudocode placeholder
-R[t+1] = f(R[t], stress[t], adaptation_rate, resource_constraints)</code></pre>
+  <h2>Mathematical Foundation</h2>
+  <pre><code>// Dynamic metric tensor
+g_ij(p,t) = metric at point p and parameter t
+ds² = g_ij dx^i dx^j
+
+// Constraint-driven curvature update  
+∂g_ij/∂t = -α ∂Φ/∂x^i ∂Φ/∂x^j
+
+// Geodesic computation for toolpaths
+ẍ^k + Γ^k_ij ẋ^i ẋ^j = 0</code></pre>
 
   <h2>Applications</h2>
   <ul>
-    <li>Algorithmic optimization under shifting constraints.</li>
-    <li>Bio-inspired adaptive control systems.</li>
-    <li>Resilience scoring in distributed architectures.</li>
+    <li>Advanced parametric shape creation (Superellipse, Pi Curve Shell, Helix)</li>
+    <li>Curvature-aware toolpath generation for manufacturing</li>
+    <li>Organic, adaptive forms responding to physical forces</li>
+    <li>Efficient encoding of complex geometry using curve primitives</li>
+  </ul>
+
+  <h2>Implementation</h2>
+  <p>AdaptiveCAD provides a complete Python implementation including:</p>
+  <ul>
+    <li>Linear algebra core with quaternions and homogeneous coordinates</li>
+    <li>Bézier and B-spline curve operations</li>
+    <li>GUI playground with 3D visualization</li>
+    <li>CAM toolpath generation and G-code export</li>
+    <li>STL and STEP file import/export</li>
   </ul>
 </BaseLayout>
