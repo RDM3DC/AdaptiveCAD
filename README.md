@@ -2,7 +2,8 @@
 
 **🎉 Status: Fully Operational** - Core features working, GUI environment ready!
 
-> **Try it now**: `python quick_start_demo.py`
+> **Try it now**: `python quick_start_demo.py`  
+> **Visit the website**: [https://rdm3dc.github.io/AdaptiveCAD](https://rdm3dc.github.io/AdaptiveCAD)
 
 
 Below is a *road‑map of the mathematics* you will actually need if you want to write a modern CAD / CAM system completely from scratch and, at the same time, support your **πₐ (“Adaptive Pi”) non‑Euclidean geometry kernel**.
@@ -45,6 +46,20 @@ relativistic experiments:
 - `minkowski_interval` and `apply_boost` for Lorentz transforms
 - `light_cone` sample generator for visualization
 
+
+## AdaptiveCAD Website
+
+The AdaptiveCAD project has a dedicated website showcasing the Adaptive Pi (πₐ) geometry concepts and project documentation:
+
+**🌐 Website:** [https://rdm3dc.github.io/AdaptiveCAD](https://rdm3dc.github.io/AdaptiveCAD)
+
+The website features:
+- Comprehensive overview of AdaptiveCAD and πₐ geometry
+- Detailed concept explanations with mathematical foundations
+- Implementation details and core features
+- Direct links to the GitHub repository
+
+The website is automatically built and deployed using GitHub Actions whenever changes are made to the `adaptive-resistance-site/` directory.
 
 ## AdaptiveCAD Playground
 A lightweight viewer prototype is included in `adaptivecad.gui.playground`.
