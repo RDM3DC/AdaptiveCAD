@@ -6,7 +6,8 @@ This repository also contains the AdaptiveCAD experimental GUI environment along
 ```bash
 conda env create -f environment.yml   # first time
 conda activate adaptivecad
-pip install -e .[gui]
+# IMPORTANT (zsh/fish): quote extras to prevent shell globbing
+python -m pip install -e '.[gui]'
 ```
 (If extras fail due to resolver conflicts, fall back to conda installing `pyside6 pythonocc-core`.)
 
