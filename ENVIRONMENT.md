@@ -49,6 +49,48 @@ python -c "from adaptivecad.gui.playground import main; main()"
 
 Or you can create a shortcut with this command.
 
+### macOS (New Native Launch Script)
+
+For macOS users a helper script has been added: `run_gui_mac.sh`.
+
+Steps:
+1. Ensure the Conda environment exists (first time only):
+   ```bash
+   conda env create -f environment.yml
+   ```
+2. Activate it:
+   ```bash
+   conda activate adaptivecad
+   ```
+3. Make sure the script is executable (only once):
+   ```bash
+   chmod +x run_gui_mac.sh
+   ```
+4. Launch the GUI:
+   ```bash
+   ./run_gui_mac.sh
+   ```
+
+If you encounter a Qt platform plugin error (e.g. cocoa), re-run with debug:
+```bash
+QT_DEBUG_PLUGINS=1 ./run_gui_mac.sh
+```
+
+Manual fallback (equivalent):
+```bash
+python -m adaptivecad.gui.playground
+```
+
+High‑DPI scaling tweaks (optional):
+```bash
+QT_AUTO_SCREEN_SCALE_FACTOR=1 QT_ENABLE_HIGHDPI_SCALING=1 ./run_gui_mac.sh
+```
+
+Software rendering (if black/blank window):
+```bash
+QT_OPENGL=software ./run_gui_mac.sh
+```
+
 ## Installed Packages
 
 The environment has the following packages installed:
