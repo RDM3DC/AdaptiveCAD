@@ -31,7 +31,7 @@ else:
         QDialogButtonBox, QFormLayout, QDoubleSpinBox, QSpinBox, QDialog
     )
     from PySide6.QtGui import QAction, QIcon, QCursor, QPixmap
-    from PySide6.QtCore import Qt, QObject, QEvent
+    from PySide6.QtCore import Qt, QObject, QEvent, QTimer
     from OCC.Core.AIS import AIS_Shape
     from OCC.Core.TopoDS import TopoDS_Face
     from OCC.Core.TopExp import TopExp_Explorer
@@ -1323,11 +1323,26 @@ class MainWindow:
         viewcube_action.triggered.connect(toggle_cube)
         view_menu.addAction(viewcube_action)
 
-        # Add Grid display toggle
-        grid_view_action = QAction("Show Grid", self.win, checkable=True)
-        grid_view_action.setChecked(False)
-        grid_view_action.triggered.connect(self._toggle_grid_display)
-        view_menu.addAction(grid_view_action)
+        # GRID SYSTEM -----------------------------------------------------
+        # Action + shortcut
+        self._grid_action = QAction("Show Grid", self.win, checkable=True)
+        self._grid_action.setChecked(True)
+        self._grid_action.setShortcut("G")  # quick toggle
+        self._grid_action.setStatusTip("Toggle reference grid (G)")
+        self._grid_action.triggered.connect(self._toggle_grid_display)
+        view_menu.addAction(self._grid_action)
+        self.win.addAction(self._grid_action)
+
+        # Rebuild action (debug)
+        rebuild_grid_action = QAction("Rebuild Grid (Debug)", self.win)
+        rebuild_grid_action.triggered.connect(self._rebuild_grid)
+        view_menu.addAction(rebuild_grid_action)
+
+        # Grid params & storage
+        self._grid_shapes = []            # BRep edges cached
+        self._grid_ais = []               # AIS_Shape handles
+        self._grid_params = {"size": 400.0, "step": 10.0, "major_every": 5}
+        # Delay initial draw until viewer is fully realized; schedule in run()
         
         # Add View Background settings
         view_bg_menu = view_menu.addMenu("Background Color")
@@ -1736,32 +1751,183 @@ class MainWindow:
 
     # Chess widget removed to keep focus on CAD
 
+    def _ensure_grid(self):
+        """Build grid edges (cached)."""
+        if self._grid_shapes:
+            return
+        try:
+            from OCC.Core.gp import gp_Pnt
+            from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
+        except Exception as e:  # pragma: no cover
+            print(f"[Grid] OCC missing: {e}")
+            return
+        size = self._grid_params["size"]
+        step = self._grid_params["step"]
+        major_every = self._grid_params["major_every"]
+        half = size / 2.0
+        n = int(size // step)
+        shapes = []
+        # Slight Z offset to prevent z-fighting with other geometry / origin plane
+        z = -0.05
+        for i in range(-n, n + 1):
+            offs = i * step
+            # X direction line (vary Y)
+            e1 = BRepBuilderAPI_MakeEdge(gp_Pnt(-half, offs, z), gp_Pnt(half, offs, z)).Edge()
+            shapes.append((e1, i % major_every == 0))
+            # Y direction line (vary X)
+            e2 = BRepBuilderAPI_MakeEdge(gp_Pnt(offs, -half, z), gp_Pnt(offs, half, z)).Edge()
+            shapes.append((e2, i % major_every == 0))
+        self._grid_shapes = shapes
+        print(f"[Grid] Built {len(shapes)} edges (step={step}, size={size}, major_every={major_every})")
+
+    def _rebuild_grid(self):
+        """Force rebuild and redraw."""
+        self._hide_grid()
+        self._grid_shapes = []
+        self._grid_ais = []
+        if self._grid_action.isChecked():
+            QTimer.singleShot(0, self._show_grid)
+
+    def _show_grid(self):
+        disp = self.view._display
+        # Try native first one time only if no fallback grid displayed yet
+        if not self._grid_ais:
+            for attr in ("enable_grid", "display_grid", "DisplayGrid"):
+                if hasattr(disp, attr):
+                    try:
+                        getattr(disp, attr)()
+                        disp.Repaint()
+                        print("[Grid] Native grid shown")
+                        return
+                    except Exception:
+                        pass
+        # Fallback custom
+        self._ensure_grid()
+        if not self._grid_shapes:
+            print("[Grid] No shapes built")
+            return
+        try:
+            from OCC.Core.AIS import AIS_Shape
+        except Exception:
+            print("[Grid] AIS unavailable for custom grid")
+            return
+        # Erase any stale
+        self._hide_grid()
+        try:
+            from OCC.Core.AIS import AIS_Shape
+            from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
+            for edge, is_major in self._grid_shapes:
+                # Brighter major lines for contrast on dark background
+                col_tuple = (0.85, 0.85, 0.85) if is_major else (0.55, 0.55, 0.55)
+                ais = AIS_Shape(edge)
+                # Set color
+                try:
+                    qc = Quantity_Color(col_tuple[0], col_tuple[1], col_tuple[2], Quantity_TOC_RGB)
+                    ais.SetColor(qc)
+                except Exception:
+                    pass
+                # Set line width (some builds use SetWidth, others SetWidth ignored)
+                try:
+                    ais.SetWidth(3.0 if is_major else 1.0)
+                except Exception:
+                    pass
+                disp.Context.Display(ais, False)
+                self._grid_ais.append(ais)
+            # If there are no user shapes yet, fit view to grid once
+            try:
+                from adaptivecad.command_defs import DOCUMENT
+                if DOCUMENT is not None:
+                    any_geom = any(getattr(f, 'shape', None) for f in DOCUMENT)
+                else:
+                    any_geom = False
+            except Exception:
+                any_geom = False
+            if not any_geom:
+                try:
+                    disp.FitAll()
+                except Exception:
+                    pass
+            disp.Repaint()
+            ctx = getattr(disp, "Context", None)
+            if ctx:
+                try:
+                    ctx.UpdateCurrentViewer()
+                except Exception:
+                    pass
+            print(f"[Grid] Fallback grid displayed: {len(self._grid_shapes)} edges")
+        except Exception as e:
+            print(f"[Grid] display error: {e}")
+
+    def _hide_grid(self):
+        disp = self.view._display
+        # Attempt to erase AIS handles first
+        if self._grid_ais:
+            try:
+                ctx = getattr(disp, "Context", None)
+                for ais in self._grid_ais:
+                    try:
+                        if ctx:
+                            ctx.Remove(ais, False)
+                    except Exception:
+                        pass
+                self._grid_ais = []
+                if ctx:
+                    try:
+                        ctx.UpdateCurrentViewer()
+                    except Exception:
+                        pass
+            except Exception as e:
+                print(f"[Grid] hide ais error: {e}")
+        # Fallback erase by shape (legacy)
+        if self._grid_shapes:
+            try:
+                for edge, _ in self._grid_shapes:
+                    try:
+                        disp.EraseShape(edge, update=False)
+                    except Exception:
+                        pass
+                disp.Repaint()
+            except Exception as e:
+                print(f"[Grid] hide shape error: {e}")
+
     def _toggle_grid_display(self, checked: bool) -> None:
-        """Show or hide the viewer grid based on the action state."""
+        """Show or hide grid; falls back to custom line grid if native not available."""
         try:
             if checked:
+                # Try native first
                 if hasattr(self.view._display, "enable_grid"):
-                    self.view._display.enable_grid()
+                    try:
+                        self.view._display.enable_grid()
+                    except Exception:
+                        self._show_grid()
                 elif hasattr(self.view._display, "display_grid"):
-                    self.view._display.display_grid()
+                    try:
+                        self.view._display.display_grid()
+                    except Exception:
+                        self._show_grid()
                 else:
-                    self.win.statusBar().showMessage("Grid enable method not found", 2000)
-                    return
+                    self._show_grid()
             else:
                 if hasattr(self.view._display, "disable_grid"):
-                    self.view._display.disable_grid()
+                    try:
+                        self.view._display.disable_grid()
+                    except Exception:
+                        self._hide_grid()
                 elif hasattr(self.view._display, "erase_grid"):
-                    self.view._display.erase_grid()
+                    try:
+                        self.view._display.erase_grid()
+                    except Exception:
+                        self._hide_grid()
                 elif hasattr(self.view._display, "display_grid"):
+                    # Some backends accept a boolean parameter
                     try:
                         self.view._display.display_grid(False)
                     except Exception:
-                        pass
+                        self._hide_grid()
                 else:
-                    self.win.statusBar().showMessage("Grid disable method not found", 2000)
-                    return
+                    self._hide_grid()
             self.win.statusBar().showMessage(f"Grid {'shown' if checked else 'hidden'}", 2000)
-        except Exception as e:
+        except Exception as e:  # pragma: no cover - defensive
             print(f"Warning: Could not toggle grid: {e}")
             self.win.statusBar().showMessage(f"Error toggling grid: {e}", 3000)
 
@@ -1796,6 +1962,9 @@ class MainWindow:
             
         # Show the window and run the application
         self.win.show()
+        # Schedule initial grid draw after window visible
+        if getattr(self, "_grid_action", None) and self._grid_action.isChecked():
+            QTimer.singleShot(50, lambda: self._toggle_grid_display(True))
         return self.app.exec()
         
     def _position_viewcube(self):
