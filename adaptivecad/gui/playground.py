@@ -24,11 +24,6 @@ else:
     import traceback
     from adaptivecad import settings
     from adaptivecad.gui.viewcube_widget import ViewCubeWidget
-    # Optional ND Chess widget
-    try:
-        from adaptivecad.gui.nd_chess_widget import NDChessWidget
-    except Exception:  # pragma: no cover - missing deps
-        NDChessWidget = None
     from PySide6.QtWidgets import (
         QApplication, QMainWindow, QInputDialog, QMessageBox, QCheckBox, 
         QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QComboBox, 
@@ -58,7 +53,20 @@ else:
         NewBallCmd,
         NewTorusCmd,
         NewConeCmd,
-        ShellCmd
+        ShellCmd,
+        FilletCmd,
+        ChamferCmd,
+        RotateCmd,
+        ExtrudeFaceCmd,
+        HoleCmd,
+        LinearPatternCmd,
+        CircularPatternCmd,
+        SketchLineCmd,
+        SketchRectangleCmd,
+        SketchCircleCmd,
+        MakeFaceFromWireCmd,
+        ExtrudeProfileCmd,
+        DraftCmd
     )
     from adaptivecad.commands.minimal_import import MinimalImportCmd
 
@@ -772,7 +780,7 @@ class MainWindow:
         self.selected_feature = None
         self.property_panel = None
         self.dimension_panel = None
-        self.chess_dock = None
+        # Focus on CAD: no chess dock
         print("[DEBUG] State variables initialized")
         
         # Create the main window
@@ -1175,6 +1183,25 @@ class MainWindow:
             except Exception:
                 pass
         
+        # Create Sketch menu
+        sketch_menu = menubar.addMenu("Sketch")
+        sketch_line_action = QAction("Line", self.win)
+        sketch_line_action.triggered.connect(lambda: self._run_command(SketchLineCmd()))
+        sketch_menu.addAction(sketch_line_action)
+
+        sketch_rect_action = QAction("Rectangle", self.win)
+        sketch_rect_action.triggered.connect(lambda: self._run_command(SketchRectangleCmd()))
+        sketch_menu.addAction(sketch_rect_action)
+
+        sketch_circle_action = QAction("Circle", self.win)
+        sketch_circle_action.triggered.connect(lambda: self._run_command(SketchCircleCmd()))
+        sketch_menu.addAction(sketch_circle_action)
+
+        sketch_menu.addSeparator()
+        face_from_wire_action = QAction("Make Face from Wire", self.win)
+        face_from_wire_action.triggered.connect(lambda: self._run_command(MakeFaceFromWireCmd()))
+        sketch_menu.addAction(face_from_wire_action)
+
         # Create Modeling Tools menu
         modeling_menu = menubar.addMenu("Modeling Tools")
         
@@ -1192,9 +1219,53 @@ class MainWindow:
         mirror_action = QAction("Mirror", self.win)
         mirror_action.triggered.connect(lambda: self._run_command(MirrorCmd()))
         modeling_menu.addAction(mirror_action)
-        
+
+        # Add Rotate tool
+        rotate_action = QAction("Rotate", self.win)
+        rotate_action.triggered.connect(lambda: self._run_command(RotateCmd()))
+        modeling_menu.addAction(rotate_action)
+
         # Add separator
         modeling_menu.addSeparator()
+
+        # Add Extrude Profile tool
+        extrude_profile_action = QAction("Extrude Profile", self.win)
+        extrude_profile_action.triggered.connect(lambda: self._run_command(ExtrudeProfileCmd()))
+        modeling_menu.addAction(extrude_profile_action)
+
+        # Add Extrude Face tool
+        extrude_face_action = QAction("Extrude Face", self.win)
+        extrude_face_action.triggered.connect(lambda: self._run_command(ExtrudeFaceCmd()))
+        modeling_menu.addAction(extrude_face_action)
+
+        # Add Fillet tool
+        fillet_action = QAction("Fillet", self.win)
+        fillet_action.triggered.connect(lambda: self._run_command(FilletCmd()))
+        modeling_menu.addAction(fillet_action)
+
+        # Add Chamfer tool
+        chamfer_action = QAction("Chamfer", self.win)
+        chamfer_action.triggered.connect(lambda: self._run_command(ChamferCmd()))
+        modeling_menu.addAction(chamfer_action)
+
+        # Add Draft tool
+        draft_action = QAction("Draft", self.win)
+        draft_action.triggered.connect(lambda: self._run_command(DraftCmd()))
+        modeling_menu.addAction(draft_action)
+
+        # Add Hole tool
+        hole_action = QAction("Hole", self.win)
+        hole_action.triggered.connect(lambda: self._run_command(HoleCmd()))
+        modeling_menu.addAction(hole_action)
+
+        # Add Pattern submenu
+        pattern_menu = modeling_menu.addMenu("Pattern")
+        linear_pattern_action = QAction("Linear Pattern", self.win)
+        linear_pattern_action.triggered.connect(lambda: self._run_command(LinearPatternCmd()))
+        pattern_menu.addAction(linear_pattern_action)
+        circular_pattern_action = QAction("Circular Pattern", self.win)
+        circular_pattern_action.triggered.connect(lambda: self._run_command(CircularPatternCmd()))
+        pattern_menu.addAction(circular_pattern_action)
         
         # Add Union tool
         union_action = QAction("Union", self.win)
@@ -1313,15 +1384,15 @@ class MainWindow:
         # Add common modeling tools to toolbar
         self.toolbar.addAction(move_action)
         self.toolbar.addAction(mirror_action)
+        self.toolbar.addAction(rotate_action)
+        self.toolbar.addAction(extrude_profile_action)
+        self.toolbar.addAction(extrude_face_action)
+        self.toolbar.addAction(fillet_action)
         self.toolbar.addAction(union_action)
         self.toolbar.addAction(cut_action)
         self.toolbar.addAction(delete_action)
 
-        # --- Games / Extras Menu ---
-        games_menu = menubar.addMenu("Games")
-        chess_action = QAction("Play 4D Chess", self.win)
-        chess_action.triggered.connect(self._open_chess_widget)
-        games_menu.addAction(chess_action)
+        # No games menu; focusing on CAD tools only
 
         # Create Help menu
         help_menu = menubar.addMenu("Help")
@@ -1663,18 +1734,7 @@ class MainWindow:
             self.win.removeDockWidget(self.dimension_panel)
             self.dimension_panel = None
 
-    def _open_chess_widget(self):
-        """Open the ND chess widget in a dock window."""
-        if NDChessWidget is None:
-            QMessageBox.information(self.win, "4D Chess", "Chess widget not available.")
-            return
-        if self.chess_dock is None:
-            self.chess_widget = NDChessWidget()
-            self.chess_dock = QDockWidget("4D Chess", self.win)
-            self.chess_dock.setWidget(self.chess_widget)
-            self.win.addDockWidget(Qt.RightDockWidgetArea, self.chess_dock)
-        else:
-            self.chess_dock.show()
+    # Chess widget removed to keep focus on CAD
 
     def _toggle_grid_display(self, checked: bool) -> None:
         """Show or hide the viewer grid based on the action state."""

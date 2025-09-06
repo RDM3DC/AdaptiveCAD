@@ -1212,3 +1212,744 @@ class IntersectCmd(BaseCmd):
             DOCUMENT[i2].params['consumed'] = True
         DOCUMENT.append(Feature("Intersect", {"target": i1, "tool": i2}, common))
         rebuild_scene(mw.view._display)
+
+
+# ---------------------------------------------------------------------------
+# Fillet, Chamfer, Rotate
+# ---------------------------------------------------------------------------
+
+class FilletCmd(BaseCmd):
+    title = "Fillet"
+
+    def run(self, mw) -> None:
+        if not DOCUMENT:
+            mw.win.statusBar().showMessage("No shapes to fillet!")
+            return
+        from PySide6.QtWidgets import QInputDialog
+        from OCC.Core.TopExp import TopExp_Explorer
+        from OCC.Core.TopAbs import TopAbs_EDGE
+        from OCC.Core.BRepFilletAPI import BRepFilletAPI_MakeFillet
+
+        items = [f"{i}: {feat.name}" for i, feat in enumerate(DOCUMENT)]
+        idx_str, ok = QInputDialog.getItem(mw.win, "Fillet", "Select shape:", items, 0, False)
+        if not ok:
+            return
+        idx = int(idx_str.split(":" )[0])
+        radius, ok = QInputDialog.getDouble(mw.win, "Fillet", "Radius:", 2.0, 0.01)
+        if not ok:
+            return
+
+        # Allow user to choose all edges or by index
+        mode, ok = QInputDialog.getItem(mw.win, "Fillet Mode", "Apply to:", ["All Edges", "By Index"], 0, False)
+        if not ok:
+            return
+        edges = []
+        exp = TopExp_Explorer(DOCUMENT[idx].shape, TopAbs_EDGE)
+        while exp.More():
+            edges.append(exp.Current())
+            exp.Next()
+        mk = BRepFilletAPI_MakeFillet(DOCUMENT[idx].shape)
+        count = 0
+        if mode == 'All Edges':
+            for e in edges:
+                try:
+                    mk.Add(radius, e)
+                    count += 1
+                except Exception:
+                    pass
+        else:
+            idx_strs, ok = QInputDialog.getText(mw.win, "Edge Indices", f"0..{len(edges)-1} (comma-separated):", text="0")
+            if not ok:
+                return
+            try:
+                sel = [int(s.strip()) for s in idx_strs.split(',') if s.strip() != '']
+                for i in sel:
+                    if 0 <= i < len(edges):
+                        try:
+                            mk.Add(radius, edges[i])
+                            count += 1
+                        except Exception:
+                            pass
+            except Exception:
+                mw.win.statusBar().showMessage("Invalid edge indices")
+                return
+        try:
+            shape = mk.Shape()
+        except Exception:
+            mw.win.statusBar().showMessage("Fillet failed to build")
+            return
+
+        if hasattr(DOCUMENT[idx], 'params'):
+            DOCUMENT[idx].params['consumed'] = True
+        DOCUMENT.append(Feature("Fillet", {"target": idx, "radius": radius, "edges": count}, shape))
+        rebuild_scene(mw.view._display)
+
+
+class ChamferCmd(BaseCmd):
+    title = "Chamfer"
+
+    def run(self, mw) -> None:
+        if not DOCUMENT:
+            mw.win.statusBar().showMessage("No shapes to chamfer!")
+            return
+        from PySide6.QtWidgets import QInputDialog
+        from OCC.Core.BRepFilletAPI import BRepFilletAPI_MakeChamfer
+        from OCC.Core.TopExp import TopExp_Explorer
+        from OCC.Core.TopAbs import TopAbs_EDGE, TopAbs_FACE
+        from OCC.Core.TopTools import TopTools_IndexedDataMapOfShapeListOfShape
+        from OCC.Core.TopExp import topexp_MapShapesAndAncestors
+
+        items = [f"{i}: {feat.name}" for i, feat in enumerate(DOCUMENT)]
+        idx_str, ok = QInputDialog.getItem(mw.win, "Chamfer", "Select shape:", items, 0, False)
+        if not ok:
+            return
+        idx = int(idx_str.split(":" )[0])
+        d, ok = QInputDialog.getDouble(mw.win, "Chamfer", "Distance:", 2.0, 0.01)
+        if not ok:
+            return
+
+        shp = DOCUMENT[idx].shape
+        mk = BRepFilletAPI_MakeChamfer(shp)
+        # Build edge->faces map to satisfy API requirements
+        fmap = TopTools_IndexedDataMapOfShapeListOfShape()
+        topexp_MapShapesAndAncestors(shp, TopAbs_EDGE, TopAbs_FACE, fmap)
+        # Gather edges for optional selection
+        edges = []
+        exp = TopExp_Explorer(shp, TopAbs_EDGE)
+        while exp.More():
+            edges.append(exp.Current())
+            exp.Next()
+
+        mode, ok = QInputDialog.getItem(mw.win, "Chamfer Mode", "Apply to:", ["All Edges", "By Index"], 0, False)
+        if not ok:
+            return
+        added = 0
+        def add_edge(e):
+            nonlocal added
+            faces = fmap.FindFromKey(e)
+            face = None
+            try:
+                if faces and faces.Size() > 0:
+                    face = faces.First()
+            except Exception:
+                face = None
+            if face is not None:
+                try:
+                    mk.Add(d, d, e, face)
+                    added += 1
+                except Exception:
+                    pass
+
+        if mode == 'All Edges':
+            for e in edges:
+                add_edge(e)
+        else:
+            idx_strs, ok = QInputDialog.getText(mw.win, "Edge Indices", f"0..{len(edges)-1} (comma-separated):", text="0")
+            if not ok:
+                return
+            try:
+                sel = [int(s.strip()) for s in idx_strs.split(',') if s.strip() != '']
+                for i in sel:
+                    if 0 <= i < len(edges):
+                        add_edge(edges[i])
+            except Exception:
+                mw.win.statusBar().showMessage("Invalid edge indices")
+                return
+        try:
+            shape = mk.Shape()
+        except Exception:
+            mw.win.statusBar().showMessage("Chamfer failed to build")
+            return
+
+        if hasattr(DOCUMENT[idx], 'params'):
+            DOCUMENT[idx].params['consumed'] = True
+        DOCUMENT.append(Feature("Chamfer", {"target": idx, "distance": d, "edges": added}, shape))
+        rebuild_scene(mw.view._display)
+
+
+class RotateCmd(BaseCmd):
+    title = "Rotate"
+
+    def run(self, mw) -> None:
+        if not DOCUMENT:
+            mw.win.statusBar().showMessage("No shapes to rotate!")
+            return
+        from PySide6.QtWidgets import QInputDialog
+        from OCC.Core.gp import gp_Trsf, gp_Ax1, gp_Pnt, gp_Dir
+        from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
+
+        items = [f"{i}: {feat.name}" for i, feat in enumerate(DOCUMENT)]
+        idx_str, ok = QInputDialog.getItem(mw.win, "Rotate", "Select shape:", items, 0, False)
+        if not ok:
+            return
+        idx = int(idx_str.split(":" )[0])
+
+        origin_str, ok = QInputDialog.getText(mw.win, "Axis Origin", "Origin (x,y,z):", text="0,0,0")
+        if not ok:
+            return
+        try:
+            ox, oy, oz = [float(x) for x in origin_str.split(',')]
+        except Exception:
+            mw.win.statusBar().showMessage("Invalid origin")
+            return
+
+        dir_str, ok = QInputDialog.getText(mw.win, "Axis Direction", "Direction (dx,dy,dz):", text="0,0,1")
+        if not ok:
+            return
+        try:
+            dx, dy, dz = [float(x) for x in dir_str.split(',')]
+        except Exception:
+            mw.win.statusBar().showMessage("Invalid direction")
+            return
+
+        angle_deg, ok = QInputDialog.getDouble(mw.win, "Rotate", "Angle (deg):", 90.0, -3600.0, 3600.0)
+        if not ok:
+            return
+
+        ax = gp_Ax1(gp_Pnt(ox, oy, oz), gp_Dir(dx, dy, dz))
+        tr = gp_Trsf()
+        from math import radians
+        tr.SetRotation(ax, radians(angle_deg))
+        out = BRepBuilderAPI_Transform(DOCUMENT[idx].shape, tr, True).Shape()
+        if hasattr(DOCUMENT[idx], 'params'):
+            DOCUMENT[idx].params['consumed'] = True
+        DOCUMENT.append(Feature("Rotate", {"target": idx, "origin": [ox, oy, oz], "dir": [dx, dy, dz], "angle": angle_deg}, out))
+        rebuild_scene(mw.view._display)
+
+
+# ---------------------------------------------------------------------------
+# Extrude Face, Hole, Patterns
+# ---------------------------------------------------------------------------
+
+class ExtrudeFaceCmd(BaseCmd):
+    title = "Extrude Face"
+
+    def run(self, mw) -> None:
+        if not DOCUMENT:
+            mw.win.statusBar().showMessage("No shapes available!")
+            return
+        from PySide6.QtWidgets import QInputDialog
+        from OCC.Core.TopExp import TopExp_Explorer
+        from OCC.Core.TopAbs import TopAbs_FACE
+        from OCC.Core.gp import gp_Vec
+        from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism
+        from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse, BRepAlgoAPI_Cut
+
+        items = [f"{i}: {feat.name}" for i, feat in enumerate(DOCUMENT)]
+        idx_str, ok = QInputDialog.getItem(mw.win, "Extrude Face", "Select shape:", items, 0, False)
+        if not ok:
+            return
+        idx = int(idx_str.split(":" )[0])
+
+        # List faces
+        faces = []
+        exp = TopExp_Explorer(DOCUMENT[idx].shape, TopAbs_FACE)
+        while exp.More():
+            faces.append(exp.Current())
+            exp.Next()
+        if not faces:
+            mw.win.statusBar().showMessage("No faces found on shape")
+            return
+        face_items = [f"{i}" for i in range(len(faces))]
+        face_str, ok = QInputDialog.getItem(mw.win, "Pick Face", "Face index:", face_items, 0, False)
+        if not ok:
+            return
+        fidx = int(face_str)
+
+        dist, ok = QInputDialog.getDouble(mw.win, "Distance", "Extrude distance:", 10.0)
+        if not ok:
+            return
+
+        dir_str, ok = QInputDialog.getText(mw.win, "Direction", "Vector (dx,dy,dz):", text="0,0,1")
+        if not ok:
+            return
+        try:
+            dx, dy, dz = [float(x) for x in dir_str.split(',')]
+        except Exception:
+            mw.win.statusBar().showMessage("Invalid direction")
+            return
+
+        mode, ok = QInputDialog.getItem(mw.win, "Operation", "Join or Cut:", ["Join", "Cut"], 0, False)
+        if not ok:
+            return
+
+        vec = gp_Vec(dx, dy, dz)
+        vec.Multiply(dist)
+        tool = BRepPrimAPI_MakePrism(faces[fidx], vec).Shape()
+        if mode == "Join":
+            out = BRepAlgoAPI_Fuse(DOCUMENT[idx].shape, tool).Shape()
+            opname = "ExtrudeJoin"
+        else:
+            out = BRepAlgoAPI_Cut(DOCUMENT[idx].shape, tool).Shape()
+            opname = "ExtrudeCut"
+
+        if hasattr(DOCUMENT[idx], 'params'):
+            DOCUMENT[idx].params['consumed'] = True
+        DOCUMENT.append(Feature(opname, {"target": idx, "face": fidx, "distance": dist, "dir": [dx, dy, dz]}, out))
+        rebuild_scene(mw.view._display)
+
+
+class HoleCmd(BaseCmd):
+    title = "Hole"
+
+    def run(self, mw) -> None:
+        if not DOCUMENT:
+            mw.win.statusBar().showMessage("No shapes to drill!")
+            return
+        from PySide6.QtWidgets import QInputDialog
+        from OCC.Core.gp import gp_Ax2, gp_Pnt, gp_Dir
+        from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeCylinder
+        from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Cut
+
+        items = [f"{i}: {feat.name}" for i, feat in enumerate(DOCUMENT)]
+        idx_str, ok = QInputDialog.getItem(mw.win, "Hole", "Select target:", items, 0, False)
+        if not ok:
+            return
+        idx = int(idx_str.split(":" )[0])
+
+        center_str, ok = QInputDialog.getText(mw.win, "Center", "(x,y,z):", text="0,0,0")
+        if not ok:
+            return
+        try:
+            cx, cy, cz = [float(x) for x in center_str.split(',')]
+        except Exception:
+            mw.win.statusBar().showMessage("Invalid center")
+            return
+
+        dir_str, ok = QInputDialog.getText(mw.win, "Direction", "(dx,dy,dz):", text="0,0,1")
+        if not ok:
+            return
+        try:
+            dx, dy, dz = [float(x) for x in dir_str.split(',')]
+        except Exception:
+            mw.win.statusBar().showMessage("Invalid direction")
+            return
+
+        radius, ok = QInputDialog.getDouble(mw.win, "Radius", "Hole radius:", 5.0, 0.01)
+        if not ok:
+            return
+        depth, ok = QInputDialog.getDouble(mw.win, "Depth", "Hole depth:", 10.0, 0.01)
+        if not ok:
+            return
+
+        ax = gp_Ax2(gp_Pnt(cx, cy, cz), gp_Dir(dx, dy, dz))
+        tool = BRepPrimAPI_MakeCylinder(ax, radius, depth).Shape()
+        out = BRepAlgoAPI_Cut(DOCUMENT[idx].shape, tool).Shape()
+        if hasattr(DOCUMENT[idx], 'params'):
+            DOCUMENT[idx].params['consumed'] = True
+        DOCUMENT.append(Feature("Hole", {"target": idx, "center": [cx, cy, cz], "dir": [dx, dy, dz], "radius": radius, "depth": depth}, out))
+        rebuild_scene(mw.view._display)
+
+
+class LinearPatternCmd(BaseCmd):
+    title = "Linear Pattern"
+
+    def run(self, mw) -> None:
+        if not DOCUMENT:
+            mw.win.statusBar().showMessage("No shapes to pattern!")
+            return
+        from PySide6.QtWidgets import QInputDialog
+        from OCC.Core.gp import gp_Trsf, gp_Vec
+        from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
+        from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse
+
+        items = [f"{i}: {feat.name}" for i, feat in enumerate(DOCUMENT)]
+        idx_str, ok = QInputDialog.getItem(mw.win, "Linear Pattern", "Select source:", items, 0, False)
+        if not ok:
+            return
+        idx = int(idx_str.split(":" )[0])
+
+        vec_str, ok = QInputDialog.getText(mw.win, "Vector", "(dx,dy,dz):", text="10,0,0")
+        if not ok:
+            return
+        try:
+            dx, dy, dz = [float(x) for x in vec_str.split(',')]
+        except Exception:
+            mw.win.statusBar().showMessage("Invalid vector")
+            return
+        count, ok = QInputDialog.getInt(mw.win, "Count", "Instances (>=1):", 3, 1, 500)
+        if not ok:
+            return
+
+        base = DOCUMENT[idx].shape
+        out = base
+        for i in range(1, count):
+            tr = gp_Trsf()
+            v = gp_Vec(dx * i, dy * i, dz * i)
+            tr.SetTranslation(v)
+            inst = BRepBuilderAPI_Transform(base, tr, True).Shape()
+            out = BRepAlgoAPI_Fuse(out, inst).Shape()
+
+        if hasattr(DOCUMENT[idx], 'params'):
+            DOCUMENT[idx].params['consumed'] = True
+        DOCUMENT.append(Feature("LinearPattern", {"target": idx, "vector": [dx, dy, dz], "count": count}, out))
+        rebuild_scene(mw.view._display)
+
+
+class CircularPatternCmd(BaseCmd):
+    title = "Circular Pattern"
+
+    def run(self, mw) -> None:
+        if not DOCUMENT:
+            mw.win.statusBar().showMessage("No shapes to pattern!")
+            return
+        from PySide6.QtWidgets import QInputDialog
+        from OCC.Core.gp import gp_Trsf, gp_Ax1, gp_Pnt, gp_Dir
+        from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
+        from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse
+        from math import radians
+
+        items = [f"{i}: {feat.name}" for i, feat in enumerate(DOCUMENT)]
+        idx_str, ok = QInputDialog.getItem(mw.win, "Circular Pattern", "Select source:", items, 0, False)
+        if not ok:
+            return
+        idx = int(idx_str.split(":" )[0])
+
+        origin_str, ok = QInputDialog.getText(mw.win, "Axis Origin", "(x,y,z):", text="0,0,0")
+        if not ok:
+            return
+        try:
+            ox, oy, oz = [float(x) for x in origin_str.split(',')]
+        except Exception:
+            mw.win.statusBar().showMessage("Invalid origin")
+            return
+
+        dir_str, ok = QInputDialog.getText(mw.win, "Axis Direction", "(dx,dy,dz):", text="0,0,1")
+        if not ok:
+            return
+        try:
+            dx, dy, dz = [float(x) for x in dir_str.split(',')]
+        except Exception:
+            mw.win.statusBar().showMessage("Invalid direction")
+            return
+
+        count, ok = QInputDialog.getInt(mw.win, "Count", "Instances (>=1):", 6, 1, 360)
+        if not ok:
+            return
+        sweep_deg, ok = QInputDialog.getDouble(mw.win, "Sweep Angle", "Total sweep (deg):", 360.0, -360000.0, 360000.0)
+        if not ok:
+            return
+
+        base = DOCUMENT[idx].shape
+        out = base
+        ax = gp_Ax1(gp_Pnt(ox, oy, oz), gp_Dir(dx, dy, dz))
+        step = 0 if count <= 1 else sweep_deg / count
+        for i in range(1, count):
+            tr = gp_Trsf()
+            tr.SetRotation(ax, radians(step * i))
+            inst = BRepBuilderAPI_Transform(base, tr, True).Shape()
+            out = BRepAlgoAPI_Fuse(out, inst).Shape()
+
+        if hasattr(DOCUMENT[idx], 'params'):
+            DOCUMENT[idx].params['consumed'] = True
+        DOCUMENT.append(Feature("CircularPattern", {"target": idx, "origin": [ox, oy, oz], "dir": [dx, dy, dz], "count": count, "sweep": sweep_deg}, out))
+        rebuild_scene(mw.view._display)
+
+
+# ---------------------------------------------------------------------------
+# Sketch primitives and profile-based features
+# ---------------------------------------------------------------------------
+
+def _pick_plane(mw):
+    from PySide6.QtWidgets import QInputDialog
+    plane, ok = QInputDialog.getItem(
+        mw.win, "Plane", "Sketch plane:", ["XY", "YZ", "XZ"], 0, False
+    )
+    if not ok:
+        return None
+    offset, ok = QInputDialog.getDouble(
+        mw.win,
+        "Plane Offset",
+        ("Offset distance along normal (Z for XY, X for YZ, Y for XZ):"),
+        0.0,
+    )
+    if not ok:
+        return None
+    return plane, offset
+
+
+class SketchLineCmd(BaseCmd):
+    title = "Sketch Line"
+
+    def run(self, mw) -> None:
+        from PySide6.QtWidgets import QInputDialog
+        from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
+        from OCC.Core.gp import gp_Pnt
+
+        picked = _pick_plane(mw)
+        if not picked:
+            return
+        plane, off = picked
+
+        p1_str, ok = QInputDialog.getText(mw.win, "Start", "(u,v):", text="0,0")
+        if not ok:
+            return
+        p2_str, ok = QInputDialog.getText(mw.win, "End", "(u,v):", text="10,0")
+        if not ok:
+            return
+        try:
+            u1, v1 = [float(x) for x in p1_str.split(',')]
+            u2, v2 = [float(x) for x in p2_str.split(',')]
+        except Exception:
+            mw.win.statusBar().showMessage("Invalid coordinates")
+            return
+
+        def to_xyz(pl, u, v, o):
+            if pl == 'XY':
+                return gp_Pnt(u, v, o)
+            if pl == 'YZ':
+                return gp_Pnt(o, u, v)
+            return gp_Pnt(u, o, v)  # XZ
+
+        p1 = to_xyz(plane, u1, v1, off)
+        p2 = to_xyz(plane, u2, v2, off)
+        edge = BRepBuilderAPI_MakeEdge(p1, p2).Edge()
+        DOCUMENT.append(Feature("SketchLine", {"plane": plane, "offset": off, "p1": [u1, v1], "p2": [u2, v2]}, edge))
+        rebuild_scene(mw.view._display)
+
+
+class SketchRectangleCmd(BaseCmd):
+    title = "Sketch Rectangle"
+
+    def run(self, mw) -> None:
+        from PySide6.QtWidgets import QInputDialog
+        from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeWire, BRepBuilderAPI_MakeEdge
+        from OCC.Core.gp import gp_Pnt
+
+        picked = _pick_plane(mw)
+        if not picked:
+            return
+        plane, off = picked
+
+        org_str, ok = QInputDialog.getText(mw.win, "Origin", "(u0,v0):", text="0,0")
+        if not ok:
+            return
+        w, ok = QInputDialog.getDouble(mw.win, "Width", "Width:", 20.0)
+        if not ok:
+            return
+        h, ok = QInputDialog.getDouble(mw.win, "Height", "Height:", 10.0)
+        if not ok:
+            return
+        try:
+            u0, v0 = [float(x) for x in org_str.split(',')]
+        except Exception:
+            mw.win.statusBar().showMessage("Invalid origin")
+            return
+
+        def to_xyz(pl, u, v, o):
+            if pl == 'XY':
+                return gp_Pnt(u, v, o)
+            if pl == 'YZ':
+                return gp_Pnt(o, u, v)
+            return gp_Pnt(u, o, v)
+
+        pts = [
+            to_xyz(plane, u0, v0, off),
+            to_xyz(plane, u0 + w, v0, off),
+            to_xyz(plane, u0 + w, v0 + h, off),
+            to_xyz(plane, u0, v0 + h, off),
+            to_xyz(plane, u0, v0, off),
+        ]
+        wire_mk = BRepBuilderAPI_MakeWire()
+        for a, b in zip(pts[:-1], pts[1:]):
+            wire_mk.Add(BRepBuilderAPI_MakeEdge(a, b).Edge())
+        wire = wire_mk.Wire()
+        DOCUMENT.append(Feature("SketchRect", {"plane": plane, "offset": off, "origin": [u0, v0], "w": w, "h": h}, wire))
+        rebuild_scene(mw.view._display)
+
+
+class SketchCircleCmd(BaseCmd):
+    title = "Sketch Circle"
+
+    def run(self, mw) -> None:
+        from PySide6.QtWidgets import QInputDialog
+        from OCC.Core.gp import gp_Pnt, gp_Ax2, gp_Dir
+        from OCC.Core.gp import gp_Circ
+        from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire
+
+        picked = _pick_plane(mw)
+        if not picked:
+            return
+        plane, off = picked
+
+        cen_str, ok = QInputDialog.getText(mw.win, "Center", "(u,v):", text="0,0")
+        if not ok:
+            return
+        r, ok = QInputDialog.getDouble(mw.win, "Radius", "Radius:", 10.0, 0.01)
+        if not ok:
+            return
+        try:
+            u, v = [float(x) for x in cen_str.split(',')]
+        except Exception:
+            mw.win.statusBar().showMessage("Invalid center")
+            return
+
+        if plane == 'XY':
+            ax = gp_Ax2(gp_Pnt(u, v, off), gp_Dir(0, 0, 1))
+        elif plane == 'YZ':
+            ax = gp_Ax2(gp_Pnt(off, u, v), gp_Dir(1, 0, 0))
+        else:
+            ax = gp_Ax2(gp_Pnt(u, off, v), gp_Dir(0, 1, 0))
+        circ = gp_Circ(ax, r)
+        edge = BRepBuilderAPI_MakeEdge(circ).Edge()
+        wire = BRepBuilderAPI_MakeWire(edge).Wire()
+        DOCUMENT.append(Feature("SketchCircle", {"plane": plane, "offset": off, "center": [u, v], "r": r}, wire))
+        rebuild_scene(mw.view._display)
+
+
+class MakeFaceFromWireCmd(BaseCmd):
+    title = "Make Face from Wire"
+
+    def run(self, mw) -> None:
+        from PySide6.QtWidgets import QInputDialog
+        from OCC.Core.TopoDS import TopoDS_Shape
+        from OCC.Core.TopAbs import TopAbs_WIRE, TopAbs_EDGE, TopAbs_FACE
+        from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeFace, BRepBuilderAPI_MakeWire
+
+        items = [f"{i}: {feat.name}" for i, feat in enumerate(DOCUMENT)]
+        idx_str, ok = QInputDialog.getItem(mw.win, "Make Face", "Select wire/edge/face:", items, 0, False)
+        if not ok:
+            return
+        idx = int(idx_str.split(":" )[0])
+        shp: TopoDS_Shape = DOCUMENT[idx].shape
+        st = shp.ShapeType()
+        if st == TopAbs_FACE:
+            face = shp
+        else:
+            if st == TopAbs_EDGE:
+                from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
+                w = BRepBuilderAPI_MakeWire(shp).Wire()
+            else:
+                w = shp
+            face = BRepBuilderAPI_MakeFace(w).Face()
+        DOCUMENT.append(Feature("Face", {"source": idx}, face))
+        rebuild_scene(mw.view._display)
+
+
+class ExtrudeProfileCmd(BaseCmd):
+    title = "Extrude Profile"
+
+    def run(self, mw) -> None:
+        from PySide6.QtWidgets import QInputDialog
+        from OCC.Core.TopAbs import TopAbs_WIRE, TopAbs_EDGE, TopAbs_FACE
+        from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeFace
+        from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism
+        from OCC.Core.gp import gp_Vec
+
+        items = [f"{i}: {feat.name}" for i, feat in enumerate(DOCUMENT)]
+        idx_str, ok = QInputDialog.getItem(mw.win, "Extrude Profile", "Select profile (edge/wire/face):", items, 0, False)
+        if not ok:
+            return
+        idx = int(idx_str.split(":" )[0])
+        shp = DOCUMENT[idx].shape
+        st = shp.ShapeType()
+        if st == TopAbs_FACE:
+            face = shp
+        else:
+            # Convert wire/edge to face
+            from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeWire
+            if st == TopAbs_EDGE:
+                wire = BRepBuilderAPI_MakeWire(shp).Wire()
+            else:
+                wire = shp
+            face = BRepBuilderAPI_MakeFace(wire).Face()
+
+        vec_str, ok = QInputDialog.getText(mw.win, "Direction", "(dx,dy,dz):", text="0,0,1")
+        if not ok:
+            return
+        try:
+            dx, dy, dz = [float(x) for x in vec_str.split(',')]
+        except Exception:
+            mw.win.statusBar().showMessage("Invalid direction")
+            return
+        h, ok = QInputDialog.getDouble(mw.win, "Length", "Distance:", 10.0)
+        if not ok:
+            return
+        vec = gp_Vec(dx, dy, dz)
+        vec.Multiply(h)
+        solid = BRepPrimAPI_MakePrism(face, vec).Shape()
+        DOCUMENT.append(Feature("Extrude", {"profile": idx, "dir": [dx, dy, dz], "dist": h}, solid))
+        rebuild_scene(mw.view._display)
+
+
+class DraftCmd(BaseCmd):
+    title = "Draft"
+
+    def run(self, mw) -> None:
+        if not DOCUMENT:
+            mw.win.statusBar().showMessage("No shapes to draft!")
+            return
+        from PySide6.QtWidgets import QInputDialog
+        from OCC.Core.BRepOffsetAPI import BRepOffsetAPI_DraftAngle
+        from OCC.Core.TopExp import TopExp_Explorer
+        from OCC.Core.TopAbs import TopAbs_FACE
+        from OCC.Core.gp import gp_Dir, gp_Pln, gp_Pnt
+
+        items = [f"{i}: {feat.name}" for i, feat in enumerate(DOCUMENT)]
+        idx_str, ok = QInputDialog.getItem(mw.win, "Draft", "Select shape:", items, 0, False)
+        if not ok:
+            return
+        idx = int(idx_str.split(":" )[0])
+
+        angle, ok = QInputDialog.getDouble(mw.win, "Draft Angle", "Degrees:", 3.0, -89.0, 89.0)
+        if not ok:
+            return
+        dir_str, ok = QInputDialog.getText(mw.win, "Pull Direction", "(dx,dy,dz):", text="0,0,1")
+        if not ok:
+            return
+        try:
+            dx, dy, dz = [float(x) for x in dir_str.split(',')]
+        except Exception:
+            mw.win.statusBar().showMessage("Invalid direction")
+            return
+        # Neutral plane definition
+        plane, ok = QInputDialog.getItem(mw.win, "Neutral Plane", "Plane:", ["XY", "YZ", "XZ"], 0, False)
+        if not ok:
+            return
+        off, ok = QInputDialog.getDouble(mw.win, "Plane Offset", "Offset:", 0.0)
+        if not ok:
+            return
+        if plane == 'XY':
+            pln = gp_Pln(gp_Pnt(0, 0, off), gp_Dir(0, 0, 1))
+        elif plane == 'YZ':
+            pln = gp_Pln(gp_Pnt(off, 0, 0), gp_Dir(1, 0, 0))
+        else:
+            pln = gp_Pln(gp_Pnt(0, off, 0), gp_Dir(0, 1, 0))
+
+        mode, ok = QInputDialog.getItem(mw.win, "Faces", "Apply to:", ["All Faces", "By Index"], 0, False)
+        if not ok:
+            return
+        faces = []
+        exp = TopExp_Explorer(DOCUMENT[idx].shape, TopAbs_FACE)
+        while exp.More():
+            faces.append(exp.Current())
+            exp.Next()
+        target_indices = range(len(faces))
+        if mode == 'By Index':
+            idx_strs, ok = QInputDialog.getText(mw.win, "Face Indices", f"0..{len(faces)-1} (comma-separated):", text="0")
+            if not ok:
+                return
+            try:
+                sel = [int(s.strip()) for s in idx_strs.split(',') if s.strip() != '']
+                target_indices = [i for i in sel if 0 <= i < len(faces)]
+            except Exception:
+                mw.win.statusBar().showMessage("Invalid face indices")
+                return
+        mk = BRepOffsetAPI_DraftAngle(DOCUMENT[idx].shape)
+        pull = gp_Dir(dx, dy, dz)
+        from math import radians
+        for i in target_indices:
+            try:
+                mk.Add(faces[i], pull, radians(angle), pln)
+            except Exception:
+                pass
+        try:
+            mk.Build()
+            out = mk.Shape()
+        except Exception:
+            mw.win.statusBar().showMessage("Draft build failed")
+            return
+        if hasattr(DOCUMENT[idx], 'params'):
+            DOCUMENT[idx].params['consumed'] = True
+        DOCUMENT.append(Feature("Draft", {"target": idx, "angle": angle, "dir": [dx, dy, dz], "plane": plane, "offset": off, "faces": list(target_indices)}, out))
+        rebuild_scene(mw.view._display)
