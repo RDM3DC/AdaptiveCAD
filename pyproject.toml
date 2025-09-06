@@ -21,3 +21,10 @@ acs-gpuc-quantize = "gpuc.cli:quantize_main"
 acs-gpuc-dequantize = "gpuc.cli:dequantize_main"
 acs-gpuc-zerosuppress = "gpuc.cli:zerosuppress_main"
 acs-gpuc-unsuppress = "gpuc.cli:unsuppress_main"
+adaptivecad-gui = "adaptivecad.gui.playground:main"
+
+[project.optional-dependencies]
+gui = [
+	"pyside6",
+	"pythonocc-core",
+]
