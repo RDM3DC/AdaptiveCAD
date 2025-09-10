@@ -1,104 +1,231 @@
-# Adaptive Compression Suite (ACS)
+# AdaptiveCAD
 
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue?logo=python)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Sponsor RDM3DC](https://img.shields.io/badge/Sponsor-RDM3DC-ff69b4?logo=github-sponsors)](https://github.com/sponsors/RDM3DC)
 
-A single repo with **three** distinct compression methods we've developed:
+AdaptiveCAD is a next-gen modeling toolkit built on Adaptive π (πₐ). It delivers node-free smooth curves, hyperbolic geometry tools, fast STL repair, and 3D-print exports—wrapped in a friendly Playground app, a FreeCAD Workbench, and a starter Blender add-on.
 
-1. **ATC — Adaptive Text Compression** (lossless, text):  
-   Strips visible spaces/punctuation/case and encodes them in per-character **style bytes** alongside a compact carrier string.
+**TL;DR:** Import messy meshes → repair → generate smooth πₐ curves/shapes → preview toolpaths → export STL/3MF/G-code. Works great for printable organic shells, architectural panels, and smooth-stress brackets.
 
-2. **CMC — Curve‑Memory Compression** (event-driven, geometry-aware, typically lossy):  
-   Encodes **anchors** at curvature/turning events and reconstructs with an ARP‑style smoother for perceptual fidelity on signals/paths.
+## ✨ Highlights
 
-3. **GPUC — GPU/Tensor Compression** (numeric arrays):  
-   CPU-safe **quantization** and **zero‑suppression**; optional CUDA path via PyTorch if available. Targets inter-device transfer & storage.
+### Playground App (Standalone)
+Parametric editors (superellipse, rounded-rect, πₐ splines), live viewport, STL→πₐ import & repair, toolpath preview, and one-click exports.
 
----
+### Curve/Shape Libraries
+Superellipse, πₐ splines, advanced shapes, and hyperbolic families (geodesics, horocycles, tilings).
 
-## Install
+### STL Repair & Smoothing
+Fix non-manifold edges, normals, degenerate faces; optional smoothing with πₐ-aware operations.
+
+### 3D Printing Ready
+Export STL / 3MF / G-code with layer previews and basic time estimates.
+
+### FreeCAD Workbench + Blender Add-on
+Generate πₐ objects, import/export, and hand off assets to your DCC/CAD pipeline.
+
+## 📦 Components in this Repo
+
+```
+AdaptiveCAD/
+├─ playground/                       # Main app (UI & ops)
+│  ├─ run_advanced_playground.py
+│  ├─ quick_start_demo.py
+│  ├─ adaptivecad_shapes_builder.py
+│  ├─ import_stl_to_pi.py
+│  └─ ... (export_slices.py, ama_to_gcode_converter.py, etc.)
+├─ freecad/AdaptiveCADPIToolpath/    # FreeCAD Workbench (v0.1)
+├─ blender_addons/adaptivecad_pia/   # Blender add-on (starter)
+├─ docs/
+│  ├─ PLAYGROUND_GUIDE.md
+│  ├─ MODELING_TOOLS.md
+│  ├─ IMPORT_SYSTEM_COMPLETE.md
+│  ├─ HYPERBOLIC_GEOMETRY_IMPLEMENTATION.md
+│  └─ MATH_REFERENCE.md
+├─ examples/                         # Sample models, scripts, projects
+├─ gifs_lite_pack/                   # Short loops for README/Kickstarter
+└─ LICENSE
+```
+
+## 🖥️ System Requirements
+
+- **OS:** Windows 10/11 (primary). Linux/macOS planned post-1.0.
+- **Python:** 3.10+ (for source runs).
+- **GPU:** Optional; CPU-only is fine for typical models.
+- **CAD/DCC (optional):** FreeCAD 0.21+ / Blender 4.x for the integrations.
+
+## 🚀 Quick Start (Playground App)
+
+### Option A — Run from source (recommended for dev)
+
+Create an environment and install deps:
 
 ```bash
-pip install -e .
+# from repo root
+python -m venv .venv
+# Windows PowerShell:
+.\.venv\Scripts\Activate.ps1
+pip install -U pip wheel
+pip install -r requirements.txt
 ```
 
-## Command Line (selected)
+Launch the Playground:
 
 ```bash
-# ATC (text)
-acs-atc-encode --text "I am in it, okay?  YES!" --out atc.json
-acs-atc-decode --in atc.json
-
-# CMC (1D signals)
-acs-cmc-encode-1d --in signal.npy --tau 0.02 --max_err 0.01 --out cmc.json
-acs-cmc-decode-1d --in cmc.json --n 1000 --out recon.npy
-
-# GPUC (arrays)
-acs-gpuc-quantize --in array.npy --out array_q.npz --bits 8
-acs-gpuc-dequantize --in array_q.npz --out array_restored.npy
-
-acs-gpuc-zerosuppress --in array.npy --out array_zs.npz --eps 0.0
-acs-gpuc-unsuppress --in array_zs.npz --out array_restored.npy
+cd playground
+python run_advanced_playground.py
 ```
 
-> `*.npy/npz` are standard NumPy formats for easy round‑trips without extra deps.
-> CUDA is optional; if PyTorch is present, `gpuc` will use GPU tensors transparently.
+Try the demo:
 
----
-
-## Repo Layout
-
-```
-adaptive-compression-suite/
- ├── atc/      # Adaptive Text Compression (lossless)
- ├── cmc/      # Curve-Memory Compression (event-driven anchors + ARP smoother)
- ├── gpuc/     # GPU/Tensor Compression (quantization + zero suppression, optional CUDA)
- ├── tests/    # pytest
- ├── LICENSE   # MIT
- ├── pyproject.toml
- ├── setup.cfg
- └── .github/workflows/ci.yml
+```bash
+python quick_start_demo.py
 ```
 
----
+### Option B — Use the Windows installer (when available)
 
-## Quick Examples
+Download the latest Playground MSIX from Releases and double-click to install. (We sign builds at each tagged version; see Releases page.)
 
-### ATC (text lossless)
+## 🧩 Key Workflows
 
-```python
-from atc.encoder import encode
-from atc.decoder import decode
+1. **Parametric shapes → export**
+   - Open Playground → Shapes panel.
+   - Pick Superellipse or πₐ Spline, tweak parameters (a, b, n, points).
+   - Click Export to save STL/3MF, or Generate G-code for printing.
 
-pkg = encode("I am in it, okay?  YES!")
-assert decode(pkg) == "I am in it, okay?  YES!"
+2. **STL → repair → πₐ smoothing**
+   - Import a messy STL.
+   - Run Repair (non-manifold, normals, decimate).
+   - Enable πₐ Smooth (optional) and preview the toolpath.
+   - Export ready-to-print output.
+
+3. **Hyperbolic families**
+   - Open Hyperbolic tab: create geodesics/horocycles, or tiling presets.
+   - Convert curves to meshes, combine with param shapes, and export.
+
+## 🧪 Examples
+
+```bash
+# Rebuild a param sweep and export STL
+python playground/quick_start_demo.py --shape superellipse --a 40 --b 25 --n 3.2 --out ./examples/superellipse.stl
+
+# Repair an STL and export G-code
+python playground/import_stl_to_pi.py --in ./examples/janky_part.stl --repair --gcode ./examples/janky_part_fixed.gcode
 ```
 
-### CMC (1D signals)
+More in `examples/` and `docs/PLAYGROUND_GUIDE.md`.
 
-```python
-import numpy as np
-from cmc.one_d import encode_1d, decode_1d
+## 📐 Scaling & Smoothness
 
-x = np.sin(np.linspace(0, 4*np.pi, 1000))
-pkg = encode_1d(x, tau=0.01, max_err=0.005)
-y  = decode_1d(pkg, n=len(x), alpha=0.2, mu=0.01)
+AdaptiveCAD stores geometry as πₐ splines and parametric surfaces, then tessellates at export with adaptive error bounds.
+
+- Set `max_angle_err` and `max_chord_err` to control smoothness independently of model size.
+- Re-slice large prints with locked nozzle width/layer height to preserve surface quality.
+- Use Curvature Preview to see where the tessellator adds triangles at larger scales.
+
+Example (CLI exports):
+
+```bash
+# High-fidelity STL regardless of size
+python playground/export_slices.py \
+  --in ./examples/smooth_panel.acproj \
+  --stl ./out/smooth_panel_scaled.stl \
+  --max_angle_err 0.5 --max_chord_err 0.05
+
+# Scale model and keep physical print params consistent
+python playground/quick_start_demo.py \
+  --shape superellipse --a 40 --b 25 --n 3.2 --scale 10 \
+  --out ./out/superellipse_x10.3mf --lock_print_params
 ```
 
-### GPUC (arrays)
+## 🧰 FreeCAD Workbench (v0.1)
 
-```python
-import numpy as np
-from gpuc.quant import quantize, dequantize
+Copy the folder `freecad/AdaptiveCADPIToolpath/` into your FreeCAD Mod directory.
 
-arr = np.random.randn(1024, 1024).astype(np.float32)
-pkt = quantize(arr, bits=8)      # -> dict to save as .npz
-restored = dequantize(pkt)       # approx reconstruction
+Launch FreeCAD → enable the workbench → AdaptiveCADPI Toolpath.
+
+Generate πₐ objects and toolpaths; export to STL/3MF.
+
+See `docs/PLAYGROUND_GUIDE.md` for a quick tour.
+
+## 🎬 Blender Add-on (starter)
+
+1. `Edit → Preferences → Add-ons → Install…`
+2. Select the zip in `blender_addons/adaptivecad_pia/`.
+3. Enable “AdaptiveCAD πₐ” and use `Add → Mesh → πₐ Object`.
+
+## 🧱 Roadmap (Scope B)
+
+- **v0.1-alpha:** Playground core + param editors + basic repair + STL export
+- **Alpha updates:** Hyperbolic library v1, GIF export, preset save/load
+- **Beta:** 3MF export, G-code v2 (infill presets), Undo/Redo, FreeCAD parity
+- **1.0:** Signed installers, docs site, examples pack
+- **Stretch (post-1.0):** GPU kernels, constraint solver, expanded CAM finishing
+
+Follow progress on the Issues and Projects tabs. We post short GIF updates every 1–2 weeks.
+
+## 🧮 Math & Design Notes
+
+Adaptive π (πₐ) removes saw-tooth artifacts by operating directly on smooth curve families and πₐ splines.
+
+Hyperbolic geometry tooling includes geodesics/horocycles and basic tilings for curvature-aware designs.
+
+Repair focuses on non-manifold edges, flipped normals, zero-area faces, and optional decimation before smoothing.
+
+Detailed references: `docs/MATH_REFERENCE.md`, `docs/HYPERBOLIC_GEOMETRY_IMPLEMENTATION.md`.
+
+## 🏗️ Building & Packaging
+
+### Dev build
+
+```bash
+pip install -r requirements-dev.txt
+pytest  # run unit tests (if present)
 ```
 
----
+### Windows packaging (maintainers)
 
-## Notes
+```bash
+# Example: PyInstaller (adjust spec as needed)
+pyinstaller playground/run_advanced_playground.py -n AdaptiveCAD-Playground --noconsole --onefile
 
-- **ATC:** transports JSON with `{ carriers: str, style_b64: base64 }` (1 byte/style per carrier).
-- **CMC:** stores anchors (indices/values), optional local slope, and flags; decoder runs ARP‑style smoothing.
-- **GPUC:** supports `int8` quantization (per‑tensor or per‑block) and zero‑suppression of near‑zeros; CPU reference implementations included, CUDA optional via PyTorch.
+# Or MSIX packaging (recommended for signed installs)
+# See scripts/msix/ and CI workflow in .github/workflows/build.yml
+```
+
+## 🤝 Contributing
+
+We welcome issues, pull requests, and test models:
+
+- File an issue with a minimal repro (attach STL if relevant).
+- Style: keep functions small, document edge cases, and add a GIF where possible.
+- PRs: include before/after screenshots or GIFs for UI/repair changes.
+
+See `CONTRIBUTING.md` (or open an issue if you don’t see it yet).
+
+## 🧾 License
+
+This project’s licensing is in [LICENSE](LICENSE). If you’re unsure about commercial use, open a discussion.
+
+## 🆘 Support
+
+- Discussions / Q&A: GitHub Discussions
+- Bugs: GitHub Issues (attach sample files)
+- Commercial / pilots: email (listed in repo profile)
+
+## 🚀 Kickstarter (Scope B)
+
+We’re preparing a Kickstarter to accelerate the Playground Suite to 1.0 (Windows first, Linux/macOS next), expand hyperbolic tools, and polish FreeCAD/Blender integrations. Interested? Watch the repo and star it; teaser GIFs live in `gifs_lite_pack/`.
+
+## 📣 Changelog (snippet)
+
+- **v0.1-alpha** — Playground launch: param editors, STL repair, STL export, basic toolpath preview
+- **v0.1.1** — Hyperbolic presets, GIF export, save/load presets
+- **v0.2-beta** — 3MF export, G-code v2, Undo/Redo, FreeCAD parity, Blender panel updates
+
+(See Releases for signed builds and hashes.)
+
+## 🙌 Credits
+
+AdaptiveCAD by Ryan McKenna (RDM3DC) and collaborators. Thanks to the open-source CAD/geometry community and everyone testing early builds.
