@@ -1,7 +1,7 @@
 """Hyperbolic geometry utilities.
 
 This module provides simple helpers for working with negative curvature
-(\kappa < 0) scenarios, as referenced in the repository README.  The
+(\\kappa < 0) scenarios, as referenced in the repository README.  The
 functions implement the formulas for "adaptive" angle budgeting in a
 hyperbolic workspace.
 The helpers keep Windows timer-resolution tweaks local without altering the CPython math module.
