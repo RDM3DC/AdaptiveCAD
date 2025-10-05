@@ -111,6 +111,11 @@ if HAS_QT:
                     QMessageBox.information(mw.win, "Import", msg)
                 except Exception:
                     pass
+    # Guard OCC-dependent PiSquareCmd (Rectangle)
+    try:  # pragma: no cover
+        from adaptivecad.commands import PiSquareCmd
+    except Exception:
+        PiSquareCmd = None
     if HAS_OCC:
         from OCC.Core.AIS import AIS_Shape  # type: ignore
         from OCC.Core.TopoDS import TopoDS_Face  # type: ignore
@@ -1833,6 +1838,11 @@ class MainWindow:
         box_action = QAction("Box", self.win)
         box_action.triggered.connect(lambda: self._run_command(NewBoxCmd()))
         basic_menu.addAction(box_action)
+        # Add Rectangle action if PiSquareCmd is available
+        if PiSquareCmd is not None:
+            rectangle_action = QAction("Rectangle", self.win)
+            rectangle_action.triggered.connect(lambda: self._run_command(PiSquareCmd()))
+            basic_menu.addAction(rectangle_action)
         cyl_action = QAction("Cylinder", self.win)
         cyl_action.triggered.connect(lambda: self._run_command(NewCylCmd()))
         basic_menu.addAction(cyl_action)
