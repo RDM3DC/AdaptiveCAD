@@ -1,58 +1,42 @@
-# AdaptiveCAD – AI Assistant Working Notes
+# AdaptiveCAD – AI Agent Field Guide
 
-This repo is a Windows-first Python project with an optional OCC path and a fast analytic (SDF) renderer + PySide6 GUI. Use these notes to be productive quickly and avoid common pitfalls.
+Windows-first Python project combining a PySide6 GUI, analytic SDF renderer, and optional OCC toolchain. Keep edits focused; user-facing panels persist state to `~/.adaptivecad_analytic.json`.
 
-## Architecture
-Layers: `gui/` (PySide6 UI) → `aacore/` (SDF scene, transforms, packing) → `analytic/shaders/` (GLSL raymarcher). OCC-based tools live in `playground.py` and `command_defs.py`.
-Analytic renderer: `adaptivecad/aacore/sdf.py` defines `Scene`, `Prim`, kind enums, transform (`xform.M` with translation in `M[:3,3]`), and GPU packing (`Scene.to_gpu_structs`). Shader side: `adaptivecad/analytic/shaders/sdf.vert|frag` implements the same kinds.
-Main GUI: `adaptivecad/gui/playground.py` (`MainWindow`) with menus and commands; analytic viewport panel: `adaptivecad/gui/analytic_viewport.py` (OpenGL QOpenGLWidget + control panel).
-Optional integrations: FreeCAD (`freecad/AdaptiveCADPIToolpath`), Blender (`blender_addons/...`), examples in `examples/`.
+## Architecture & Key Files
+- Flow: `adaptivecad/gui` widgets → `adaptivecad/aacore/sdf.py` (scene graph, transforms, packing) → `adaptivecad/analytic/shaders/*.glsl` (GPU ray marcher).
+- `adaptivecad/gui/playground.py` hosts the main window; `adaptivecad/gui/analytic_viewport.py` is the analytic control panel/QOpenGLWidget. One-off demos live under `examples/`.
+- CPU/GPU parity is critical: every primitive or uniform added in `sdf.py` must be mirrored in `analytic/shaders/sdf.frag` (same param order, kind enums).
 
-## Dev Workflows (Windows PowerShell)
-- Activate dev env and run GUI Playground:
-  - VS Code task: “Run AdaptiveCAD GUI Playground” or
-  - `python -m adaptivecad.gui.playground`
-- Quick env diagnostics: `check_environment.ps1` (PySide6, OCC). Qt only smoke test: `check_qt.py` or `qt_smoke_test.py`.
-- Tests: activate the correct conda/venv, then `python -m pytest -q`. Some tests require OCC.
-- Analytic viewport (standalone): from GUI menus “View → Show Analytic Viewport (Panel)”. Settings persist to `~/.adaptivecad_analytic.json`.
+## Conventions That Matter
+- PySide6 only; no PyQt mix. OpenGL views subclass `QOpenGLWidget`.
+- Geometry data uses numpy `float32`. Affine transforms store translation in `M[:3,3]` and are uploaded column-major.
+- Boolean ops are string-labelled (`solid`/`subtract`); respect `MAX_PRIMS` limits in panels.
+- Settings merges, don’t overwrite: load JSON, update known keys, keep unknown keys intact.
 
-## Project Conventions
-- GUI: PySide6 only (no PyQt mix). Use `QOpenGLWidget` for the analytic view. Keep UI actions in `MainWindow._create_menus_and_toolbar`.
-- SDF math: numpy `float32` arrays; transforms are affine 4×4 with translation in last column; packing to shaders is column-major. Keep CPU and GLSL implementations in sync.
-- Boolean op strings: `op='solid'|'subtract'` (see `Prim.op`). Respect `MAX_PRIMS` guard in panels.
-- Persistence: analytic panel/user prefs merge into `~/.adaptivecad_analytic.json`. Don’t overwrite unknown keys; merge updates.
-- Coding style: minimal, targeted edits; avoid broad refactors. No license headers. Prefer small helpers over large rewrites.
+## Working With the Analytic Stack
+- `Scene.to_gpu_structs()` returns packed arrays (kinds, ops, params, xforms) sent straight to GLSL uniforms—validate shapes/dtypes when extending.
+- Adding SDF/fractal support requires three touchpoints: enum+distance in `sdf.py`, GLSL dispatch + helper in `analytic/shaders/sdf.frag`, GUI wiring (buttons/default params) in `analytic_viewport.py`.
+- Viewport debug keys 0–5 swap beauty and analytic buffers; `_save_settings()` persists toggles.
 
-## Extending SDF Primitives (end-to-end)
-1) Add CPU SDF + kind in `adaptivecad/aacore/sdf.py`:
-   - Define `KIND_*` enum, implement distance/params, update `Scene.sdf()` dispatch if applicable, and `to_gpu_structs()` packing.
-2) Add GLSL in `adaptivecad/analytic/shaders/sdf.frag`:
-   - Mirror `KIND_*`, implement `sd_*` function, add to `map_scene` dispatch; keep params order aligned with CPU.
-3) Expose in GUI: `adaptivecad/gui/analytic_viewport.py`:
-   - Add button in “Primitives” group mapping to the new kind; set sensible default `params`, `beta`, and `color`.
-4) Verify: run the Playground, open the Analytic Viewport Panel, add the new primitive, toggle debug modes (0..4) to inspect ID/depth/thickness.
+## Dev & Test Workflow (PowerShell)
+- Launch playground: `python -m adaptivecad.gui.playground`; standalone viewport: `python analytic_viewport_launcher.py`.
+- Diagnostics: `check_environment.ps1` covers Qt/OCC; `check_qt.py` is a quick smoke test.
+- Tests: `python -m pytest -q` (some suites expect OCC). Narrow scope with e.g. `pytest tests/test_gui_startup.py -q`.
 
-## Sketch (2D) Overlay (MVP)
-- Overlay tools live in `analytic_viewport.py`: Polyline/Circle/Rectangle with grid + grid snapping. Ctrl+Click selects vertices; drag to move; Delete removes selection. Save/Load Sketch JSON via the panel. Overlay auto-persists in `~/.adaptivecad_analytic.json`.
-- Data model: `adaptivecad/sketch/model.py` (`SketchDocument`, entities, JSON) and `sketch/units.py`. Keep UI overlay exports compatible with `SketchDocument` for future OCC adapters.
+## Non-Obvious Patterns
+- Sketch overlay tools (polyline/circle/rect) live inside `analytic_viewport.py`; grid snap radius (`SNAP_PX`) is defined near their class stubs.
+- Optional integrations: FreeCAD modules under `freecad/`, Blender add-ons under `blender_addons/`; treat imports as optional.
+- Rendering defaults favor foveated + analytic AA; keep those uniforms in sync when touching shader packs.
 
-## OCC Path (when available)
-- `playground.py` conditionally enables OCC (pythonocc-core). Keep UI responsive when OCC is missing (fallback stubs already present). Commands add features and display via `qtViewer3d`.
+## Pitfalls & Gotchas
+- Don’t revive legacy modules like `adaptivecad.core.backends`; all active SDF work is under `adaptivecad/aacore`.
+- Keep primitive `params` vectors ≤4 floats; push extra data through transforms/colors/uniform structs.
+- Stick to ASCII UI labels unless a file already relies on UTF-8 glyphs; previous mojibake came from smart quotes.
 
-## Common Gotchas
-- Transforms: translation must end up in `xform.M[:3,3]` and pack correctly (column-major) for shaders and picking to work.
-- Don’t import nonexistent legacy modules (e.g., `adaptivecad.core.backends`); the analytic path is under `adaptivecad/aacore`.
-- Limit primitive count (`MAX_PRIMS`) and keep `params` vector length ≤ 4; use transform and color for everything else.
+## Helpful Utilities
+- Scripts: `run_full_playground.py`, `run_enhanced_playground.py`, `run_analytic_viewport.py`, `debug_qt_launch.py`.
+- VS Code task “Run AdaptiveCAD GUI Playground” boots the correct environment automatically.
 
-## Testing & Tasks
-- Env: prefer the `adaptivecad` conda/venv (see `check_environment.ps1` output). Verify Qt with `check_qt.py`.
-- Run tests: `python -m pytest -q` (some tests require OCC). Target specific files to iterate faster, e.g., `pytest tests/test_gui_startup.py -q`.
-- GUI tasks (VS Code):
-   - `Run AdaptiveCAD GUI Playground` → starts `python -m adaptivecad.gui.playground` in the right env.
-   - Optional demo task: `Run AdaptiveCAD with 4D Chess` wires a plugin panel for ND chess.
-- Useful scripts (repo root): `run_full_playground.py`, `run_enhanced_playground.py`, `run_analytic_viewport.py`, `debug_qt_launch.py`.
-- Diagnostics: `check_environment.ps1` (PySide6/OCC), `check_occ.py`, `qt_smoke_test.py`.
-
-## When Unsure
-- Prefer reading the corresponding CPU+GLSL pair and the GUI panel button that uses it. Search for the kind name in `sdf.py`, `sdf.frag`, and `analytic_viewport.py`.
-- Need library specifics? Check latest docs before coding. If your agent supports web/context tools, use them to fetch up-to-date PySide6/OpenGL/pythonocc idioms.
+## When Stuck
+- Compare CPU and GLSL implementations—naming stays consistent (`KIND_*`, `sd_*`).
+- Look at similar primitives (e.g., Mandelbulb) to mirror state plumbing, shader uniforms, and persistence handling.

@@ -48,6 +48,10 @@ Miniconda*.exe
 adaptive-resistance-site/node_modules/
 adaptive-resistance-site/dist/
 
+# Node
+node_modules/
+apps-sdk/node_modules/
+
 # Renders and video outputs
 renders/
 **/frame_*.png
@@ -59,6 +63,29 @@ renders/
 # Local logs and debug outputs
 *.log
 playground_debug.log
+
+# Generated CAD / export artifacts
+adaptivecad/exports/
+*.ama
+*.stl
+*.step
+*.stp
+*.iges
+*.igs
+*.obj
+*.mtl
+*.blend1
+
+# Common generated PR outputs
+pr_phase_field_*.ama
+apps-sdk/pr_phase_field_*.ama
+apps-sdk/pr_phase_field_*.stl
+apps-sdk/*.ama
+
+# apps-sdk generated artifacts
+apps-sdk/*_output.json
+apps-sdk/pr_ama_*.json
+apps-sdk/mcp_server.*.log
 
 # Secrets and environment files
 .env

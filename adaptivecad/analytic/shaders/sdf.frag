@@ -19,9 +19,15 @@ uniform vec3 u_bg;   // background color
 uniform vec3 u_env;  // environment light direction (length may encode intensity)
 uniform int  u_debug;      // 0 beauty,1 normals,2 id,3 depth,4 thickness
 uniform int  u_selected;   // selected primitive index (-1 none)
+uniform int  u_fractal_mode;       // 0 smooth escape, 1 orbit trap, 2 angular
+uniform float u_fractal_orbit_shell; // orbit trap shell radius in fractal space
+uniform float u_fractal_ni_scale;  // normalized iteration palette scale
 
-const int KIND_NONE=0, KIND_SPHERE=1, KIND_BOX=2, KIND_CAPSULE=3, KIND_TORUS=4, KIND_MOBIUS=5, KIND_SUPERELLIPSOID=6, KIND_QUASICRYSTAL=7, KIND_TORUS4D=8, KIND_MANDELBULB=9, KIND_KLEIN=10, KIND_MENGER=11, KIND_HYPERBOLIC=12, KIND_GYROID=13, KIND_TREFOIL=14;
-const int OP_SOLID=0, OP_SUB=1;
+const int KIND_NONE=0, KIND_SPHERE=1, KIND_BOX=2, KIND_CAPSULE=3, KIND_TORUS=4, KIND_MOBIUS=5, KIND_SUPERELLIPSOID=6, KIND_QUASICRYSTAL=7, KIND_TORUS4D=8, KIND_MANDELBULB=9, KIND_KLEIN=10, KIND_MENGER=11, KIND_HYPERBOLIC=12, KIND_GYROID=13, KIND_TREFOIL=14, KIND_HELICOID=15;
+const int OP_SOLID=0, OP_SUB=1, OP_INT=2;
+
+const float PI = 3.14159265359;
+const float TAU = 6.28318530718;
 
 float pia_scale(float r, float beta){ return r * (1.0 + 0.125 * beta * r * r); }
 float sd_sphere(vec3 p, float r){ return length(p) - r; }
@@ -34,6 +40,10 @@ float lpn(vec3 p, float power){
     return pow(pow(ap.x,power) + pow(ap.y,power) + pow(ap.z,power), 1.0/power);
 }
 float sd_superellipsoid(vec3 p, float r, float power){ return lpn(p, power) - r; }
+
+vec3 palette(float t, vec3 a, vec3 b, vec3 c, vec3 d){
+    return a + b * cos(6.28318530718 * (c * t + d));
+}
 
 // 4D torus (duocylinder) distance function
 float sd_torus4d(vec3 p, float R1, float R2, float r, float w_slice) {
@@ -48,43 +58,122 @@ float sd_torus4d(vec3 p, float R1, float R2, float r, float w_slice) {
     return length(vec2(d1, d2)) - r;
 }
 
-// Mandelbulb fractal distance estimation
-float sd_mandelbulb(vec3 p, float power, float bailout, float max_iter) {
+struct MandelbulbOrbit {
+    float trapPlane;
+    float trapShell;
+    float r;
+    float nu;
+    float dr;
+    vec3  lastZ;
+    int   iter;
+};
+
+MandelbulbOrbit mandelbulb_iter(vec3 p, float power, float bailout, float max_iter, float orbitShell){
+    MandelbulbOrbit ob;
+    ob.trapPlane = 1e9;
+    ob.trapShell = 1e9;
+    ob.r = 0.0;
+    ob.nu = 0.0;
+    ob.dr = 1.0;
+    ob.lastZ = p;
+    ob.iter = 0;
+
     vec3 z = p;
     float dr = 1.0;
     float r = 0.0;
-    
-    for(int i = 0; i < int(max_iter); i++) {
+
+    int maxIt = int(max_iter);
+    for(int i = 0; i < maxIt; ++i){
         r = length(z);
-        if(r > bailout) break;
-        
-        // Avoid singularities
-        if(r < 1e-6) break;
-        
-        // Convert to spherical coordinates
-        float theta = atan(length(z.xy), z.z);
-        float phi = atan(z.y, z.x);
-        
-        // Scale and rotate the point
-        float zr = pow(r, power - 1.0);
-        dr = zr * power * dr + 1.0;
-        
-        // Convert back to cartesian coordinates
-        zr *= r;
-        float sin_theta = sin(theta * power);
-        z.x = zr * sin_theta * cos(phi * power);
-        z.y = zr * sin_theta * sin(phi * power);
-        z.z = zr * cos(theta * power);
-        
-        // Add original point (Mandelbulb iteration)
-        z += p;
+        if(r > bailout){
+            ob.iter = i;
+            break;
+        }
+
+        float r_safe = max(r, 1e-6);
+        ob.trapPlane = min(ob.trapPlane, abs(z.y));
+        if(orbitShell > 0.0){
+            ob.trapShell = min(ob.trapShell, abs(r_safe - orbitShell));
+        }
+
+        float theta = acos(clamp(z.z / r_safe, -1.0, 1.0));
+        float phi   = atan(z.y, z.x);
+
+        float zr = pow(r_safe, power - 1.0);
+        dr = dr * power * zr + 1.0;
+        float thetap = theta * power;
+        float phip   = phi * power;
+        float rp = zr * r_safe;
+
+        vec3 newZ = rp * vec3(sin(thetap) * cos(phip),
+                              sin(thetap) * sin(phip),
+                              cos(thetap));
+        z = newZ + p;
+        ob.lastZ = z;
+        ob.iter = i + 1;
     }
-    
-    // Improved distance estimation
-    if(r < bailout) {
-        return 0.0; // Inside the set
+
+    ob.r = r;
+    ob.dr = dr;
+    float rr = max(ob.r, 1e-6);
+    float log_base = max(power, 1.001);
+    if(rr > 1.0){
+        ob.nu = float(ob.iter) + 1.0 - log(log(rr)) / log(log_base);
     } else {
-        return 0.5 * log(r) * r / max(dr, 1e-6);
+        ob.nu = float(ob.iter);
+    }
+    return ob;
+}
+
+float mandelbulb_distance(vec3 p, float power, float bailout, float max_iter){
+    MandelbulbOrbit ob = mandelbulb_iter(p, power, bailout, max_iter, u_fractal_orbit_shell);
+    if(ob.r < bailout){
+        return 0.0;
+    }
+    return 0.5 * log(max(ob.r, 1e-6)) * ob.r / max(ob.dr, 1e-6);
+}
+
+float sd_mandelbulb(vec3 p, float power, float bailout, float max_iter) {
+    return mandelbulb_distance(p, power, bailout, max_iter);
+}
+
+vec3 mandelbulb_color(vec3 p, float power, float bailout, float max_iter){
+    MandelbulbOrbit ob = mandelbulb_iter(p, power, bailout, max_iter, u_fractal_orbit_shell);
+    vec3 A = vec3(0.50);
+    vec3 B = vec3(0.50);
+    vec3 C = vec3(1.00);
+    vec3 D = vec3(0.00, 0.33, 0.67);
+
+    if(u_fractal_mode == 0){
+    float t = ob.nu * u_fractal_ni_scale;
+    return palette(t, A, B, C, D);
+    } else if(u_fractal_mode == 1){
+        float a = exp(-8.0 * ob.trapPlane);
+        float b = exp(-6.0 * ob.trapShell);
+        float t = clamp(a + 0.5 * b, 0.0, 1.0);
+        vec3 base = mix(vec3(0.1, 0.2, 0.5), vec3(0.9, 0.9, 0.2), t);
+        float ni = fract(ob.nu * max(u_fractal_ni_scale * 1.25, 0.001));
+        return base * (0.85 + 0.3 * ni);
+    } else {
+        vec3 z = ob.lastZ;
+        float r_safe = max(length(z), 1e-6);
+        float phi = atan(z.y, z.x);
+        float theta = acos(clamp(z.z / r_safe, -1.0, 1.0));
+        float h = fract(phi / (6.28318530718));
+        float s = clamp(theta / 3.14159265359, 0.0, 1.0);
+        float v = 0.9;
+        float c = v * s;
+        float x = c * (1.0 - abs(mod(h * 6.0, 2.0) - 1.0));
+        vec3 rgb;
+        if(h < 1.0/6.0) rgb = vec3(c, x, 0.0);
+        else if(h < 2.0/6.0) rgb = vec3(x, c, 0.0);
+        else if(h < 3.0/6.0) rgb = vec3(0.0, c, x);
+        else if(h < 4.0/6.0) rgb = vec3(0.0, x, c);
+        else if(h < 5.0/6.0) rgb = vec3(x, 0.0, c);
+        else rgb = vec3(c, 0.0, x);
+        rgb += (v - c);
+        float accent = fract(ob.nu * max(u_fractal_ni_scale * 1.875, 0.001));
+        return rgb * (0.85 + 0.25 * accent);
     }
 }
 
@@ -274,6 +363,39 @@ float sd_mobius(vec3 p, float R, float w){
     return best;
 }
 
+float wrap_pi(float a){
+    return mod(a + PI, TAU) - PI;
+}
+
+// Thickened helicoid surface, limited to an annulus and finite turns.
+// params: rInner, rOuter, pitch (height per turn), turns ; thickness from beta
+float sd_helicoid_ribbon(vec3 p, float rInner, float rOuter, float pitch, float turns, float thickness){
+    float r = length(p.xy);
+    float r_safe = max(r, 1e-6);
+    float k = pitch / TAU;
+    if(abs(k) < 1e-6) return 1e9;
+
+    float theta = atan(p.y, p.x); // [-pi, pi]
+    float u = p.z / k;
+    float dtheta = wrap_pi(u - theta);
+
+    // chord distance to the nearest point on the circle at same z
+    float d_surface = 2.0 * r_safe * sin(0.5 * abs(dtheta));
+    float d = d_surface - max(thickness, 0.0005);
+
+    float rin = min(rInner, rOuter);
+    float rout = max(rInner, rOuter);
+    d = max(d, rin - r);
+    d = max(d, r - rout);
+
+    float height = abs(pitch) * max(turns, 0.0);
+    float z0 = -0.5 * height;
+    float z1 =  0.5 * height;
+    d = max(d, z0 - p.z);
+    d = max(d, p.z - z1);
+    return d;
+}
+
 float map_scene(vec3 pw, out vec3 outColor, out int outId){
     float d = 1e9; vec3 col = vec3(0.1); int hitId = -1;
     for(int i=0;i<u_count;i++){
@@ -321,8 +443,24 @@ float map_scene(vec3 pw, out vec3 outColor, out int outId){
             float scale=u_params[i].x; float tube=u_params[i].y; float samples=u_params[i].z;
             di = sd_trefoil_knot(pl, scale, tube, samples);
         }
-        if(u_op[i]==OP_SUB){ float nd = max(d, -di); if(nd < d + 1e-4){ col = u_color[i]; hitId=i; } d = nd; }
-        else { if(di < d){ d=di; col=u_color[i]; hitId=i; } }
+        else if(u_kind[i]==KIND_HELICOID){
+            float rInner=u_params[i].x; float rOuter=u_params[i].y; float pitch=u_params[i].z; float turns=u_params[i].w;
+            float thickness = u_beta[i];
+            di = sd_helicoid_ribbon(pl, rInner, rOuter, pitch, turns, thickness);
+        }
+        if(u_op[i]==OP_SUB){
+            float nd = max(d, -di);
+            if(nd < d + 1e-4){ col = u_color[i]; hitId=i; }
+            d = nd;
+        }
+        else if(u_op[i]==OP_INT){
+            float nd = max(d, di);
+            if(di > d){ col = u_color[i]; hitId=i; }
+            d = nd;
+        }
+        else {
+            if(di < d){ d=di; col=u_color[i]; hitId=i; }
+        }
     }
     outColor = col; outId = hitId; return d;
 }
@@ -359,8 +497,16 @@ void main(){
     if(!hit){ FragColor=vec4(u_bg,1); return; }
     // Re-evaluate id at hit point (cheap) to capture pid
     vec3 _c2; pid = -1; float _d2 = map_scene(p, _c2, pid);
+    vec3 surfColor = col;
+    if(pid >= 0 && u_kind[pid] == KIND_MANDELBULB){
+        vec4 mparams = u_params[pid];
+        float scale = max(1e-6, mparams.w);
+        vec3 pl = (u_xform_inv[pid] * vec4(p, 1.0)).xyz * scale;
+        surfColor = mandelbulb_color(pl, mparams.x, mparams.y, mparams.z);
+    }
+
     vec3 L = normalize(u_env); float ndl=max(dot(n,L),0.0);
-    vec3 base = mix(col*0.5, col, 0.5+0.5*ndl);
+    vec3 base = mix(surfColor*0.5, surfColor, 0.5+0.5*ndl);
 
     if(u_debug==1){ // normals
         FragColor = vec4(n*0.5+0.5,1.0); return; }

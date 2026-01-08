@@ -22,8 +22,9 @@ MAX_PRIMS = 48  # keep in sync with shader arrays
     KIND_HYPERBOLIC,
     KIND_GYROID,
     KIND_TREFOIL,
-) = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14)
-OP_SOLID, OP_SUBTRACT = 0, 1
+    KIND_HELICOID,
+) = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
+OP_SOLID, OP_SUBTRACT, OP_INTERSECT = 0, 1, 2
 
 
 def pia_scale(r, beta):  # toy metric scaling
@@ -52,6 +53,50 @@ def sd_capsule_y(p, r, h):  # Y-axis capsule height=h
 def sd_torus_y(p, R, r):
     qx = np.sqrt(p[0] * p[0] + p[2] * p[2]) - R
     return np.sqrt(qx * qx + p[1] * p[1]) - r
+
+
+def sd_helicoid_ribbon(p, r_inner: float, r_outer: float, pitch: float, turns: float, thickness: float) -> float:
+    """Approximate helicoid ribbon (solid) SDF.
+
+    This models a thickened helicoid *surface* as a finite annulus in XY with a
+    limited Z extent corresponding to `turns` revolutions.
+
+    Params:
+      r_inner, r_outer: radial bounds
+      pitch: height per full turn (2π)
+      turns: number of turns to include
+      thickness: ribbon thickness around the surface
+    """
+    x, y, z = float(p[0]), float(p[1]), float(p[2])
+    r = float(np.hypot(x, y))
+    r_safe = max(1e-8, r)
+
+    pitch = float(pitch)
+    k = pitch / (2.0 * np.pi)
+    if abs(k) < 1e-9:
+        return 1e9
+
+    theta = float(np.arctan2(y, x))  # [-pi, pi]
+    u = z / k
+    dtheta = u - theta
+    # wrap to [-pi, pi]
+    dtheta = (dtheta + np.pi) % (2.0 * np.pi) - np.pi
+    d_surface = 2.0 * r_safe * float(np.sin(0.5 * abs(dtheta)))
+
+    thickness = max(1e-6, float(thickness))
+    d = d_surface - thickness
+
+    r_in = float(min(r_inner, r_outer))
+    r_out = float(max(r_inner, r_outer))
+    d = max(d, r_in - r)
+    d = max(d, r - r_out)
+
+    height = abs(float(pitch)) * float(max(0.0, turns))
+    z0 = -0.5 * height
+    z1 = 0.5 * height
+    d = max(d, z0 - z)
+    d = max(d, z - z1)
+    return d
 
 
 def sd_torus4d(p, R1, R2, r, w_slice=0.0):
@@ -564,10 +609,19 @@ class Scene:
                 tube = pr.params[1] if len(pr.params) > 1 else 0.1
                 samples = int(pr.params[2]) if len(pr.params) > 2 else 96
                 di = sd_trefoil_knot(pl, scale, tube, samples)
+            elif pr.kind in (KIND_HELICOID, "helicoid"):
+                # Params: [r_inner, r_outer, pitch, turns]; thickness comes from beta
+                r_inner = pr.params[0] if len(pr.params) > 0 else 0.15
+                r_outer = pr.params[1] if len(pr.params) > 1 else 0.55
+                pitch = pr.params[2] if len(pr.params) > 2 else 0.35
+                turns = pr.params[3] if len(pr.params) > 3 else 2.0
+                thickness = max(1e-6, pr.beta)
+                di = sd_helicoid_ribbon(pl, r_inner, r_outer, pitch, turns, thickness)
             else:
                 continue
             if pr.op == "subtract":
-                di = -di
+                d = max(d, -di)
+            elif pr.op == "intersect":
                 d = max(d, di)
             else:
                 d = min(d, di)
@@ -653,10 +707,23 @@ class Scene:
                 tube = pr.params[1] if len(pr.params) > 1 else 0.1
                 samples = pr.params[2] if len(pr.params) > 2 else 96
                 params[i] = [scale, tube, samples, 0]
+            elif pr.kind in (KIND_HELICOID, "helicoid"):
+                kind[i] = KIND_HELICOID
+                # Pack r_inner, r_outer, pitch, turns; thickness uses beta.
+                r_inner = pr.params[0] if len(pr.params) > 0 else 0.15
+                r_outer = pr.params[1] if len(pr.params) > 1 else 0.55
+                pitch = pr.params[2] if len(pr.params) > 2 else 0.35
+                turns = pr.params[3] if len(pr.params) > 3 else 2.0
+                params[i] = [r_inner, r_outer, pitch, turns]
             else:
                 kind[i] = KIND_NONE
 
-            op[i] = OP_SUBTRACT if pr.op == "subtract" else OP_SOLID
+            if pr.op == "subtract":
+                op[i] = OP_SUBTRACT
+            elif pr.op == "intersect":
+                op[i] = OP_INTERSECT
+            else:
+                op[i] = OP_SOLID
             beta[i] = np.float32(pr.beta + self.global_beta)
             color[i] = pr.color[:3].astype(np.float32)
             # Pack transforms column-major for GLSL compatibility

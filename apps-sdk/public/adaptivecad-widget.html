@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>AdaptiveCAD</title>
+    <style>
+      :root {
+        color: #0b0b0f;
+        font-family: "Inter", system-ui, -apple-system, sans-serif;
+      }
+
+      html,
+      body {
+        width: 100%;
+        min-height: 100%;
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 16px;
+        background: #f6f8fb;
+      }
+
+      main {
+        width: 100%;
+        max-width: 420px;
+        min-height: 300px;
+        margin: 0 auto;
+        background: #fff;
+        border-radius: 16px;
+        padding: 20px;
+        box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+      }
+
+      h2 {
+        margin: 0 0 6px;
+        font-size: 1.25rem;
+      }
+
+      p {
+        margin: 0 0 16px;
+        font-size: 0.9rem;
+        color: #6c768a;
+      }
+
+      form {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+
+      form label {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-size: 0.82rem;
+        color: #334155;
+      }
+
+      form input {
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid #cad3e0;
+        font-size: 0.95rem;
+      }
+
+      form button {
+        grid-column: 1 / -1;
+        border: none;
+        border-radius: 10px;
+        background: #111bf5;
+        color: white;
+        font-weight: 600;
+        padding: 10px 16px;
+        cursor: pointer;
+      }
+
+      ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      li {
+        background: #f2f4fb;
+        border-radius: 12px;
+        padding: 10px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+      }
+
+      .name {
+        font-weight: 600;
+        font-size: 0.95rem;
+      }
+
+      .meta {
+        font-size: 0.82rem;
+        color: #6c768a;
+      }
+
+      .ok {
+        color: #0f766e;
+        font-weight: 600;
+      }
+
+      .bad {
+        color: #b91c1c;
+        font-weight: 600;
+      }
+
+      pre {
+        margin: 0;
+        padding: 10px;
+        background: #0b0b0f;
+        color: #f6f8fb;
+        border-radius: 10px;
+        overflow: auto;
+        font-size: 0.8rem;
+        line-height: 1.2rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h2>AdaptiveCAD (MCP)</h2>
+      <p>Runs headless research tools (no GUI plots).</p>
+
+      <form id="run-form" autocomplete="off">
+        <label>
+          Size
+          <input id="size" name="size" type="number" min="8" max="256" value="48" />
+        </label>
+        <label>
+          Steps
+          <input id="steps" name="steps" type="number" min="1" max="5000" value="400" />
+        </label>
+        <label>
+          S_target
+          <input id="s_target" name="s_target" type="number" step="0.01" min="0.05" max="0.95" value="0.50" />
+        </label>
+        <label>
+          Seed
+          <input id="seed" name="seed" type="number" value="0" />
+        </label>
+        <button type="submit">Run simulation</button>
+      </form>
+
+      <form id="pr-form" autocomplete="off" style="margin-top: 12px">
+        <label>
+          PR size
+          <input id="pr_size" name="size" type="number" min="8" max="256" value="64" />
+        </label>
+        <label>
+          PR steps
+          <input id="pr_steps" name="steps" type="number" min="1" max="5000" value="200" />
+        </label>
+        <label>
+          dt
+          <input id="pr_dt" name="dt" type="number" step="0.01" min="0.001" max="2" value="0.15" />
+        </label>
+        <label>
+          seed
+          <input id="pr_seed" name="seed" type="number" value="0" />
+        </label>
+        <button type="submit">Run PR relaxation</button>
+      </form>
+
+      <form id="pr-stl-form" autocomplete="off" style="margin-top: 12px">
+        <label>
+          STL size
+          <input id="pr_stl_size" name="size" type="number" min="8" max="256" value="32" />
+        </label>
+        <label>
+          STL steps
+          <input id="pr_stl_steps" name="steps" type="number" min="1" max="5000" value="100" />
+        </label>
+        <label>
+          dt
+          <input id="pr_stl_dt" name="dt" type="number" step="0.01" min="0.001" max="2" value="0.15" />
+        </label>
+        <label>
+          scale_xy
+          <input id="pr_stl_scale_xy" name="scale_xy" type="number" step="0.1" min="0.01" max="10" value="0.5" />
+        </label>
+        <label>
+          scale_z
+          <input id="pr_stl_scale_z" name="scale_z" type="number" step="0.1" min="0.01" max="10" value="2.0" />
+        </label>
+        <label>
+          seed
+          <input id="pr_stl_seed" name="seed" type="number" value="0" />
+        </label>
+        <button type="submit">Run PR + Export STL</button>
+      </form>
+
+      <form id="pr-ama-form" autocomplete="off" style="margin-top: 12px">
+        <label>
+          AMA size
+          <input id="pr_ama_size" name="size" type="number" min="8" max="256" value="32" />
+        </label>
+        <label>
+          AMA steps
+          <input id="pr_ama_steps" name="steps" type="number" min="1" max="5000" value="100" />
+        </label>
+        <label>
+          dt
+          <input id="pr_ama_dt" name="dt" type="number" step="0.01" min="0.001" max="2" value="0.15" />
+        </label>
+        <label>
+          scale_xy
+          <input id="pr_ama_scale_xy" name="scale_xy" type="number" step="0.1" min="0.01" max="10" value="0.5" />
+        </label>
+        <label>
+          scale_z
+          <input id="pr_ama_scale_z" name="scale_z" type="number" step="0.1" min="0.01" max="10" value="2.0" />
+        </label>
+        <label>
+          units
+          <input id="pr_ama_units" name="units" type="text" value="mm" />
+        </label>
+        <label>
+          defl
+          <input id="pr_ama_defl" name="defl" type="number" step="0.01" min="0.001" max="10" value="0.05" />
+        </label>
+        <label>
+          seed
+          <input id="pr_ama_seed" name="seed" type="number" value="0" />
+        </label>
+        <button type="submit">Run PR + Export AMA</button>
+      </form>
+
+      <ul id="runs"></ul>
+    </main>
+
+    <script type="module">
+      const runsEl = document.querySelector("#runs");
+      const formEl = document.querySelector("#run-form");
+      const prFormEl = document.querySelector("#pr-form");
+      const prStlFormEl = document.querySelector("#pr-stl-form");
+      const prAmaFormEl = document.querySelector("#pr-ama-form");
+
+      let runs = [...(window.openai?.toolOutput?.runs ?? [])];
+      let prRuns = [...(window.openai?.toolOutput?.prRuns ?? [])];
+
+      const render = () => {
+        runsEl.innerHTML = "";
+
+        if (prRuns.length) {
+          const header = document.createElement("li");
+          header.style.background = "transparent";
+          header.style.padding = "0";
+          header.innerHTML = '<div class="meta" style="margin-top: 6px;">PR relaxation</div>';
+          runsEl.appendChild(header);
+
+          prRuns.forEach((run) => {
+            const li = document.createElement("li");
+
+            const row = document.createElement("div");
+            row.className = "row";
+
+            const name = document.createElement("div");
+            name.className = "name";
+            name.textContent = `PR ${run.id}`;
+
+            const status = document.createElement("div");
+            status.className = run.ok ? "ok" : "bad";
+            status.textContent = run.ok ? "OK" : "ERROR";
+
+            row.appendChild(name);
+            row.appendChild(status);
+
+            const meta = document.createElement("div");
+            meta.className = "meta";
+            meta.textContent = `N=${run.params?.size} steps=${run.params?.steps} dt=${run.params?.dt} seed=${run.params?.seed}`;
+
+            li.appendChild(row);
+            li.appendChild(meta);
+
+            if (run.result) {
+              const summary = document.createElement("div");
+              summary.className = "meta";
+              summary.textContent = `coherence=${Number(run.result.coherence).toFixed(6)}  phase_energy=${Number(run.result.phase_energy).toFixed(6)}  phi_std=${Number(run.result.phi_std).toFixed(6)}`;
+              li.appendChild(summary);
+
+              // If STL data is present, show download link
+              if (run.result.stl_data && run.result.filename) {
+                const stlDiv = document.createElement("div");
+                stlDiv.className = "meta";
+                stlDiv.style.marginTop = "8px";
+
+                const sizeKB = (run.result.stl_size_bytes / 1024).toFixed(1);
+                stlDiv.innerHTML = `<strong>STL:</strong> ${run.result.filename} (${sizeKB} KB) `;
+
+                const downloadLink = document.createElement("a");
+                downloadLink.href = "#";
+                downloadLink.textContent = "download";
+                downloadLink.style.color = "#111bf5";
+                downloadLink.style.textDecoration = "none";
+                downloadLink.style.fontWeight = "600";
+                downloadLink.onclick = (e) => {
+                  e.preventDefault();
+                  const binaryString = atob(run.result.stl_data);
+                  const bytes = new Uint8Array(binaryString.length);
+                  for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                  }
+                  const blob = new Blob([bytes], { type: "application/octet-stream" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = run.result.filename;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                };
+
+                stlDiv.appendChild(downloadLink);
+                li.appendChild(stlDiv);
+              }
+
+              // If AMA data is present, show download link
+              if (run.result.ama_data && run.result.filename) {
+                const amaDiv = document.createElement("div");
+                amaDiv.className = "meta";
+                amaDiv.style.marginTop = "8px";
+
+                const sizeKB = (run.result.ama_size_bytes / 1024).toFixed(1);
+                amaDiv.innerHTML = `<strong>AMA:</strong> ${run.result.filename} (${sizeKB} KB) `;
+
+                const downloadLink = document.createElement("a");
+                downloadLink.href = "#";
+                downloadLink.textContent = "download";
+                downloadLink.style.color = "#111bf5";
+                downloadLink.style.textDecoration = "none";
+                downloadLink.style.fontWeight = "600";
+                downloadLink.onclick = (e) => {
+                  e.preventDefault();
+                  const binaryString = atob(run.result.ama_data);
+                  const bytes = new Uint8Array(binaryString.length);
+                  for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                  }
+                  const blob = new Blob([bytes], { type: "application/octet-stream" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = run.result.filename;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                };
+
+                amaDiv.appendChild(downloadLink);
+                li.appendChild(amaDiv);
+              }
+            }
+
+            if (run.output) {
+              const pre = document.createElement("pre");
+              pre.textContent = run.output;
+              li.appendChild(pre);
+            }
+
+            runsEl.appendChild(li);
+          });
+        }
+
+        if (runs.length) {
+          const header = document.createElement("li");
+          header.style.background = "transparent";
+          header.style.padding = "0";
+          header.innerHTML = '<div class="meta" style="margin-top: 10px;">Josephson lattice</div>';
+          runsEl.appendChild(header);
+        }
+
+        runs.forEach((run) => {
+          const li = document.createElement("li");
+
+          const header = document.createElement("div");
+          header.className = "row";
+
+          const name = document.createElement("div");
+          name.className = "name";
+          name.textContent = `Run ${run.id}`;
+
+          const status = document.createElement("div");
+          status.className = run.ok ? "ok" : "bad";
+          status.textContent = run.ok ? "OK" : "ERROR";
+
+          header.appendChild(name);
+          header.appendChild(status);
+
+          const meta = document.createElement("div");
+          meta.className = "meta";
+          meta.textContent = `N=${run.params?.size} steps=${run.params?.steps} S_target=${run.params?.s_target} seed=${run.params?.seed}`;
+
+          const summary = document.createElement("div");
+          summary.className = "meta";
+          if (run.result) {
+            summary.textContent = `rho_s=${Number(run.result.rho_s).toFixed(4)}  Tc_proxy=${Number(run.result.Tc_proxy).toFixed(4)}  pi_mean=${Number(run.result.pi_mean).toFixed(4)}`;
+          }
+
+          li.appendChild(header);
+          li.appendChild(meta);
+          if (run.result) li.appendChild(summary);
+
+          if (run.output) {
+            const pre = document.createElement("pre");
+            pre.textContent = run.output;
+            li.appendChild(pre);
+          }
+
+          runsEl.appendChild(li);
+        });
+      };
+
+      const updateFromResponse = (response) => {
+        if (response?.structuredContent?.runs) runs = response.structuredContent.runs;
+        if (response?.structuredContent?.prRuns) prRuns = response.structuredContent.prRuns;
+        render();
+      };
+
+      const handleSetGlobals = (event) => {
+        const globals = event.detail?.globals;
+        if (globals?.toolOutput?.runs) runs = globals.toolOutput.runs;
+        if (globals?.toolOutput?.prRuns) prRuns = globals.toolOutput.prRuns;
+        render();
+      };
+
+      window.addEventListener("openai:set_globals", handleSetGlobals, {
+        passive: true,
+      });
+
+      const callTool = async (name, payload) => {
+        if (window.openai?.callTool) {
+          const response = await window.openai.callTool(name, payload);
+          updateFromResponse(response);
+          return;
+        }
+
+        // Fallback demo mode (no MCP): just add a placeholder run.
+        if (name === "run_pr_relaxation" || name === "run_pr_and_export_stl" || name === "run_pr_and_export_ama") {
+          prRuns = [
+            ...prRuns,
+            {
+              id: crypto.randomUUID(),
+              ok: true,
+              params: payload,
+              result: { coherence: 0, phase_energy: 0, phi_std: 0 },
+              output: "(demo mode: connect via Apps SDK to run AdaptiveCAD)",
+            },
+          ];
+        } else {
+          runs = [
+            ...runs,
+            {
+              id: crypto.randomUUID(),
+              ok: true,
+              params: payload,
+              result: { rho_s: 0, Tc_proxy: 0, pi_mean: 0 },
+              output: "(demo mode: connect via Apps SDK to run AdaptiveCAD)",
+            },
+          ];
+        }
+        render();
+      };
+
+      formEl.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const data = new FormData(formEl);
+
+        const payload = {
+          size: Number(data.get("size")),
+          steps: Number(data.get("steps")),
+          s_target: Number(data.get("s_target")),
+          seed: Number(data.get("seed")),
+        };
+
+        await callTool("run_josephson", payload);
+      });
+
+      prFormEl.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const data = new FormData(prFormEl);
+
+        const payload = {
+          size: Number(data.get("size")),
+          steps: Number(data.get("steps")),
+          dt: Number(data.get("dt")),
+          diffusion: 0.35,
+          coupling: 0.25,
+          phase_dim: 2,
+          seed: Number(data.get("seed")),
+        };
+
+        await callTool("run_pr_relaxation", payload);
+      });
+
+      prStlFormEl.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const data = new FormData(prStlFormEl);
+
+        const payload = {
+          size: Number(data.get("size")),
+          steps: Number(data.get("steps")),
+          dt: Number(data.get("dt")),
+          diffusion: 0.35,
+          coupling: 0.25,
+          phase_dim: 2,
+          scale_xy: Number(data.get("scale_xy")),
+          scale_z: Number(data.get("scale_z")),
+          seed: Number(data.get("seed")),
+        };
+
+        await callTool("run_pr_and_export_stl", payload);
+      });
+
+      prAmaFormEl.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const data = new FormData(prAmaFormEl);
+
+        const payload = {
+          size: Number(data.get("size")),
+          steps: Number(data.get("steps")),
+          dt: Number(data.get("dt")),
+          diffusion: 0.35,
+          coupling: 0.25,
+          phase_dim: 2,
+          scale_xy: Number(data.get("scale_xy")),
+          scale_z: Number(data.get("scale_z")),
+          units: String(data.get("units") ?? "mm"),
+          defl: Number(data.get("defl")),
+          seed: Number(data.get("seed")),
+        };
+
+        await callTool("run_pr_and_export_ama", payload);
+      });
+
+      render();
+    </script>
+  </body>
+</html>
