@@ -23,8 +23,11 @@ uniform int  u_fractal_mode;       // 0 smooth escape, 1 orbit trap, 2 angular
 uniform float u_fractal_orbit_shell; // orbit trap shell radius in fractal space
 uniform float u_fractal_ni_scale;  // normalized iteration palette scale
 
-const int KIND_NONE=0, KIND_SPHERE=1, KIND_BOX=2, KIND_CAPSULE=3, KIND_TORUS=4, KIND_MOBIUS=5, KIND_SUPERELLIPSOID=6, KIND_QUASICRYSTAL=7, KIND_TORUS4D=8, KIND_MANDELBULB=9, KIND_KLEIN=10, KIND_MENGER=11, KIND_HYPERBOLIC=12, KIND_GYROID=13, KIND_TREFOIL=14;
-const int OP_SOLID=0, OP_SUB=1;
+const int KIND_NONE=0, KIND_SPHERE=1, KIND_BOX=2, KIND_CAPSULE=3, KIND_TORUS=4, KIND_MOBIUS=5, KIND_SUPERELLIPSOID=6, KIND_QUASICRYSTAL=7, KIND_TORUS4D=8, KIND_MANDELBULB=9, KIND_KLEIN=10, KIND_MENGER=11, KIND_HYPERBOLIC=12, KIND_GYROID=13, KIND_TREFOIL=14, KIND_HELICOID=15;
+const int OP_SOLID=0, OP_SUB=1, OP_INT=2;
+
+const float PI = 3.14159265359;
+const float TAU = 6.28318530718;
 
 float pia_scale(float r, float beta){ return r * (1.0 + 0.125 * beta * r * r); }
 float sd_sphere(vec3 p, float r){ return length(p) - r; }
@@ -360,6 +363,39 @@ float sd_mobius(vec3 p, float R, float w){
     return best;
 }
 
+float wrap_pi(float a){
+    return mod(a + PI, TAU) - PI;
+}
+
+// Thickened helicoid surface, limited to an annulus and finite turns.
+// params: rInner, rOuter, pitch (height per turn), turns ; thickness from beta
+float sd_helicoid_ribbon(vec3 p, float rInner, float rOuter, float pitch, float turns, float thickness){
+    float r = length(p.xy);
+    float r_safe = max(r, 1e-6);
+    float k = pitch / TAU;
+    if(abs(k) < 1e-6) return 1e9;
+
+    float theta = atan(p.y, p.x); // [-pi, pi]
+    float u = p.z / k;
+    float dtheta = wrap_pi(u - theta);
+
+    // chord distance to the nearest point on the circle at same z
+    float d_surface = 2.0 * r_safe * sin(0.5 * abs(dtheta));
+    float d = d_surface - max(thickness, 0.0005);
+
+    float rin = min(rInner, rOuter);
+    float rout = max(rInner, rOuter);
+    d = max(d, rin - r);
+    d = max(d, r - rout);
+
+    float height = abs(pitch) * max(turns, 0.0);
+    float z0 = -0.5 * height;
+    float z1 =  0.5 * height;
+    d = max(d, z0 - p.z);
+    d = max(d, p.z - z1);
+    return d;
+}
+
 float map_scene(vec3 pw, out vec3 outColor, out int outId){
     float d = 1e9; vec3 col = vec3(0.1); int hitId = -1;
     for(int i=0;i<u_count;i++){
@@ -407,8 +443,24 @@ float map_scene(vec3 pw, out vec3 outColor, out int outId){
             float scale=u_params[i].x; float tube=u_params[i].y; float samples=u_params[i].z;
             di = sd_trefoil_knot(pl, scale, tube, samples);
         }
-        if(u_op[i]==OP_SUB){ float nd = max(d, -di); if(nd < d + 1e-4){ col = u_color[i]; hitId=i; } d = nd; }
-        else { if(di < d){ d=di; col=u_color[i]; hitId=i; } }
+        else if(u_kind[i]==KIND_HELICOID){
+            float rInner=u_params[i].x; float rOuter=u_params[i].y; float pitch=u_params[i].z; float turns=u_params[i].w;
+            float thickness = u_beta[i];
+            di = sd_helicoid_ribbon(pl, rInner, rOuter, pitch, turns, thickness);
+        }
+        if(u_op[i]==OP_SUB){
+            float nd = max(d, -di);
+            if(nd < d + 1e-4){ col = u_color[i]; hitId=i; }
+            d = nd;
+        }
+        else if(u_op[i]==OP_INT){
+            float nd = max(d, di);
+            if(di > d){ col = u_color[i]; hitId=i; }
+            d = nd;
+        }
+        else {
+            if(di < d){ d=di; col=u_color[i]; hitId=i; }
+        }
     }
     outColor = col; outId = hitId; return d;
 }

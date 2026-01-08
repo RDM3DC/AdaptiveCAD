@@ -68,21 +68,7 @@ def main() -> int:
         except Exception:
             pass
 
-    # If we're launching to view external content (AMA/scene JSON), start from a
-    # clean scene (avoid the built-in demo primitives).
-    if args.ama or args.scene_json:
-        try:
-            panel.view.scene.prims.clear()
-        except Exception:
-            pass
-        _notify_scene_changed()
-        try:
-            panel.view.update()
-        except Exception:
-            pass
-
-    def _load_scene_json(path: str) -> None:
-        import json
+    def _load_scene_entries(data: object) -> None:
         import numpy as np
 
         from adaptivecad.aacore.sdf import (
@@ -101,6 +87,7 @@ def main() -> int:
             KIND_HYPERBOLIC,
             KIND_GYROID,
             KIND_TREFOIL,
+            KIND_HELICOID,
         )
 
         kind_map = {
@@ -123,10 +110,9 @@ def main() -> int:
             "gyroid": KIND_GYROID,
             "trefoil knot": KIND_TREFOIL,
             "trefoil": KIND_TREFOIL,
+            "helicoid": KIND_HELICOID,
         }
 
-        p = Path(path)
-        data = json.loads(p.read_text(encoding="utf-8"))
         if not isinstance(data, list):
             raise ValueError("Scene JSON must be a list")
 
@@ -147,19 +133,82 @@ def main() -> int:
                 col = (float(color[0]), float(color[1]), float(color[2]))
             else:
                 col = (0.85, 0.75, 0.55)
-            op = int(entry.get("op", 0) or 0)
-            pr = Prim(k, [float(x) for x in params], beta=beta, color=col, op=op)
-            pos = entry.get("pos")
-            if isinstance(pos, list) and len(pos) >= 3:
+            op_raw = entry.get("op", 0)
+            if isinstance(op_raw, str):
+                op_name = op_raw.strip().lower()
+                if op_name in ("subtract", "sub"):
+                    op_val = "subtract"
+                elif op_name in ("intersect", "and"):
+                    op_val = "intersect"
+                else:
+                    op_val = "solid"
+            else:
                 try:
-                    M = pr.xform.M.copy()
-                    M[:3, 3] = np.array([float(pos[0]), float(pos[1]), float(pos[2])], np.float32)
-                    pr.xform.M = M
+                    op_i = int(op_raw or 0)
+                except Exception:
+                    op_i = 0
+                if op_i == 1:
+                    op_val = "subtract"
+                elif op_i == 2:
+                    op_val = "intersect"
+                else:
+                    op_val = "solid"
+
+            pr = Prim(k, [float(x) for x in params], beta=beta, color=col, op=op_val)
+
+            pos_raw = entry.get("pos")
+            euler_raw = entry.get("euler")
+            scale_raw = entry.get("scale")
+
+            pos = None
+            if isinstance(pos_raw, list) and len(pos_raw) >= 3:
+                try:
+                    pos = [float(pos_raw[0]), float(pos_raw[1]), float(pos_raw[2])]
+                except Exception:
+                    pos = None
+
+            euler = None
+            if isinstance(euler_raw, list) and len(euler_raw) >= 3:
+                try:
+                    euler = [float(euler_raw[0]), float(euler_raw[1]), float(euler_raw[2])]
+                except Exception:
+                    euler = None
+
+            scale = None
+            if isinstance(scale_raw, list) and len(scale_raw) >= 3:
+                try:
+                    scale = [float(scale_raw[0]), float(scale_raw[1]), float(scale_raw[2])]
+                except Exception:
+                    scale = None
+
+            if pos is not None or euler is not None or scale is not None:
+                try:
+                    pr.set_transform(pos=pos, euler=euler, scale=scale)
                 except Exception:
                     pass
             panel.view.scene.add(pr)
 
         _notify_scene_changed()
+
+    # If we're launching to view external content (AMA/scene JSON), start from a
+    # clean scene (avoid the built-in demo primitives).
+    if args.ama or args.scene_json:
+        try:
+            panel.view.scene.prims.clear()
+        except Exception:
+            pass
+        _notify_scene_changed()
+        try:
+            panel.view.update()
+        except Exception:
+            pass
+
+    def _load_scene_json(path: str) -> None:
+        import json
+
+        p = Path(path)
+        data = json.loads(p.read_text(encoding="utf-8"))
+        _load_scene_entries(data)
 
     def _read_ama_analytic_scene(z: zipfile.ZipFile) -> dict | None:
         import json
@@ -342,6 +391,23 @@ def main() -> int:
     def _add_ama_overlay_when_ready() -> None:
         if not args.ama:
             return
+
+        # --- Prefer true analytic SDF scene if present in AMA ---
+        try:
+            import json
+            with zipfile.ZipFile(args.ama, "r") as z:
+                if "analytic/scene.json" in z.namelist():
+                    scene_raw = json.loads(z.read("analytic/scene.json").decode("utf-8"))
+                    if isinstance(scene_raw, list):
+                        # Load SDF prim list and skip mesh/field overlay.
+                        _load_scene_entries(scene_raw)
+                        try:
+                            panel.view.update()
+                        except Exception:
+                            pass
+                        return
+        except Exception:
+            pass
 
         try:
             import numpy as np
