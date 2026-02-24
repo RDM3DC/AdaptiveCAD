@@ -6,12 +6,13 @@ Generates fractal from mathematical formula, exports STL (geometry) and PLY (wit
 
 import argparse
 import math
-import sys
 import os
+import sys
 from concurrent.futures import ProcessPoolExecutor
+
 import numpy as np
-from skimage.measure import marching_cubes
 import trimesh
+from skimage.measure import marching_cubes
 
 # Ensure CUDA DLLs are discoverable on Windows before importing CuPy
 if sys.platform.startswith("win"):
@@ -325,7 +326,7 @@ def _field_sample_gpu(bounds, res, power, bailout, max_iter, pi_mode, pi_base, p
 
     bailout_val = float(bailout)
     power_val = float(power)
-    log_denom = np.log(max(power_val, 1.001))
+    np.log(max(power_val, 1.001))
 
     print(f"  Sampling {res}^3 grid (GPU/CuPy)...")
     compute_start.record()
@@ -592,7 +593,7 @@ def main():
 
     args = ap.parse_args()
 
-    print(f"[•] Mandelbulb Generator")
+    print("[•] Mandelbulb Generator")
     print(f"    Power: {args.power}, Bailout: {args.bailout}, Max iterations: {args.max_iter}")
     print(f"    Resolution: {args.res}^3 voxels")
     print(f"    Color mode: {args.color}")
@@ -624,7 +625,7 @@ def main():
         print("[!] No vertices generated. Try adjusting parameters or bounds.")
         return 1
 
-    print(f"\n[•] Saving meshes...")
+    print("\n[•] Saving meshes...")
     stl_path, ply_path = save_meshes(verts, faces, colors, args.outfile)
 
     print(f"\n[*] Wrote: {stl_path}")

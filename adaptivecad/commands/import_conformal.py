@@ -1,9 +1,12 @@
 import concurrent.futures
+import logging
 import os
 import warnings
 
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtWidgets import QFileDialog, QInputDialog, QMessageBox
+
+log = logging.getLogger(__name__)
 
 # Guard OCC heavy imports to allow module import without OCC installed
 HAS_OCC = True
@@ -349,18 +352,19 @@ def process_single_bspline_surface(face_data, kappa):
                 for j in range(1, nb_v_poles + 1):
                     pole = bspline.Pole(i, j)
                     x0, y0, z0 = pole.X(), pole.Y(), pole.Z()
-                    print(f"[DEBUG] Pole({i},{j}) original: x={x0}, y={y0}, z={z0}")
+                    log.debug("Pole(%d,%d) original: x=%s, y=%s, z=%s", i, j, x0, y0, z0)
 
                     x, y, z = smooth_input(
                         x0, y0, z0, bspline.Poles(), i, j, nb_u_poles, nb_v_poles
                     )
-                    print(
-                        f"[DEBUG] Pole({i},{j}) after smoothing: x={x}, y={y}, z={z}"
-                    )  # Apply robust conformal transformation using improved pi_a_over_pi
+                    log.debug(
+                        "Pole(%d,%d) after smoothing: x=%s, y=%s, z=%s", i, j, x, y, z
+                    )
+                    # Apply robust conformal transformation using improved pi_a_over_pi
                     # Validate parameters first
                     valid, msg = validate_hyperbolic_params(math.sqrt(x * x + y * y + z * z), kappa)
                     if not valid:
-                        print(f"[WARN] Invalid hyperbolic params at pole({i},{j}): {msg}")
+                        log.warning("Invalid hyperbolic params at pole(%d,%d): %s", i, j, msg)
                         # Use original coordinates if validation fails
                         transformed_x = x
                         transformed_y = y
@@ -386,8 +390,9 @@ def process_single_bspline_surface(face_data, kappa):
                         else:
                             transformed_z = z
 
-                    print(
-                        f"[DEBUG] Pole({i},{j}) transformed: x={transformed_x}, y={transformed_y}, z={transformed_z}"
+                    log.debug(
+                        "Pole(%d,%d) transformed: x=%s, y=%s, z=%s",
+                        i, j, transformed_x, transformed_y, transformed_z,
                     )
 
                     new_pole = gp_Pnt(transformed_x, transformed_y, transformed_z)

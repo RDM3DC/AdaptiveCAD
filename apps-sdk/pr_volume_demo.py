@@ -33,6 +33,7 @@ Examples:
 from __future__ import annotations
 
 import argparse
+
 import numpy as np
 
 
@@ -66,7 +67,12 @@ def main():
     ap.add_argument("--plot", action="store_true", help="Show 3D visualization")
     args = ap.parse_args()
 
-    from adaptivecad.pr.volume import PRVolumeConfig, relax_phase_volume, save_volume_ama, extract_isosurface
+    from adaptivecad.pr.volume import (
+        PRVolumeConfig,
+        extract_isosurface,
+        relax_phase_volume,
+        save_volume_ama,
+    )
 
     cfg = PRVolumeConfig(
         size=args.size,
@@ -95,7 +101,7 @@ def main():
         seed=args.seed,
     )
 
-    print(f"PR Volume Demo")
+    print("PR Volume Demo")
     print(f"  Grid: {cfg.size}³ = {cfg.size**3:,} voxels")
     print(f"  Steps: {cfg.steps}, dt={cfg.dt}, diffusion={cfg.diffusion}, coupling={cfg.coupling}")
     print(f"  Geom mode: {cfg.geom_mode}")
@@ -113,7 +119,7 @@ def main():
     print("Running 3D phase relaxation...")
     metrics, state = relax_phase_volume(cfg)
 
-    print(f"Done!")
+    print("Done!")
     print(f"  φ range: [{metrics['phi_min']:.4f}, {metrics['phi_max']:.4f}]")
     print(f"  φ mean: {metrics['phi_mean']:.4f}")
     print(f"  Residual mean: {metrics['residual_mean']:.4f}, max: {metrics['residual_max']:.4f}")

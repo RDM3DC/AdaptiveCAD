@@ -386,8 +386,8 @@ def build_torus_knot_ribbon_mesh(cfg: SurfacedTorusKnotRibbonConfig) -> tuple[np
 
     # Torus knot centerline
     # (R + r cos(q u)) [cos(p u), sin(p u)] with z = r sin(q u)
-    cu = np.cos(u)
-    su = np.sin(u)
+    np.cos(u)
+    np.sin(u)
     cpu = np.cos(float(cfg.p) * u)
     spu = np.sin(float(cfg.p) * u)
     cqu = np.cos(float(cfg.q) * u)
@@ -573,10 +573,10 @@ def export_surfaced_bridge_as_ama(
     - The Analytic Viewport launcher always tries to load *a field* first.
       So we include a small `fields/phi.npy` even though the mesh is the star.
     """
+    import hashlib
     import io
     import json
     import zipfile
-    import hashlib
     from datetime import datetime, timezone
 
     v = np.asarray(vertices, dtype=np.float32)

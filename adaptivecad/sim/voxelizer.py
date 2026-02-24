@@ -143,12 +143,12 @@ def load_and_voxelize_ama(
     # Must be a list (not a dict with "layers")
     if isinstance(scene_data, dict):
         raise ValueError(
-            f"scene.json is a dict (volume/field AMA), not a list (analytic SDF). "
-            f"This voxelizer only supports list-based analytic scenes."
+            "scene.json is a dict (volume/field AMA), not a list (analytic SDF). "
+            "This voxelizer only supports list-based analytic scenes."
         )
 
     if not isinstance(scene_data, list):
-        raise ValueError(f"scene.json must be a list of SDF primitives")
+        raise ValueError("scene.json must be a list of SDF primitives")
 
     solid, dist, voxel_size = voxelize_sdf_scene(
         scene_data, extent=extent, resolution=resolution, iso=iso

@@ -21,36 +21,42 @@ Example:
     print(f"Best attenuation: {candidate.comparison.best_attenuation_dB:.1f} dB")
 """
 
-from .materials import (
-    IsotropicMaterial, 
-    PLA, ABS, PETG, TPU, NYLON,
-    STEEL, ALUMINUM, TITANIUM,
-    MATERIALS,
-)
-from .voxelizer import voxelize_sdf_scene, load_and_voxelize_ama
-from .lattice import build_lattice_system, LatticeSystem
-from .modal import solve_modes, ModalResult
 from .forced_response import (
+    ComparisonResult,
+    FrequencyResponseResult,
+    compare_transmissibility,
     compute_frequency_response,
     compute_transmissibility,
-    compare_transmissibility,
-    FrequencyResponseResult,
-    ComparisonResult,
-)
-from .pipeline import (
-    run_modal_analysis,
-    run_vibration_comparison,
-    VibrationTestConfig,
-    VibrationTestResult,
 )
 from .heat_generation import (
-    compute_heat_at_frequency,
-    compute_heat_sweep,
-    compare_heat_generation,
+    HeatComparisonResult,
     HeatGenerationResult,
     HeatSweepResult,
-    HeatComparisonResult,
+    compare_heat_generation,
+    compute_heat_at_frequency,
+    compute_heat_sweep,
 )
+from .lattice import LatticeSystem, build_lattice_system
+from .materials import (
+    ABS,
+    ALUMINUM,
+    MATERIALS,
+    NYLON,
+    PETG,
+    PLA,
+    STEEL,
+    TITANIUM,
+    TPU,
+    IsotropicMaterial,
+)
+from .modal import ModalResult, solve_modes
+from .pipeline import (
+    VibrationTestConfig,
+    VibrationTestResult,
+    run_modal_analysis,
+    run_vibration_comparison,
+)
+from .voxelizer import load_and_voxelize_ama, voxelize_sdf_scene
 
 __all__ = [
     # Materials

@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """Quick script to regenerate volume with better isosurface."""
 import sys
+
 sys.path.insert(0, r"C:\Users\RDM3D\AdaptCADKickstarter\AdaptiveCAD")
 
-from adaptivecad.pr.volume import PRVolumeConfig, relax_phase_volume, save_volume_ama, extract_isosurface
-import numpy as np
+
+from adaptivecad.pr.volume import (
+    PRVolumeConfig,
+    extract_isosurface,
+    relax_phase_volume,
+    save_volume_ama,
+)
 
 cfg = PRVolumeConfig(
     size=32,

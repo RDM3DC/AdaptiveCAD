@@ -11,6 +11,8 @@ uniform vec3  u_color[MAX_PRIMS];
 uniform vec4  u_params[MAX_PRIMS]; // sphere:(r,0,0,0) box:(sx,sy,sz,0) capsule:(r,h,0,0) torus:(R,r,0,0)
 uniform mat4  u_xform[MAX_PRIMS];
 uniform mat4  u_xform_inv[MAX_PRIMS]; // precomputed inverse (CPU)
+uniform vec4  u_mod[MAX_PRIMS];  // x=shell, y=round, z=twist, w=taper
+uniform vec4  u_mod2[MAX_PRIMS]; // xyz=elongate, w=mirror_axes bitmask
 
 uniform vec2 u_res;
 uniform vec3 u_cam_pos;
@@ -23,7 +25,7 @@ uniform int  u_fractal_mode;       // 0 smooth escape, 1 orbit trap, 2 angular
 uniform float u_fractal_orbit_shell; // orbit trap shell radius in fractal space
 uniform float u_fractal_ni_scale;  // normalized iteration palette scale
 
-const int KIND_NONE=0, KIND_SPHERE=1, KIND_BOX=2, KIND_CAPSULE=3, KIND_TORUS=4, KIND_MOBIUS=5, KIND_SUPERELLIPSOID=6, KIND_QUASICRYSTAL=7, KIND_TORUS4D=8, KIND_MANDELBULB=9, KIND_KLEIN=10, KIND_MENGER=11, KIND_HYPERBOLIC=12, KIND_GYROID=13, KIND_TREFOIL=14, KIND_HELICOID=15;
+const int KIND_NONE=0, KIND_SPHERE=1, KIND_BOX=2, KIND_CAPSULE=3, KIND_TORUS=4, KIND_MOBIUS=5, KIND_SUPERELLIPSOID=6, KIND_QUASICRYSTAL=7, KIND_TORUS4D=8, KIND_MANDELBULB=9, KIND_KLEIN=10, KIND_MENGER=11, KIND_HYPERBOLIC=12, KIND_GYROID=13, KIND_TREFOIL=14, KIND_HELICOID=15, KIND_ORBITAL=16;
 const int OP_SOLID=0, OP_SUB=1, OP_INT=2;
 
 const float PI = 3.14159265359;
@@ -396,11 +398,122 @@ float sd_helicoid_ribbon(vec3 p, float rInner, float rOuter, float pitch, float 
     return d;
 }
 
+float gen_laguerre(int k, float alpha, float x){
+    if(k <= 0) return 1.0;
+    if(k == 1) return 1.0 + alpha - x;
+    float Lkm2 = 1.0;
+    float Lkm1 = 1.0 + alpha - x;
+    for(int n = 1; n < k; ++n){
+        float Ln1 = ((2.0*float(n) + 1.0 + alpha - x) * Lkm1 - (float(n) + alpha) * Lkm2) / (float(n) + 1.0);
+        Lkm2 = Lkm1;
+        Lkm1 = Ln1;
+    }
+    return Lkm1;
+}
+
+float real_sph_harm(int l, int m, float theta, float phi){
+    float ct = cos(theta);
+    float st = sin(theta);
+    if(l == 0){
+        return 0.2820947918;
+    }
+    if(l == 1){
+        if(m == 0) return 0.4886025119 * ct;
+        if(m == 1) return 0.4886025119 * st * cos(phi);
+        if(m == -1) return 0.4886025119 * st * sin(phi);
+        return 0.0;
+    }
+    if(l == 2){
+        if(m == 0) return 0.3153915653 * (3.0*ct*ct - 1.0);
+        if(m == 1) return 1.0925484306 * st * ct * cos(phi);
+        if(m == -1) return 1.0925484306 * st * ct * sin(phi);
+        if(m == 2) return 0.5462742153 * st * st * cos(2.0*phi);
+        if(m == -2) return 0.5462742153 * st * st * sin(2.0*phi);
+        return 0.0;
+    }
+    if(l == 3){
+        if(m == 0) return 0.3731763326 * (5.0*ct*ct*ct - 3.0*ct);
+        if(m == 1) return 0.4570457995 * st * (5.0*ct*ct - 1.0) * cos(phi);
+        if(m == -1) return 0.4570457995 * st * (5.0*ct*ct - 1.0) * sin(phi);
+        if(m == 2) return 1.4453057213 * st * st * ct * cos(2.0*phi);
+        if(m == -2) return 1.4453057213 * st * st * ct * sin(2.0*phi);
+        if(m == 3) return 0.5900435899 * st * st * st * cos(3.0*phi);
+        if(m == -3) return 0.5900435899 * st * st * st * sin(3.0*phi);
+        return 0.0;
+    }
+    return 0.0;
+}
+
+float hydrogenic_density(vec3 p, int n, int l, int m){
+    if(n < 1) return 0.0;
+    if(l < 0 || l >= n) return 0.0;
+    if(abs(m) > l) return 0.0;
+
+    float r = length(p);
+    float rs = max(r, 1e-6);
+    float theta = acos(clamp(p.z / rs, -1.0, 1.0));
+    float phi = atan(p.y, p.x);
+
+    float rho = 2.0 * rs / max(float(n), 1.0);
+    int k = n - l - 1;
+    float alpha = 2.0 * float(l) + 1.0;
+    float L = gen_laguerre(k, alpha, rho);
+    float R = exp(-0.5 * rho) * pow(rho, float(l)) * L;
+    float Y = real_sph_harm(l, m, theta, phi);
+    float psi = R * Y;
+    return psi * psi;
+}
+
+float sd_hydrogenic_orbital(vec3 p, int n, int l, int m, float iso, float thickness){
+    float r = length(p);
+    float eps = 0.001 * (1.0 + 0.25 * r);
+    vec3 ex = vec3(eps, 0.0, 0.0);
+    vec3 ey = vec3(0.0, eps, 0.0);
+    vec3 ez = vec3(0.0, 0.0, eps);
+
+    float f0 = hydrogenic_density(p, n, l, m) - iso;
+    float gx = (hydrogenic_density(p + ex, n, l, m) - hydrogenic_density(p - ex, n, l, m)) / (2.0 * eps);
+    float gy = (hydrogenic_density(p + ey, n, l, m) - hydrogenic_density(p - ey, n, l, m)) / (2.0 * eps);
+    float gz = (hydrogenic_density(p + ez, n, l, m) - hydrogenic_density(p - ez, n, l, m)) / (2.0 * eps);
+    // grad(density-iso) == grad(density)
+    float g = max(length(vec3(gx, gy, gz)), 1e-6);
+    return abs(f0) / g - max(thickness, 0.0005);
+}
+
 float map_scene(vec3 pw, out vec3 outColor, out int outId){
     float d = 1e9; vec3 col = vec3(0.1); int hitId = -1;
     for(int i=0;i<u_count;i++){
         mat4 Mi = u_xform_inv[i];
         vec3 pl = (Mi * vec4(pw,1.0)).xyz;
+
+        // --- Pre-SDF domain modifiers ---
+        // Mirror
+        int mflags = int(u_mod2[i].w + 0.5);
+        if((mflags & 1) != 0) pl.x = abs(pl.x);
+        if((mflags & 2) != 0) pl.y = abs(pl.y);
+        if((mflags & 4) != 0) pl.z = abs(pl.z);
+        // Elongate
+        vec3 elong = u_mod2[i].xyz;
+        if(elong.x > 0.0 || elong.y > 0.0 || elong.z > 0.0){
+            vec3 q = pl - clamp(pl, -elong, elong);
+            pl = q;
+        }
+        // Twist (around Y axis)
+        float twistK = u_mod[i].z;
+        if(abs(twistK) > 1e-6){
+            float ca = cos(twistK * pl.y);
+            float sa = sin(twistK * pl.y);
+            pl = vec3(ca*pl.x - sa*pl.z, pl.y, sa*pl.x + ca*pl.z);
+        }
+        // Bend (around Y, curving X into a circular arc)
+        float bendK = 0.0; // reserved, currently unused in u_mod — future slot
+        // Taper (scale XZ by linear function of Y)
+        float taperK = u_mod[i].w;
+        if(abs(taperK) > 1e-6){
+            float tScale = max(1.0 + taperK * pl.y, 0.01);
+            pl.xz /= tScale;
+        }
+
         float di = 1e9;
         if(u_kind[i]==KIND_SPHERE){ float r = pia_scale(u_params[i].x, u_beta[i]); di = sd_sphere(pl,r); }
         else if(u_kind[i]==KIND_BOX){ di = sd_box(pl, u_params[i].xyz); }
@@ -448,6 +561,22 @@ float map_scene(vec3 pw, out vec3 outColor, out int outId){
             float thickness = u_beta[i];
             di = sd_helicoid_ribbon(pl, rInner, rOuter, pitch, turns, thickness);
         }
+        else if(u_kind[i]==KIND_ORBITAL){
+            int n = int(round(u_params[i].x));
+            int l = int(round(u_params[i].y));
+            int m = int(round(u_params[i].z));
+            float iso = u_params[i].w;
+            float thickness = u_beta[i];
+            di = sd_hydrogenic_orbital(pl, n, l, m, iso, thickness);
+        }
+        // --- Post-SDF modifiers ---
+        // Round: shrink the iso-surface inward
+        float roundR = u_mod[i].y;
+        if(roundR > 1e-6) di -= roundR;
+        // Shell: hollow out the shape
+        float shellT = u_mod[i].x;
+        if(shellT > 1e-6) di = abs(di) - shellT;
+
         if(u_op[i]==OP_SUB){
             float nd = max(d, -di);
             if(nd < d + 1e-4){ col = u_color[i]; hitId=i; }
@@ -508,9 +637,15 @@ void main(){
     vec3 L = normalize(u_env); float ndl=max(dot(n,L),0.0);
     vec3 base = mix(surfColor*0.5, surfColor, 0.5+0.5*ndl);
 
+    // --- Selection highlight helper: gold tint + rim (applied in all visual modes) ---
+    bool is_sel = (u_selected >= 0 && pid == u_selected);
+
     if(u_debug==1){ // normals
-        FragColor = vec4(n*0.5+0.5,1.0); return; }
-    if(u_debug==2){ // id encode (pid+1 so -1 -> 0)
+        vec3 c = n*0.5+0.5;
+        if(is_sel){ float rim = pow(1.0-max(dot(n,-rd),0.0),2.0);
+            c = mix(vec3(1.0,0.85,0.25), c, 0.25); c = clamp(c+rim*0.5,0.0,1.0); }
+        FragColor = vec4(c,1.0); return; }
+    if(u_debug==2){ // id encode (pid+1 so -1 -> 0) — no tinting
         int enc = (pid < 0) ? 0 : (pid+1);
         int r =  enc       & 255;
         int g = (enc >> 8) & 255;
@@ -518,27 +653,34 @@ void main(){
         FragColor = vec4(r/255.0, g/255.0, b/255.0, 1.0); return; }
     if(u_debug==3){ // depth
         float depth = clamp(t/200.0, 0.0, 1.0);
-        FragColor = vec4(vec3(depth),1.0); return; }
-    if(u_debug==4){ // thickness placeholder (use curvature-ish via normal variation)
+        vec3 c = vec3(depth);
+        if(is_sel){ float rim = pow(1.0-max(dot(n,-rd),0.0),2.0);
+            c = mix(vec3(1.0,0.85,0.25), c, 0.25); c = clamp(c+rim*0.5,0.0,1.0); }
+        FragColor = vec4(c,1.0); return; }
+    if(u_debug==4){ // thickness placeholder
         float th = pow(1.0 - abs(dot(n, rd)), 2.0);
-        FragColor = vec4(vec3(th),1.0); return; }
+        vec3 c = vec3(th);
+        if(is_sel){ float rim = pow(1.0-max(dot(n,-rd),0.0),2.0);
+            c = mix(vec3(1.0,0.85,0.25), c, 0.25); c = clamp(c+rim*0.5,0.0,1.0); }
+        FragColor = vec4(c,1.0); return; }
     if(u_debug==5){ // adaptive heatmap - distance field gradient
         vec3 p_hit = p + t * rd;
         float hval = length(gradient_central_diff(p_hit));
-        // Color gradient: blue -> green -> yellow -> red
         vec3 heat_color;
-        hval = clamp(hval * 2.0, 0.0, 3.0); // scale for visibility
+        hval = clamp(hval * 2.0, 0.0, 3.0);
         if(hval < 1.0) {
-            heat_color = mix(vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 0.0), hval);  // blue -> green
+            heat_color = mix(vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 0.0), hval);
         } else if(hval < 2.0) {
-            heat_color = mix(vec3(0.0, 1.0, 0.0), vec3(1.0, 1.0, 0.0), hval-1.0);  // green -> yellow
+            heat_color = mix(vec3(0.0, 1.0, 0.0), vec3(1.0, 1.0, 0.0), hval-1.0);
         } else {
-            heat_color = mix(vec3(1.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), hval-2.0);  // yellow -> red
+            heat_color = mix(vec3(1.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), hval-2.0);
         }
+        if(is_sel){ float rim = pow(1.0-max(dot(n,-rd),0.0),2.0);
+            heat_color = mix(vec3(1.0,0.85,0.25), heat_color, 0.25); heat_color = clamp(heat_color+rim*0.5,0.0,1.0); }
         FragColor = vec4(heat_color, 1.0); return; }
 
-    // Beauty + selection highlight (strong gold tint + rim)
-    if(u_selected >=0 && pid==u_selected){
+    // Beauty mode (u_debug==0) + selection highlight
+    if(is_sel){
         float rim = pow(1.0 - max(dot(n,-rd),0.0), 2.0);
         vec3 gold = vec3(1.0,0.85,0.25);
         base = mix(gold, base, 0.25);

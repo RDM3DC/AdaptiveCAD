@@ -21,15 +21,14 @@ Usage:
     create_apollonian_sweep('apollonian_points.json')
 """
 
-import bmesh
-import mathutils
-from mathutils import Vector, Matrix
 import json
-from typing import List, Tuple, Optional, Dict, Any
+from typing import Any, Dict
+
+from mathutils import Vector
 
 try:
-    import bpy
     import addon_utils
+    import bpy
     IN_BLENDER = True
 except ImportError:
     print("Warning: Not running in Blender environment")

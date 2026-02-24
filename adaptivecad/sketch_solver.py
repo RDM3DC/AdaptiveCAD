@@ -75,6 +75,174 @@ class DistanceConstraint(Constraint):
         return J
 
 
+@dataclass
+class CoincidentConstraint(Constraint):
+    idx1: int
+    idx2: int
+
+    def residual(self, x: np.ndarray) -> np.ndarray:
+        xi, yi = x[2 * self.idx1], x[2 * self.idx1 + 1]
+        xj, yj = x[2 * self.idx2], x[2 * self.idx2 + 1]
+        return np.array([xi - xj, yi - yj])
+
+    def jacobian(self, x: np.ndarray) -> np.ndarray:
+        n = len(x)
+        J = np.zeros((2, n))
+        J[0, 2 * self.idx1] = 1.0
+        J[0, 2 * self.idx2] = -1.0
+        J[1, 2 * self.idx1 + 1] = 1.0
+        J[1, 2 * self.idx2 + 1] = -1.0
+        return J
+
+
+@dataclass
+class HorizontalConstraint(Constraint):
+    idx1: int
+    idx2: int
+
+    def residual(self, x: np.ndarray) -> np.ndarray:
+        yi = x[2 * self.idx1 + 1]
+        yj = x[2 * self.idx2 + 1]
+        return np.array([yi - yj])
+
+    def jacobian(self, x: np.ndarray) -> np.ndarray:
+        n = len(x)
+        J = np.zeros((1, n))
+        J[0, 2 * self.idx1 + 1] = 1.0
+        J[0, 2 * self.idx2 + 1] = -1.0
+        return J
+
+
+@dataclass
+class VerticalConstraint(Constraint):
+    idx1: int
+    idx2: int
+
+    def residual(self, x: np.ndarray) -> np.ndarray:
+        xi = x[2 * self.idx1]
+        xj = x[2 * self.idx2]
+        return np.array([xi - xj])
+
+    def jacobian(self, x: np.ndarray) -> np.ndarray:
+        n = len(x)
+        J = np.zeros((1, n))
+        J[0, 2 * self.idx1] = 1.0
+        J[0, 2 * self.idx2] = -1.0
+        return J
+
+
+@dataclass
+class ParallelConstraint(Constraint):
+    a1: int
+    a2: int
+    b1: int
+    b2: int
+
+    def residual(self, x: np.ndarray) -> np.ndarray:
+        x1, y1 = x[2 * self.a1], x[2 * self.a1 + 1]
+        x2, y2 = x[2 * self.a2], x[2 * self.a2 + 1]
+        x3, y3 = x[2 * self.b1], x[2 * self.b1 + 1]
+        x4, y4 = x[2 * self.b2], x[2 * self.b2 + 1]
+        dx1, dy1 = x1 - x2, y1 - y2
+        dx2, dy2 = x3 - x4, y3 - y4
+        return np.array([dx1 * dy2 - dy1 * dx2])
+
+    def jacobian(self, x: np.ndarray) -> np.ndarray:
+        x1, y1 = x[2 * self.a1], x[2 * self.a1 + 1]
+        x2, y2 = x[2 * self.a2], x[2 * self.a2 + 1]
+        x3, y3 = x[2 * self.b1], x[2 * self.b1 + 1]
+        x4, y4 = x[2 * self.b2], x[2 * self.b2 + 1]
+        dx1, dy1 = x1 - x2, y1 - y2
+        dx2, dy2 = x3 - x4, y3 - y4
+        n = len(x)
+        J = np.zeros((1, n))
+        J[0, 2 * self.a1] = dy2
+        J[0, 2 * self.a2] = -dy2
+        J[0, 2 * self.a1 + 1] = -dx2
+        J[0, 2 * self.a2 + 1] = dx2
+        J[0, 2 * self.b1] = -dy1
+        J[0, 2 * self.b2] = dy1
+        J[0, 2 * self.b1 + 1] = dx1
+        J[0, 2 * self.b2 + 1] = -dx1
+        return J
+
+
+@dataclass
+class PerpendicularConstraint(Constraint):
+    a1: int
+    a2: int
+    b1: int
+    b2: int
+
+    def residual(self, x: np.ndarray) -> np.ndarray:
+        x1, y1 = x[2 * self.a1], x[2 * self.a1 + 1]
+        x2, y2 = x[2 * self.a2], x[2 * self.a2 + 1]
+        x3, y3 = x[2 * self.b1], x[2 * self.b1 + 1]
+        x4, y4 = x[2 * self.b2], x[2 * self.b2 + 1]
+        dx1, dy1 = x1 - x2, y1 - y2
+        dx2, dy2 = x3 - x4, y3 - y4
+        return np.array([dx1 * dx2 + dy1 * dy2])
+
+    def jacobian(self, x: np.ndarray) -> np.ndarray:
+        x1, y1 = x[2 * self.a1], x[2 * self.a1 + 1]
+        x2, y2 = x[2 * self.a2], x[2 * self.a2 + 1]
+        x3, y3 = x[2 * self.b1], x[2 * self.b1 + 1]
+        x4, y4 = x[2 * self.b2], x[2 * self.b2 + 1]
+        dx1, dy1 = x1 - x2, y1 - y2
+        dx2, dy2 = x3 - x4, y3 - y4
+        n = len(x)
+        J = np.zeros((1, n))
+        J[0, 2 * self.a1] = dx2
+        J[0, 2 * self.a2] = -dx2
+        J[0, 2 * self.a1 + 1] = dy2
+        J[0, 2 * self.a2 + 1] = -dy2
+        J[0, 2 * self.b1] = dx1
+        J[0, 2 * self.b2] = -dx1
+        J[0, 2 * self.b1 + 1] = dy1
+        J[0, 2 * self.b2 + 1] = -dy1
+        return J
+
+
+@dataclass
+class EqualLengthConstraint(Constraint):
+    a1: int
+    a2: int
+    b1: int
+    b2: int
+
+    def residual(self, x: np.ndarray) -> np.ndarray:
+        x1, y1 = x[2 * self.a1], x[2 * self.a1 + 1]
+        x2, y2 = x[2 * self.a2], x[2 * self.a2 + 1]
+        x3, y3 = x[2 * self.b1], x[2 * self.b1 + 1]
+        x4, y4 = x[2 * self.b2], x[2 * self.b2 + 1]
+        d1 = math.hypot(x1 - x2, y1 - y2)
+        d2 = math.hypot(x3 - x4, y3 - y4)
+        return np.array([d1 - d2])
+
+    def jacobian(self, x: np.ndarray) -> np.ndarray:
+        x1, y1 = x[2 * self.a1], x[2 * self.a1 + 1]
+        x2, y2 = x[2 * self.a2], x[2 * self.a2 + 1]
+        x3, y3 = x[2 * self.b1], x[2 * self.b1 + 1]
+        x4, y4 = x[2 * self.b2], x[2 * self.b2 + 1]
+        dx1, dy1 = x1 - x2, y1 - y2
+        dx2, dy2 = x3 - x4, y3 - y4
+        d1 = math.hypot(dx1, dy1)
+        d2 = math.hypot(dx2, dy2)
+        n = len(x)
+        J = np.zeros((1, n))
+        if d1 > 1e-12:
+            J[0, 2 * self.a1] = dx1 / d1
+            J[0, 2 * self.a2] = -dx1 / d1
+            J[0, 2 * self.a1 + 1] = dy1 / d1
+            J[0, 2 * self.a2 + 1] = -dy1 / d1
+        if d2 > 1e-12:
+            J[0, 2 * self.b1] = -dx2 / d2
+            J[0, 2 * self.b2] = dx2 / d2
+            J[0, 2 * self.b1 + 1] = -dy2 / d2
+            J[0, 2 * self.b2 + 1] = dy2 / d2
+        return J
+
+
 class Sketch:
     def __init__(self) -> None:
         self.points: List[Vec2] = []
@@ -108,6 +276,10 @@ class Sketch:
         for i, p in enumerate(self.points):
             p.x, p.y = float(x[2 * i]), float(x[2 * i + 1])
 
+    def solve(self, iterations: int = 10, tol: float = 1e-9) -> None:
+        """Alias for :meth:`solve_least_squares`."""
+        return self.solve_least_squares(iterations=iterations, tol=tol)
+
 
 def export_dxf(sketch: Sketch, path: str) -> None:
     """Export sketch points and distance constraints to a minimal DXF."""
@@ -132,5 +304,11 @@ __all__ = [
     "Sketch",
     "FixedConstraint",
     "DistanceConstraint",
+    "CoincidentConstraint",
+    "HorizontalConstraint",
+    "VerticalConstraint",
+    "ParallelConstraint",
+    "PerpendicularConstraint",
+    "EqualLengthConstraint",
     "export_dxf",
 ]

@@ -11,9 +11,10 @@ This generates Möbius-like and twisted torus-band surfaces.
 """
 from __future__ import annotations
 
-import numpy as np
 from dataclasses import dataclass
 from typing import Literal
+
+import numpy as np
 
 
 @dataclass
@@ -209,10 +210,10 @@ def export_ribbon_as_ama(
       - analytic/manifest.json (field registry)
       - meta/provenance.json
     """
+    import hashlib
     import io
     import json
     import zipfile
-    import hashlib
     from datetime import datetime, timezone
     
     # Generate mesh

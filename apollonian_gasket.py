@@ -21,15 +21,15 @@ Integration:
     # Use with AdaptiveCAD fields or export to Blender
 """
 
-import math
-import cmath
-import json
 import argparse
-import collections
+import cmath
 import itertools
-from pathlib import Path
-from typing import List, Tuple, NamedTuple, Optional
+import json
+import math
+from typing import List, NamedTuple, Optional, Tuple
+
 import numpy as np
+
 
 class Circle(NamedTuple):
     """Circle with curvature, complex center, and generation depth."""
@@ -348,8 +348,8 @@ def visualize_packing(circles: List[Circle], output_path: Optional[str] = None):
         output_path: Optional path to save the plot
     """
     try:
-        import matplotlib.pyplot as plt
         import matplotlib.patches as patches
+        import matplotlib.pyplot as plt
     except ImportError:
         print("matplotlib not available, skipping visualization")
         return

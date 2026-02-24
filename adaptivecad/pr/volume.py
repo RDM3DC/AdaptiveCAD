@@ -9,9 +9,10 @@ Extends the 2D PR field to a full volumetric domain:
 """
 from __future__ import annotations
 
-import numpy as np
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal
+
+import numpy as np
 
 
 @dataclass(frozen=True)
@@ -541,10 +542,10 @@ def export_volume_as_ama(
       - fields/residual.npy (gradient magnitude)
       - analytic/scene.json, manifest.json, provenance
     """
+    import hashlib
     import io
     import json
     import zipfile
-    import hashlib
     from datetime import datetime, timezone
     
     if iso_level is None:

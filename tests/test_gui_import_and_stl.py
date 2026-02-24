@@ -80,6 +80,10 @@ def test_gui_import_system():
 
 def test_gui_import_and_stl():
     """Test that we can start the GUI, add a square, and import an STL."""
+    # This test opens interactive modal dialogs (QInputDialog) and requires a
+    # test_cube.stl file that doesn't ship with the repo.  Skip in headless mode.
+    if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+        pytest.skip("Interactive GUI test cannot run in offscreen mode")
 
     try:
         # Try importing PySide6 and creating QApplication first

@@ -2,23 +2,23 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
-import json
 
 import numpy as np
 
-from .materials import IsotropicMaterial, PLA
-from .voxelizer import load_and_voxelize_ama
-from .lattice import build_lattice_system, LatticeSystem
-from .modal import solve_modes, ModalResult
 from .forced_response import (
-    compute_transmissibility,
-    compare_transmissibility,
-    FrequencyResponseResult,
     ComparisonResult,
+    FrequencyResponseResult,
+    compare_transmissibility,
+    compute_transmissibility,
 )
+from .lattice import build_lattice_system
+from .materials import PLA, IsotropicMaterial
+from .modal import ModalResult, solve_modes
+from .voxelizer import load_and_voxelize_ama
 
 
 @dataclass

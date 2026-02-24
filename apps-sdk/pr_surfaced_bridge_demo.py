@@ -23,7 +23,6 @@ import argparse
 import os
 import sys
 
-
 # Allow running from a fresh environment without installing the package.
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO_ROOT not in sys.path:
@@ -203,7 +202,10 @@ def main() -> int:
 
     args = ap.parse_args()
 
-    from adaptivecad.pr.surfaced_bridge import export_analytic_scene_as_ama, export_surfaced_bridge_as_ama
+    from adaptivecad.pr.surfaced_bridge import (
+        export_analytic_scene_as_ama,
+        export_surfaced_bridge_as_ama,
+    )
 
     if args.analytic:
         # True analytic scenes: store a JSON list of SDF prims into the AMA.
@@ -498,20 +500,20 @@ def main() -> int:
         return 0
 
     from adaptivecad.pr.surfaced_bridge import (
-        SurfacedBridgeConfig,
-        SurfacedHandleConfig,
-        SurfacedMobiusConfig,
-        SurfacedKleinConfig,
         SurfacedBranchCutConfig,
-        SurfacedTorusKnotRibbonConfig,
+        SurfacedBridgeConfig,
         SurfacedEnneperConfig,
-        build_helicoid_bridge_mesh,
-        build_handle_bridge_mesh,
-        build_mobius_mesh,
-        build_klein_bottle_mesh,
+        SurfacedHandleConfig,
+        SurfacedKleinConfig,
+        SurfacedMobiusConfig,
+        SurfacedTorusKnotRibbonConfig,
         build_branch_cut_ramp_mesh,
-        build_torus_knot_ribbon_mesh,
         build_enneper_mesh,
+        build_handle_bridge_mesh,
+        build_helicoid_bridge_mesh,
+        build_klein_bottle_mesh,
+        build_mobius_mesh,
+        build_torus_knot_ribbon_mesh,
     )
 
     if args.surface in (

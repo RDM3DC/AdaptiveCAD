@@ -41,7 +41,6 @@ import argparse
 import json
 import os
 import sys
-from pathlib import Path
 
 import numpy as np
 
@@ -53,8 +52,8 @@ if _REPO_ROOT not in sys.path:
 
 def cmd_modal(args):
     """Run modal analysis."""
-    from adaptivecad.sim import run_modal_analysis, VibrationTestConfig
-    from adaptivecad.sim.materials import PLA, ABS, PETG, TPU, STEEL, ALUMINUM
+    from adaptivecad.sim import VibrationTestConfig, run_modal_analysis
+    from adaptivecad.sim.materials import ABS, ALUMINUM, PETG, PLA, STEEL, TPU
 
     materials = {"PLA": PLA, "ABS": ABS, "PETG": PETG, "TPU": TPU, "STEEL": STEEL, "ALUMINUM": ALUMINUM}
     mat = materials.get(args.material.upper(), PLA)
@@ -76,11 +75,11 @@ def cmd_modal(args):
 
     result = run_modal_analysis(args.ama, config)
 
-    print(f"\n[Results]")
+    print("\n[Results]")
     print(f"  Solid voxels: {result.n_solid_voxels}")
     print(f"  Free nodes: {result.n_free_nodes}")
     print(f"  Rigid body modes detected: {result.modal.n_rigid}")
-    print(f"\n  Natural frequencies (Hz):")
+    print("\n  Natural frequencies (Hz):")
     for i, f in enumerate(result.modal.frequencies_hz):
         print(f"    Mode {i+1}: {f:.2f} Hz")
 
@@ -93,8 +92,8 @@ def cmd_modal(args):
 
 def cmd_compare(args):
     """Compare baseline vs candidate."""
-    from adaptivecad.sim import run_vibration_comparison, VibrationTestConfig
-    from adaptivecad.sim.materials import PLA, ABS, PETG, TPU, STEEL, ALUMINUM
+    from adaptivecad.sim import VibrationTestConfig, run_vibration_comparison
+    from adaptivecad.sim.materials import ABS, ALUMINUM, PETG, PLA, STEEL, TPU
 
     materials = {"PLA": PLA, "ABS": ABS, "PETG": PETG, "TPU": TPU, "STEEL": STEEL, "ALUMINUM": ALUMINUM}
     mat = materials.get(args.material.upper(), PLA)
@@ -110,7 +109,7 @@ def cmd_compare(args):
         loss_factor=args.eta,
     )
 
-    print(f"[pr_vibe_sim] Vibration comparison")
+    print("[pr_vibe_sim] Vibration comparison")
     print(f"  Baseline:  {args.baseline}")
     print(f"  Candidate: {args.candidate}")
     print(f"  Material: {mat.name}, E={mat.youngs_modulus/1e9:.2f} GPa")
@@ -121,7 +120,7 @@ def cmd_compare(args):
     )
 
     comp = candidate_result.comparison
-    print(f"\n[Comparison Results]")
+    print("\n[Comparison Results]")
     print(f"  Best attenuation:   {comp.best_attenuation_dB:.2f} dB at {comp.best_attenuation_hz:.1f} Hz")
     print(f"  Worst amplification: {comp.worst_amplification_dB:.2f} dB at {comp.worst_amplification_hz:.1f} Hz")
 
@@ -194,7 +193,7 @@ def _plot_comparison(comp, baseline, candidate, args):
 
 def cmd_manim_export(args):
     """Export data formatted for Manim animation."""
-    from adaptivecad.sim import run_vibration_comparison, VibrationTestConfig
+    from adaptivecad.sim import VibrationTestConfig, run_vibration_comparison
     from adaptivecad.sim.materials import PLA
 
     config = VibrationTestConfig(
@@ -206,7 +205,7 @@ def cmd_manim_export(args):
         n_freq=args.nfreq,
     )
 
-    print(f"[pr_vibe_sim] Manim data export")
+    print("[pr_vibe_sim] Manim data export")
     print(f"  Baseline:  {args.baseline}")
     print(f"  Candidate: {args.candidate}")
 
@@ -276,13 +275,13 @@ def cmd_manim_export(args):
 
 def cmd_heat(args):
     """Compute heat generation from vibration damping."""
-    from adaptivecad.sim import VibrationTestConfig, load_and_voxelize_ama, build_lattice_system
+    from adaptivecad.sim import build_lattice_system, load_and_voxelize_ama
+    from adaptivecad.sim.heat_generation import compare_heat_generation, compute_heat_sweep
     from adaptivecad.sim.materials import MATERIALS, PLA
-    from adaptivecad.sim.heat_generation import compute_heat_sweep, compare_heat_generation
 
     mat = MATERIALS.get(args.material.upper(), PLA)
     
-    print(f"[pr_vibe_sim] Heat generation analysis")
+    print("[pr_vibe_sim] Heat generation analysis")
     print(f"  Material: {mat.name}, E={mat.youngs_modulus/1e9:.2f} GPa, η={getattr(mat, 'loss_factor', 0.05):.3f}")
     print(f"  Frequency sweep: {args.f0}–{args.f1} Hz ({args.nfreq} points)")
     print(f"  Force amplitude: {args.force} N")
@@ -321,14 +320,14 @@ def cmd_heat(args):
         print(f"\n  Analyzing: {args.ama}")
         result, n_nodes, n_voxels = analyze_ama(args.ama)
         
-        print(f"\n[Results]")
+        print("\n[Results]")
         print(f"  Solid voxels: {n_voxels}, Free nodes: {n_nodes}")
         print(f"  Peak heat generation: {result.peak_power_watts:.6e} W at {result.peak_frequency_hz:.1f} Hz")
         print(f"  Avg efficiency: {np.mean(result.efficiency)*100:.1f}%")
         
         # Find top 5 heating frequencies
         top_idx = np.argsort(result.total_power_watts)[-5:][::-1]
-        print(f"\n  Top 5 heating frequencies:")
+        print("\n  Top 5 heating frequencies:")
         for i, idx in enumerate(top_idx):
             print(f"    {i+1}. {result.frequencies_hz[idx]:.1f} Hz → {result.total_power_watts[idx]:.6e} W")
         
@@ -363,7 +362,7 @@ def cmd_heat(args):
         
         comparison = compare_heat_generation(base_result, cand_result)
         
-        print(f"\n[Results]")
+        print("\n[Results]")
         print(f"  Baseline:  {base_voxels} voxels, peak {base_result.peak_power_watts:.6e} W @ {base_result.peak_frequency_hz:.1f} Hz")
         print(f"  Candidate: {cand_voxels} voxels, peak {cand_result.peak_power_watts:.6e} W @ {cand_result.peak_frequency_hz:.1f} Hz")
         print(f"\n  Best heat amplification: +{comparison.best_amplification_dB:.2f} dB at {comparison.best_amplification_hz:.1f} Hz")

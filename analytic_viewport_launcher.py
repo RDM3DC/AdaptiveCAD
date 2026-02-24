@@ -16,24 +16,28 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from io import BytesIO
-from pathlib import Path
 import tempfile
 import zipfile
+from io import BytesIO
+from pathlib import Path
+
 # Ensure project root is importable
 ROOT = os.path.abspath(os.path.dirname(__file__))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 try:
-    from PySide6.QtWidgets import QApplication, QMainWindow
     from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QApplication, QMainWindow
 except Exception as e:
     print("PySide6 is not available:", e)
     sys.exit(1)
 
 try:
-    from adaptivecad.gui.analytic_viewport import AnalyticViewportDashboardWindow, AnalyticViewportPanel
+    from adaptivecad.gui.analytic_viewport import (
+        AnalyticViewportDashboardWindow,
+        AnalyticViewportPanel,
+    )
 except Exception as e:
     print("Failed to import Analytic Viewer:", e)
     sys.exit(1)
@@ -69,25 +73,24 @@ def main() -> int:
             pass
 
     def _load_scene_entries(data: object) -> None:
-        import numpy as np
 
         from adaptivecad.aacore.sdf import (
-            Prim,
-            KIND_SPHERE,
             KIND_BOX,
             KIND_CAPSULE,
-            KIND_TORUS,
-            KIND_MOBIUS,
-            KIND_SUPERELLIPSOID,
-            KIND_QUASICRYSTAL,
-            KIND_TORUS4D,
-            KIND_MANDELBULB,
-            KIND_KLEIN,
-            KIND_MENGER,
-            KIND_HYPERBOLIC,
             KIND_GYROID,
-            KIND_TREFOIL,
             KIND_HELICOID,
+            KIND_HYPERBOLIC,
+            KIND_KLEIN,
+            KIND_MANDELBULB,
+            KIND_MENGER,
+            KIND_MOBIUS,
+            KIND_QUASICRYSTAL,
+            KIND_SPHERE,
+            KIND_SUPERELLIPSOID,
+            KIND_TORUS,
+            KIND_TORUS4D,
+            KIND_TREFOIL,
+            Prim,
         )
 
         kind_map = {
@@ -223,6 +226,7 @@ def main() -> int:
 
     def _extract_ama_field(ama_path: str, field_path: str | None) -> tuple["object", float | None, float | None, dict | None]:
         import json
+
         import numpy as np
 
         ama_p = Path(ama_path)
