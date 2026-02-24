@@ -7,8 +7,11 @@ GUI playground.  All GUI dependencies are imported lazily so the rest of the
 package can be used without installing ``pythonocc-core`` or ``PyQt``.
 """
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List
+
+log = logging.getLogger(__name__)
 
 from adaptivecad.gcode_generator import generate_gcode_from_shape
 from adaptivecad.params import ParamEnv
@@ -209,27 +212,27 @@ class Feature:
             return []
 
     def apply_translation(self, delta):
-        print(f"[DEBUG] apply_translation called on {self.name} with delta: {delta}")
+        log.debug("apply_translation called on %s with delta: %s", self.name, delta)
         import numpy as np
 
         from adaptivecad.nd_math import translationN
 
         if hasattr(self, "local_transform") and self.local_transform is not None:
-            print("[DEBUG] Applying translation to local_transform matrix")
+            log.debug("Applying translation to local_transform matrix")
             self.local_transform = np.dot(translationN(delta), self.local_transform)
-            print("[DEBUG] Local transform updated")
+            log.debug("Local transform updated")
         else:
-            print("[DEBUG] No local_transform found, initializing...")
+            log.debug("No local_transform found, initializing...")
             # Initialize local_transform if it doesn't exist
             self.local_transform = np.eye(4)  # 4x4 identity matrix
             self.local_transform = np.dot(translationN(delta), self.local_transform)
-            print("[DEBUG] Local transform initialized and updated")
+            log.debug("Local transform initialized and updated")
 
         # For OCC shapes, you may need to rebuild the shape at the new position
-        print("[DEBUG] Checking if shape rebuild is needed...")
+        log.debug("Checking if shape rebuild is needed...")
         if hasattr(self, "shape") and self.shape is not None:
             try:
-                print("[DEBUG] Attempting to rebuild shape with new translation...")
+                log.debug("Attempting to rebuild shape with new translation...")
                 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
                 from OCC.Core.gp import gp_Trsf, gp_Vec
 
@@ -238,14 +241,11 @@ class Feature:
                 trsf.SetTranslation(gp_Vec(float(delta[0]), float(delta[1]), float(delta[2])))
                 new_shape = BRepBuilderAPI_Transform(self.shape, trsf, True).Shape()
                 self.shape = new_shape
-                print("[DEBUG] Shape rebuilt successfully with translation")
+                log.debug("Shape rebuilt successfully with translation")
             except Exception as e:
-                print(f"[DEBUG] Error rebuilding shape: {e}")
-                import traceback
-
-                traceback.print_exc()
+                log.debug("Error rebuilding shape: %s", e, exc_info=True)
         else:
-            print("[DEBUG] No shape to rebuild")
+            log.debug("No shape to rebuild")
 
     def apply_scale(self, factor):
         """Uniform or per-axis scaling of the feature."""
@@ -764,75 +764,76 @@ class MoveCmd(BaseCmd):
     title = "Move"
 
     def run(self, mw) -> None:
-        print("[DEBUG] MoveCmd.run() called")
+        log.debug("MoveCmd.run() called")
         if not DOCUMENT:
-            print("[DEBUG] No shapes in DOCUMENT to move")
+            log.debug("No shapes in DOCUMENT to move")
             mw.win.statusBar().showMessage("No shapes to move!")
             return
-        print(f"[DEBUG] DOCUMENT has {len(DOCUMENT)} shapes")
+        log.debug("DOCUMENT has %d shapes", len(DOCUMENT))
 
         # Let user select a shape by index (simple for now)
         from PySide6.QtWidgets import QInputDialog
 
         items = [f"{i}: {feat.name}" for i, feat in enumerate(DOCUMENT)]
-        print(f"[DEBUG] Available shapes: {items}")
+        log.debug("Available shapes: %s", items)
         idx, ok = QInputDialog.getItem(mw.win, "Select Shape to Move", "Shape:", items, 0, False)
         if not ok:
-            print("[DEBUG] User cancelled shape selection")
+            log.debug("User cancelled shape selection")
             return
         shape_idx = int(idx.split(":")[0])
-        print(f"[DEBUG] Selected shape index: {shape_idx}")
+        log.debug("Selected shape index: %d", shape_idx)
         shape = DOCUMENT[shape_idx].shape
-        print(f"[DEBUG] Selected shape: {DOCUMENT[shape_idx].name}")
+        log.debug("Selected shape: %s", DOCUMENT[shape_idx].name)
 
         # Get translation values
         dx, ok = QInputDialog.getDouble(mw.win, "Move", "dx (mm)", 10.0)
         if not ok:
-            print("[DEBUG] User cancelled dx input")
+            log.debug("User cancelled dx input")
             return
-        print(f"[DEBUG] dx = {dx}")
+        log.debug("dx = %s", dx)
 
         dy, ok = QInputDialog.getDouble(mw.win, "Move", "dy (mm)", 0.0)
         if not ok:
-            print("[DEBUG] User cancelled dy input")
+            log.debug("User cancelled dy input")
             return
-        print(f"[DEBUG] dy = {dy}")
+        log.debug("dy = %s", dy)
 
         dz, ok = QInputDialog.getDouble(mw.win, "Move", "dz (mm)", 0.0)
         if not ok:
-            print("[DEBUG] User cancelled dz input")
+            log.debug("User cancelled dz input")
             return
-        print(f"[DEBUG] dz = {dz}")
+        log.debug("dz = %s", dz)
 
         # Apply translation
-        print("[DEBUG] Applying translation using OpenCascade...")
+        log.debug("Applying translation using OpenCascade...")
         from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
         from OCC.Core.gp import gp_Trsf, gp_Vec
 
         trsf = gp_Trsf()
         trsf.SetTranslation(gp_Vec(dx, dy, dz))
         moved_shape = BRepBuilderAPI_Transform(shape, trsf, True).Shape()
-        print("[DEBUG] Translation applied successfully")
+        log.debug("Translation applied successfully")
 
         # Mark the source shape as consumed (hidden)
         if hasattr(DOCUMENT[shape_idx], "params"):
             DOCUMENT[shape_idx].params["consumed"] = True
-            print(
-                f"[MoveCmd] Feature '{DOCUMENT[shape_idx].name}' "
-                f"(index {shape_idx}) marked as consumed: "
-                f"{DOCUMENT[shape_idx].params}"
-            )  # DEBUG
+            log.debug(
+                "Feature '%s' (index %d) marked as consumed: %s",
+                DOCUMENT[shape_idx].name,
+                shape_idx,
+                DOCUMENT[shape_idx].params,
+            )
 
         # Create new moved feature
         new_feature = Feature(
             "Move", {"target": shape_idx, "dx": dx, "dy": dy, "dz": dz}, moved_shape
         )
         DOCUMENT.append(new_feature)
-        print(f"[DEBUG] Created new moved feature: {new_feature.name}")
+        log.debug("Created new moved feature: %s", new_feature.name)
 
-        print("[DEBUG] Rebuilding scene...")
+        log.debug("Rebuilding scene...")
         rebuild_scene(mw.view._display)
-        print("[DEBUG] MoveCmd completed successfully")
+        log.debug("MoveCmd completed successfully")
 
 
 class ScaleCmd(BaseCmd):

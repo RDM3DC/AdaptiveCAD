@@ -5,8 +5,6 @@ This script creates a Mandelbulb primitive and exports it with different setting
 """
 
 import sys
-import os
-import time
 from pathlib import Path
 
 # Add the AdaptiveCAD path

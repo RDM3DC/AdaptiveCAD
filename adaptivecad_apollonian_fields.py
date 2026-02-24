@@ -22,12 +22,13 @@ Usage:
     mesh = field.to_mesh(resolution=256, use_adaptive_pi=True)
 """
 
-import numpy as np
 import json
-from pathlib import Path
-from typing import List, Tuple, Optional, Union, Dict, Any
-import sys
 import os
+import sys
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+import numpy as np
 
 if sys.platform.startswith("win"):
     # Ensure CUDA runtime DLLs shipped via pip are discoverable (Python 3.8+ DLL search changes)

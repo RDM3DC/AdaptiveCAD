@@ -5,8 +5,8 @@ import base64
 import json
 import os
 import sys
-from datetime import datetime, timezone
 from dataclasses import asdict
+from datetime import datetime, timezone
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
 from pathlib import Path
@@ -99,7 +99,7 @@ def run_pr_and_export_stl(args: argparse.Namespace) -> Dict[str, Any]:
     repo_root = Path(__file__).resolve().parents[1]  # .../AdaptiveCAD
     sys.path.insert(0, str(repo_root))
 
-    from adaptivecad.pr import PRFieldConfig, relax_phase_field, export_phase_field_as_heightmap_stl
+    from adaptivecad.pr import PRFieldConfig, export_phase_field_as_heightmap_stl, relax_phase_field
 
     cfg = PRFieldConfig(
         size=int(args.size),
@@ -142,7 +142,7 @@ def run_pr_and_export_ama(args: argparse.Namespace) -> Dict[str, Any]:
     repo_root = Path(__file__).resolve().parents[1]  # .../AdaptiveCAD
     sys.path.insert(0, str(repo_root))
 
-    from adaptivecad.pr import PRFieldConfig, relax_phase_field, export_phase_field_as_ama
+    from adaptivecad.pr import PRFieldConfig, export_phase_field_as_ama, relax_phase_field
 
     cfg = PRFieldConfig(
         size=int(args.size),
@@ -301,8 +301,8 @@ def gen_blackholes_ama(args: argparse.Namespace) -> Dict[str, Any]:
 
     field = mod.make_binary_blackholes_field(size)
 
-    import tempfile
     import base64
+    import tempfile
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".ama")
     tmp_path = Path(tmp.name)

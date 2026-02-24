@@ -91,8 +91,10 @@ if HAS_QT:
         QDialogButtonBox,
         QDockWidget,
         QDoubleSpinBox,
+        QFileDialog,
         QFormLayout,
         QHBoxLayout,
+        QInputDialog,
         QLabel,
         QLineEdit,
         QMainWindow,
@@ -103,6 +105,43 @@ if HAS_QT:
         QVBoxLayout,
         QWidget,
     )
+
+    from adaptivecad.sketch_solver import (
+        DistanceConstraint,
+        EqualLengthConstraint,
+        FixedConstraint,
+        HorizontalConstraint,
+        ParallelConstraint,
+        PerpendicularConstraint,
+        Sketch,
+        VerticalConstraint,
+        export_dxf,
+    )
+
+    # Feature modules from AdaptiveCAD-light (snaps, measurement, viewports)
+    try:
+        from adaptivecad.gui.dim_draw import draw_angular_dim, draw_linear_dim, draw_radial_dim
+        from adaptivecad.gui.dim_tools import (
+            DimAngularTool,
+            DimLinearTool,
+            DimRadialTool,
+            MeasureTool,
+            ToolContext,
+        )
+        from adaptivecad.gui.dimensions import (
+            AngularDimension,
+            DimStyle,
+            LinearDimension,
+            RadialDimension,
+        )
+        from adaptivecad.gui.osnap import osnap_pick
+        FEATURES_AVAILABLE = True
+    except ImportError as e:
+        log.debug(f"Optional features not available: {e}")
+        osnap_pick = None
+        DimStyle = None
+        ToolContext = None
+        FEATURES_AVAILABLE = False
 
     # Analytic conversion commands (guarded so app still launches if package absent)
     try:
@@ -181,8 +220,8 @@ HAS_GUI = HAS_QT
 def _require_gui_modules():
     try:
         # Explicit imports to validate availability; will trigger monkeypatched __import__ in tests
-        pass  # type: ignore
-    except Exception as e:
+        import PySide6.QtWidgets  # noqa: F401
+    except ImportError as e:
         raise RuntimeError(f"GUI dependencies are not available: {e}")
     return True
 
@@ -1121,7 +1160,7 @@ class SaveProjectCmd:
                 return
 
             # Create project data structure
-            project_data = {"version": "1.0", "type": "AdaptiveCAD Project", "features": []}
+            project_data = {"version": "1.0", "type": "AdaptiveCAD Project", "features": [], "sketch": {}}
 
             # Save each feature's data
             for idx, feat in enumerate(DOCUMENT):
@@ -1132,6 +1171,10 @@ class SaveProjectCmd:
                     "type": type(feat).__name__,
                 }
                 project_data["features"].append(feature_data)
+
+            # Save sketch data if available
+            if hasattr(mw, '_sketch_to_dict'):
+                project_data["sketch"] = mw._sketch_to_dict()
 
             # Write project file
             with open(path, "w") as f:
@@ -1262,6 +1305,14 @@ class OpenProjectCmd:
             # Update display
             mw.view._display.FitAll()
 
+            # Load sketch data if available
+            sketch_data = project_data.get("sketch", {})
+            if sketch_data and hasattr(mw, '_sketch_from_dict'):
+                try:
+                    mw._sketch_from_dict(sketch_data)
+                except Exception as e:
+                    log.debug(f"Error loading sketch: {e}")
+
             mw.win.statusBar().showMessage(
                 f"Project loaded: {os.path.basename(path)} ({features_loaded} features)", 3000
             )
@@ -1293,6 +1344,8 @@ class MainWindow:
         self.selected_feature = None
         self.property_panel = None
         self.dimension_panel = None
+        self.sketch = Sketch()
+        self.sketch_summary_label = None
         self.chess_dock = None
         # Analytic viewport integration state
         self._analytic_panel = None  # AnalyticViewportPanel instance (when used as main)
@@ -1309,6 +1362,172 @@ class MainWindow:
         self.win = QMainWindow()
         self.win.setWindowTitle("AdaptiveCAD - Advanced Shapes & Modeling Tools")
         self.win.resize(1024, 768)
+        # Apply dark theme to the main window
+        self.win.setStyleSheet("""
+        /* ── Main Window Base ── */
+        QMainWindow { background-color: #1a1d23; color: #cdd6f4; }
+
+        /* ── Menu Bar ── */
+        QMenuBar {
+            background-color: #11111b;
+            color: #cdd6f4;
+            border-bottom: 1px solid #313244;
+            padding: 2px 0;
+            font-size: 12px;
+        }
+        QMenuBar::item {
+            background: transparent;
+            padding: 4px 10px;
+            border-radius: 4px;
+        }
+        QMenuBar::item:selected { background-color: #313244; }
+        QMenuBar::item:pressed { background-color: #45475a; }
+
+        /* ── Dropdown Menus ── */
+        QMenu {
+            background-color: #1e1e2e;
+            color: #cdd6f4;
+            border: 1px solid #313244;
+            border-radius: 6px;
+            padding: 4px 0;
+        }
+        QMenu::item {
+            padding: 5px 28px 5px 20px;
+            border-radius: 4px;
+            margin: 1px 4px;
+        }
+        QMenu::item:selected { background-color: #313244; }
+        QMenu::item:disabled { color: #585b70; }
+        QMenu::separator {
+            height: 1px;
+            background: #313244;
+            margin: 4px 8px;
+        }
+        QMenu::indicator { width: 16px; height: 16px; margin-left: 4px; }
+
+        /* ── Status Bar ── */
+        QStatusBar {
+            background-color: #11111b;
+            color: #a6adc8;
+            border-top: 1px solid #313244;
+            font-size: 11px;
+            padding: 2px 8px;
+        }
+
+        /* ── Dock Widgets ── */
+        QDockWidget {
+            color: #cdd6f4;
+            titlebar-close-icon: none;
+            titlebar-normal-icon: none;
+        }
+        QDockWidget::title {
+            background-color: #1e1e2e;
+            border: 1px solid #313244;
+            padding: 6px;
+            text-align: left;
+        }
+
+        /* ── General Inputs ── */
+        QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit, QPlainTextEdit {
+            background-color: #11111b;
+            border: 1px solid #313244;
+            border-radius: 5px;
+            padding: 4px 6px;
+            color: #cdd6f4;
+            selection-background-color: #45475a;
+        }
+        QComboBox::drop-down { border: none; }
+        QComboBox QAbstractItemView {
+            background-color: #1e1e2e;
+            border: 1px solid #45475a;
+            selection-background-color: #313244;
+            color: #cdd6f4;
+        }
+
+        /* ── Buttons ── */
+        QPushButton {
+            background-color: #313244;
+            border: 1px solid #45475a;
+            border-radius: 6px;
+            padding: 5px 12px;
+            color: #cdd6f4;
+        }
+        QPushButton:hover { background-color: #45475a; }
+        QPushButton:pressed { background-color: #181825; }
+        QPushButton:disabled { color: #585b70; background-color: #1e1e2e; }
+
+        /* ── Group Boxes ── */
+        QGroupBox {
+            border: 1px solid #313244;
+            border-radius: 8px;
+            margin-top: 14px;
+            padding: 10px 6px 6px 6px;
+            color: #cdd6f4;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            left: 10px;
+            padding: 0 6px;
+            color: #89b4fa;
+        }
+
+        /* ── Labels ── */
+        QLabel { color: #bac2de; }
+
+        /* ── Checkboxes ── */
+        QCheckBox { color: #cdd6f4; spacing: 6px; }
+        QCheckBox::indicator {
+            width: 16px; height: 16px;
+            border-radius: 3px;
+            border: 1px solid #45475a;
+            background: #11111b;
+        }
+        QCheckBox::indicator:checked { background-color: #89b4fa; border-color: #89b4fa; }
+
+        /* ── Sliders ── */
+        QSlider::groove:horizontal { height: 6px; background: #313244; border-radius: 3px; }
+        QSlider::handle:horizontal {
+            width: 14px; height: 14px; margin: -4px 0;
+            background: #89b4fa; border-radius: 7px;
+        }
+        QSlider::handle:horizontal:hover { background: #b4d0fb; }
+
+        /* ── Scroll Bars ── */
+        QScrollBar:vertical {
+            width: 8px; background: #1a1d23; border: none;
+        }
+        QScrollBar::handle:vertical {
+            background: #45475a; border-radius: 4px; min-height: 20px;
+        }
+        QScrollBar::handle:vertical:hover { background: #585b70; }
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+        QScrollBar:horizontal {
+            height: 8px; background: #1a1d23; border: none;
+        }
+        QScrollBar::handle:horizontal {
+            background: #45475a; border-radius: 4px; min-width: 20px;
+        }
+        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
+
+        /* ── Tabs ── */
+        QTabWidget::pane { border: 1px solid #313244; background: #1a1d23; }
+        QTabBar::tab {
+            background: #1e1e2e; border: 1px solid #313244;
+            padding: 5px 10px; margin-right: 2px;
+            border-top-left-radius: 4px; border-top-right-radius: 4px;
+            color: #a6adc8;
+        }
+        QTabBar::tab:selected { background: #313244; color: #cdd6f4; }
+
+        /* ── Tool Tips ── */
+        QToolTip {
+            background-color: #1e1e2e;
+            color: #cdd6f4;
+            border: 1px solid #45475a;
+            border-radius: 4px;
+            padding: 4px 8px;
+        }
+        """)
         log.debug("Main window created")
 
         # Create central widget with OCC viewer or fallback
@@ -1728,6 +1947,93 @@ class MainWindow:
             log.debug("AI copilot dock unavailable: %s", exc)
             self.ai_copilot = None
 
+        # Explicitly enable shape selection mode (fix for lost selection after repo update)
+        if hasattr(self.view, "_display") and hasattr(self.view._display, "SetSelectionMode"):
+            log.debug("Setting selection mode to 1 (shape selection mode)")
+            self.view._display.SetSelectionMode(1)  # 1 = shape selection mode
+        else:
+            log.debug("Selection mode method not found on display object")
+
+        # Extra initialization safety (idempotent)
+        if HAS_OCC and hasattr(self.view, "_display"):
+            try:
+                self.view._display.set_bg_gradient_color([50, 50, 50], [10, 10, 10])
+                self.view._display.display_triedron()
+                self.view._display.View.SetProj(1, 1, 1)
+                self.view._display.View.SetScale(300)
+            except Exception:
+                pass
+            # Ensure selection mode enabled for shapes
+            try:
+                if hasattr(self.view._display, "EnableSelection"):
+                    self.view._display.EnableSelection()
+                elif hasattr(self.view._display, "SetSelectionModeFace"):
+                    self.view._display.SetSelectionModeFace()
+                elif hasattr(self.view._display, "Context") and hasattr(
+                    self.view._display.Context, "ActivateStandardMode"
+                ):
+                    self.view._display.Context.ActivateStandardMode(0)
+            except Exception as e:
+                log.debug(f"Could not enable selection mode: {e}")
+
+        # Initialize ViewCube
+        if HAS_OCC and hasattr(self.view, "_display"):
+            self.viewcube = ViewCubeWidget(self.view._display, self.view)
+            self._position_viewcube()
+            self.viewcube.show()
+            self.setup_view_events()
+        else:
+            self.viewcube = None
+
+        # Setup selection handling
+        self._setup_selection_handling()
+
+        # Shared AACore analytic scene
+        try:
+            from adaptivecad.aacore.sdf import KIND_CAPSULE, KIND_SPHERE, KIND_TORUS
+            from adaptivecad.aacore.sdf import Prim as _Prim
+            from adaptivecad.aacore.sdf import Scene as _AACoreScene
+
+            self.aacore_scene = _AACoreScene()
+        except Exception:
+            self.aacore_scene = None
+
+        # Setup UI menus and toolbar
+        self._create_menus_and_toolbar()
+
+        # Create status bar
+        self.win.statusBar().showMessage("AdaptiveCAD Advanced Shapes & Modeling Tools Ready")
+
+        # Show welcome screen on first run (deferred to after window is visible)
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(500, self._show_welcome_if_first_run)
+
+        # Load persisted analytic-main preference and apply if enabled
+        try:
+            prefs = self._load_analytic_prefs()
+            if prefs.get("analytic_as_main"):
+                from PySide6.QtCore import QTimer
+
+                def _apply():
+                    if hasattr(self, "_analytic_main_action"):
+                        if getattr(self, "_analytic_panel", None) is None:
+                            try:
+                                from adaptivecad.gui.analytic_viewport import AnalyticViewportPanel
+
+                                shared_scene = getattr(self, "aacore_scene", None)
+                                self._analytic_panel = AnalyticViewportPanel(
+                                    aacore_scene=shared_scene
+                                )
+                            except Exception as e:
+                                log.debug(f"Failed to instantiate analytic panel on startup: {e}")
+                                return
+                        self._analytic_main_action.setChecked(True)
+                        self._toggle_analytic_main(True)
+
+                QTimer.singleShot(0, _apply)
+        except Exception as e:
+            log.debug(f"Could not apply persisted analytic preference: {e}")
+
     def _refresh_radial_wheel_pins(self):
         try:
             # AnalyticViewportPanel owns a wheel; if open, reflect pinned tools there
@@ -1769,45 +2075,6 @@ class MainWindow:
                 pass
         except Exception:
             pass
-        # Explicitly enable shape selection mode (fix for lost selection after repo update)
-        if hasattr(self.view, "_display") and hasattr(self.view._display, "SetSelectionMode"):
-            log.debug("Setting selection mode to 1 (shape selection mode)")
-            self.view._display.SetSelectionMode(1)  # 1 = shape selection mode
-        else:
-            log.debug("Selection mode method not found on display object")
-
-        # Extra initialization safety (idempotent)
-        if HAS_OCC and hasattr(self.view, "_display"):
-            try:
-                self.view._display.set_bg_gradient_color([50, 50, 50], [10, 10, 10])
-                self.view._display.display_triedron()
-                self.view._display.View.SetProj(1, 1, 1)
-                self.view._display.View.SetScale(300)
-            except Exception:
-                pass
-            # Ensure selection mode enabled for shapes
-            try:
-                if hasattr(self.view._display, "EnableSelection"):
-                    self.view._display.EnableSelection()
-                elif hasattr(self.view._display, "SetSelectionModeFace"):
-                    self.view._display.SetSelectionModeFace()
-                elif hasattr(self.view._display, "Context") and hasattr(
-                    self.view._display.Context, "ActivateStandardMode"
-                ):
-                    self.view._display.Context.ActivateStandardMode(0)
-            except Exception as e:
-                log.debug(f"Could not enable selection mode: {e}")
-        # Initialize ViewCube
-        if HAS_OCC and hasattr(self.view, "_display"):
-            self.viewcube = ViewCubeWidget(self.view._display, self.view)
-            self._position_viewcube()
-            self.viewcube.show()
-            self.setup_view_events()
-        else:
-            self.viewcube = None
-
-        # Setup selection handling
-        self._setup_selection_handling()
 
     def _on_wheel_tool_from_main(self, tool_id: str, _label: str):
         try:
@@ -1822,63 +2089,6 @@ class MainWindow:
                 log.debug(f"custom tool run failed: {e}")
             except Exception:
                 pass
-
-        # Shared AACore analytic scene
-        try:
-            from adaptivecad.aacore.sdf import KIND_CAPSULE, KIND_SPHERE, KIND_TORUS
-            from adaptivecad.aacore.sdf import Prim as _Prim
-            from adaptivecad.aacore.sdf import Scene as _AACoreScene
-
-            self.aacore_scene = _AACoreScene()
-            # seed demo prims
-            self.aacore_scene.add(
-                _Prim(KIND_SPHERE, [1.0, 0, 0, 0], beta=0.08, color=(0.9, 0.4, 0.3))
-            )
-            self.aacore_scene.add(
-                _Prim(KIND_TORUS, [1.4, 0.35, 0, 0], beta=0.05, color=(0.4, 0.8, 0.6))
-            )
-            self.aacore_scene.add(
-                _Prim(KIND_CAPSULE, [0.35, 1.4, 0, 0], beta=0.0, color=(0.3, 0.6, 0.9))
-            )
-        except Exception:
-            self.aacore_scene = None
-
-        # Setup UI
-        self._create_menus_and_toolbar()
-
-        # Create status bar
-        self.win.statusBar().showMessage("AdaptiveCAD Advanced Shapes & Modeling Tools Ready")
-
-        # Show welcome screen on first run
-        self._show_welcome_if_first_run()
-
-        # Load persisted analytic-main preference and apply if enabled
-        try:
-            prefs = self._load_analytic_prefs()
-            if prefs.get("analytic_as_main"):
-                # Defer toggle until event loop idle to ensure menu/action objects exist fully
-                from PySide6.QtCore import QTimer
-
-                def _apply():
-                    if hasattr(self, "_analytic_main_action"):
-                        # Ensure panel exists before swapping
-                        if getattr(self, "_analytic_panel", None) is None:
-                            try:
-                                from adaptivecad.gui.analytic_viewport import AnalyticViewportPanel
-
-                                shared_scene = getattr(self, "aacore_scene", None)
-                                self._analytic_panel = AnalyticViewportPanel(
-                                    aacore_scene=shared_scene
-                                )
-                            except Exception as e:
-                                log.debug(f"Failed to instantiate analytic panel on startup: {e}")
-                                return
-                        self._analytic_main_action.setChecked(True)
-                        self._toggle_analytic_main(True)
-
-                QTimer.singleShot(0, _apply)
-        except Exception as e:
-            log.debug(f"Could not apply persisted analytic preference: {e}")
 
     def _setup_selection_handling(self):
         """Setup selection handling for objects in the 3D view."""
@@ -3214,6 +3424,64 @@ class MainWindow:
         preset_widget.setLayout(preset_buttons)
         layout.addWidget(preset_widget)
 
+        # Sketch solver quick actions
+        sketch_title = QLabel("Sketch Solver (beta)")
+        sketch_title.setStyleSheet("font-weight: bold; margin-top: 12px;")
+        layout.addWidget(sketch_title)
+
+        sketch_btn_row1 = QHBoxLayout()
+        new_sketch_btn = QPushButton("New Sketch")
+        add_point_btn = QPushButton("Add Point")
+        solve_btn = QPushButton("Solve")
+        sketch_btn_row1.addWidget(new_sketch_btn)
+        sketch_btn_row1.addWidget(add_point_btn)
+        sketch_btn_row1.addWidget(solve_btn)
+        row1_widget = QWidget()
+        row1_widget.setLayout(sketch_btn_row1)
+        layout.addWidget(row1_widget)
+
+        sketch_btn_row2 = QHBoxLayout()
+        fixed_btn = QPushButton("Add Fixed")
+        dist_btn = QPushButton("Add Distance")
+        hv_btn = QPushButton("Add H/V")
+        sketch_btn_row2.addWidget(fixed_btn)
+        sketch_btn_row2.addWidget(dist_btn)
+        sketch_btn_row2.addWidget(hv_btn)
+        row2_widget = QWidget()
+        row2_widget.setLayout(sketch_btn_row2)
+        layout.addWidget(row2_widget)
+
+        sketch_btn_row3 = QHBoxLayout()
+        parallel_btn = QPushButton("Add Parallel")
+        perp_btn = QPushButton("Add Perp")
+        equal_btn = QPushButton("Add Equal")
+        sketch_btn_row3.addWidget(parallel_btn)
+        sketch_btn_row3.addWidget(perp_btn)
+        sketch_btn_row3.addWidget(equal_btn)
+        row3_widget = QWidget()
+        row3_widget.setLayout(sketch_btn_row3)
+        layout.addWidget(row3_widget)
+
+        export_btn = QPushButton("Export DXF")
+        layout.addWidget(export_btn)
+
+        self.sketch_summary_label = QLabel("Points: 0 | Constraints: 0")
+        self.sketch_summary_label.setStyleSheet("color: gray;")
+        layout.addWidget(self.sketch_summary_label)
+
+        self._refresh_sketch_summary()
+
+        new_sketch_btn.clicked.connect(self._sketch_reset)
+        add_point_btn.clicked.connect(self._sketch_add_point)
+        solve_btn.clicked.connect(self._sketch_solve)
+        fixed_btn.clicked.connect(self._sketch_add_fixed)
+        dist_btn.clicked.connect(self._sketch_add_distance)
+        hv_btn.clicked.connect(self._sketch_add_hv)
+        parallel_btn.clicked.connect(self._sketch_add_parallel)
+        perp_btn.clicked.connect(self._sketch_add_perp)
+        equal_btn.clicked.connect(self._sketch_add_equal)
+        export_btn.clicked.connect(self._sketch_export_dxf)
+
         # Add stretch to push content to top
         layout.addStretch()
 
@@ -3227,6 +3495,190 @@ class MainWindow:
             self.dimension_panel.hide()
             self.win.removeDockWidget(self.dimension_panel)
             self.dimension_panel = None
+
+    # Sketch solver helpers (hooks into existing solver/model)
+    def _refresh_sketch_summary(self):
+        if self.sketch_summary_label is None:
+            return
+        pts = ", ".join(
+            [f"{i}:({p.x:.3g},{p.y:.3g})" for i, p in enumerate(getattr(self.sketch, "points", []))]
+        )
+        cons = len(getattr(self.sketch, "constraints", []))
+        txt = f"Points: {len(getattr(self.sketch, 'points', []))} | Constraints: {cons}"
+        if pts:
+            txt += f" | {pts}"
+        self.sketch_summary_label.setText(txt)
+
+    def _sketch_reset(self):
+        self.sketch = Sketch()
+        self._refresh_sketch_summary()
+        try:
+            self.win.statusBar().showMessage("Sketch reset", 2000)
+        except Exception:
+            pass
+
+    def _sketch_add_point(self):
+        x, ok = QInputDialog.getDouble(self.win, "Add Point", "X:", 0.0, -1e6, 1e6, 3)
+        if not ok:
+            return
+        y, ok = QInputDialog.getDouble(self.win, "Add Point", "Y:", 0.0, -1e6, 1e6, 3)
+        if not ok:
+            return
+        self.sketch.add_point(float(x), float(y))
+        self._refresh_sketch_summary()
+        try:
+            self.win.statusBar().showMessage("Point added", 1500)
+        except Exception:
+            pass
+
+    def _sketch_add_fixed(self):
+        idx, ok = QInputDialog.getInt(
+            self.win, "Add Fixed", "Point index:", 0, 0, max(0, len(self.sketch.points) - 1), 1
+        )
+        if not ok:
+            return
+        if idx < 0 or idx >= len(self.sketch.points):
+            QMessageBox.information(self.win, "Sketch", "Invalid point index")
+            return
+        self.sketch.add_constraint(FixedConstraint(idx, self.sketch.points[idx]))
+        self._refresh_sketch_summary()
+
+    def _sketch_add_distance(self):
+        idx1, ok = QInputDialog.getInt(
+            self.win, "Distance Constraint", "Point A index:", 0, 0, max(0, len(self.sketch.points) - 1), 1
+        )
+        if not ok:
+            return
+        idx2, ok = QInputDialog.getInt(
+            self.win, "Distance Constraint", "Point B index:", 0, 0, max(0, len(self.sketch.points) - 1), 1
+        )
+        if not ok:
+            return
+        dist, ok = QInputDialog.getDouble(self.win, "Distance Constraint", "Target distance:", 1.0, 0.0, 1e6, 4)
+        if not ok:
+            return
+        self.sketch.add_constraint(DistanceConstraint(idx1, idx2, float(dist)))
+        self._refresh_sketch_summary()
+
+    def _sketch_add_hv(self):
+        choice, ok = QInputDialog.getItem(
+            self.win, "Horizontal/Vertical", "Constraint type:", ["Horizontal", "Vertical"], 0, False
+        )
+        if not ok:
+            return
+        idx1, ok = QInputDialog.getInt(
+            self.win, f"{choice} Constraint", "Point A index:", 0, 0, max(0, len(self.sketch.points) - 1), 1
+        )
+        if not ok:
+            return
+        idx2, ok = QInputDialog.getInt(
+            self.win, f"{choice} Constraint", "Point B index:", 0, 0, max(0, len(self.sketch.points) - 1), 1
+        )
+        if not ok:
+            return
+        if choice == "Horizontal":
+            self.sketch.add_constraint(HorizontalConstraint(idx1, idx2))
+        else:
+            self.sketch.add_constraint(VerticalConstraint(idx1, idx2))
+        self._refresh_sketch_summary()
+
+    def _sketch_add_parallel(self):
+        a1, ok = QInputDialog.getInt(
+            self.win, "Parallel Constraint", "Segment A start index:", 0, 0, max(0, len(self.sketch.points) - 1), 1
+        )
+        if not ok:
+            return
+        a2, ok = QInputDialog.getInt(
+            self.win, "Parallel Constraint", "Segment A end index:", 0, 0, max(0, len(self.sketch.points) - 1), 1
+        )
+        if not ok:
+            return
+        b1, ok = QInputDialog.getInt(
+            self.win, "Parallel Constraint", "Segment B start index:", 0, 0, max(0, len(self.sketch.points) - 1), 1
+        )
+        if not ok:
+            return
+        b2, ok = QInputDialog.getInt(
+            self.win, "Parallel Constraint", "Segment B end index:", 0, 0, max(0, len(self.sketch.points) - 1), 1
+        )
+        if not ok:
+            return
+        self.sketch.add_constraint(ParallelConstraint(a1, a2, b1, b2))
+        self._refresh_sketch_summary()
+
+    def _sketch_add_perp(self):
+        a1, ok = QInputDialog.getInt(
+            self.win, "Perpendicular Constraint", "Segment A start index:", 0, 0, max(0, len(self.sketch.points) - 1), 1
+        )
+        if not ok:
+            return
+        a2, ok = QInputDialog.getInt(
+            self.win, "Perpendicular Constraint", "Segment A end index:", 0, 0, max(0, len(self.sketch.points) - 1), 1
+        )
+        if not ok:
+            return
+        b1, ok = QInputDialog.getInt(
+            self.win, "Perpendicular Constraint", "Segment B start index:", 0, 0, max(0, len(self.sketch.points) - 1), 1
+        )
+        if not ok:
+            return
+        b2, ok = QInputDialog.getInt(
+            self.win, "Perpendicular Constraint", "Segment B end index:", 0, 0, max(0, len(self.sketch.points) - 1), 1
+        )
+        if not ok:
+            return
+        self.sketch.add_constraint(PerpendicularConstraint(a1, a2, b1, b2))
+        self._refresh_sketch_summary()
+
+    def _sketch_add_equal(self):
+        a1, ok = QInputDialog.getInt(
+            self.win, "Equal Length Constraint", "Segment A start index:", 0, 0, max(0, len(self.sketch.points) - 1), 1
+        )
+        if not ok:
+            return
+        a2, ok = QInputDialog.getInt(
+            self.win, "Equal Length Constraint", "Segment A end index:", 0, 0, max(0, len(self.sketch.points) - 1), 1
+        )
+        if not ok:
+            return
+        b1, ok = QInputDialog.getInt(
+            self.win, "Equal Length Constraint", "Segment B start index:", 0, 0, max(0, len(self.sketch.points) - 1), 1
+        )
+        if not ok:
+            return
+        b2, ok = QInputDialog.getInt(
+            self.win, "Equal Length Constraint", "Segment B end index:", 0, 0, max(0, len(self.sketch.points) - 1), 1
+        )
+        if not ok:
+            return
+        self.sketch.add_constraint(EqualLengthConstraint(a1, a2, b1, b2))
+        self._refresh_sketch_summary()
+
+    def _sketch_solve(self):
+        try:
+            self.sketch.solve_least_squares()
+            self._refresh_sketch_summary()
+            self.win.statusBar().showMessage("Sketch solved", 2000)
+        except Exception as e:
+            try:
+                QMessageBox.information(self.win, "Sketch Solver", f"Solve failed: {e}")
+            except Exception:
+                pass
+
+    def _sketch_export_dxf(self):
+        path, _ = QFileDialog.getSaveFileName(
+            self.win, "Export Sketch to DXF", "sketch.dxf", "DXF (*.dxf)"
+        )
+        if not path:
+            return
+        try:
+            export_dxf(self.sketch, path)
+            self.win.statusBar().showMessage(f"Exported: {path}", 3000)
+        except Exception as e:
+            try:
+                QMessageBox.information(self.win, "Sketch Export", f"Export failed: {e}")
+            except Exception:
+                pass
 
     def _open_chess_widget(self):
         """Open the ND chess widget in a dock window."""
@@ -3299,6 +3751,16 @@ class MainWindow:
 
     def _show_welcome_if_first_run(self):
         """Show welcome dialog with quick tips for new users."""
+        import os
+        import sys
+        # Skip in headless/offscreen mode or during tests
+        if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+            return
+        if "pytest" in sys.modules:
+            return
+        # Skip if window isn't visible (called from __init__ before show())
+        if not self.win.isVisible():
+            return
         prefs = self._load_analytic_prefs()
         if not prefs.get("welcomed", False):
             try:
@@ -3449,6 +3911,82 @@ that implement the Ï€â‚ (Adaptive Pi) geometry principles.</p>
         else:
             # fall back to OCC Ball command
             NewBallCmd().run(self)
+
+    # Sketch persistence & serialization helpers
+    def _sketch_to_dict(self) -> dict:
+        """Serialize sketch to dictionary."""
+        if not hasattr(self, 'sketch') or self.sketch is None:
+            return {"points": [], "constraints": []}
+        
+        points = []
+        for p in self.sketch.points:
+            points.append({"x": float(p.x), "y": float(p.y)})
+        
+        constraints = []
+        for cons in self.sketch.constraints:
+            cons_type = type(cons).__name__
+            if cons_type == "FixedConstraint":
+                constraints.append({"type": "fixed", "idx": cons.idx})
+            elif cons_type == "DistanceConstraint":
+                constraints.append({"type": "distance", "idx1": cons.idx1, "idx2": cons.idx2, "distance": float(cons.distance)})
+            elif cons_type == "HorizontalConstraint":
+                constraints.append({"type": "horizontal", "idx1": cons.idx1, "idx2": cons.idx2})
+            elif cons_type == "VerticalConstraint":
+                constraints.append({"type": "vertical", "idx1": cons.idx1, "idx2": cons.idx2})
+            elif cons_type == "ParallelConstraint":
+                constraints.append({"type": "parallel", "a1": cons.a1, "a2": cons.a2, "b1": cons.b1, "b2": cons.b2})
+            elif cons_type == "PerpendicularConstraint":
+                constraints.append({"type": "perpendicular", "a1": cons.a1, "a2": cons.a2, "b1": cons.b1, "b2": cons.b2})
+            elif cons_type == "EqualLengthConstraint":
+                constraints.append({"type": "equal_length", "a1": cons.a1, "a2": cons.a2, "b1": cons.b1, "b2": cons.b2})
+        
+        return {"points": points, "constraints": constraints}
+    
+    def _sketch_from_dict(self, data: dict):
+        """Deserialize sketch from dictionary."""
+        self.sketch = Sketch()
+        
+        # Restore points
+        for pt in data.get("points", []):
+            self.sketch.add_point(float(pt.get("x", 0)), float(pt.get("y", 0)))
+        
+        # Restore constraints
+        for cons_data in data.get("constraints", []):
+            cons_type = cons_data.get("type")
+            try:
+                if cons_type == "fixed":
+                    idx = cons_data["idx"]
+                    if idx < len(self.sketch.points):
+                        self.sketch.add_constraint(FixedConstraint(idx, self.sketch.points[idx]))
+                elif cons_type == "distance":
+                    idx1, idx2 = cons_data["idx1"], cons_data["idx2"]
+                    dist = float(cons_data.get("distance", 1.0))
+                    if idx1 < len(self.sketch.points) and idx2 < len(self.sketch.points):
+                        self.sketch.add_constraint(DistanceConstraint(idx1, idx2, dist))
+                elif cons_type == "horizontal":
+                    idx1, idx2 = cons_data["idx1"], cons_data["idx2"]
+                    if idx1 < len(self.sketch.points) and idx2 < len(self.sketch.points):
+                        self.sketch.add_constraint(HorizontalConstraint(idx1, idx2))
+                elif cons_type == "vertical":
+                    idx1, idx2 = cons_data["idx1"], cons_data["idx2"]
+                    if idx1 < len(self.sketch.points) and idx2 < len(self.sketch.points):
+                        self.sketch.add_constraint(VerticalConstraint(idx1, idx2))
+                elif cons_type == "parallel":
+                    a1, a2, b1, b2 = cons_data["a1"], cons_data["a2"], cons_data["b1"], cons_data["b2"]
+                    if all(i < len(self.sketch.points) for i in [a1, a2, b1, b2]):
+                        self.sketch.add_constraint(ParallelConstraint(a1, a2, b1, b2))
+                elif cons_type == "perpendicular":
+                    a1, a2, b1, b2 = cons_data["a1"], cons_data["a2"], cons_data["b1"], cons_data["b2"]
+                    if all(i < len(self.sketch.points) for i in [a1, a2, b1, b2]):
+                        self.sketch.add_constraint(PerpendicularConstraint(a1, a2, b1, b2))
+                elif cons_type == "equal_length":
+                    a1, a2, b1, b2 = cons_data["a1"], cons_data["a2"], cons_data["b1"], cons_data["b2"]
+                    if all(i < len(self.sketch.points) for i in [a1, a2, b1, b2]):
+                        self.sketch.add_constraint(EqualLengthConstraint(a1, a2, b1, b2))
+            except Exception as e:
+                log.debug(f"Failed to restore constraint {cons_type}: {e}")
+        
+        self._refresh_sketch_summary()
 
 
 def main() -> None:

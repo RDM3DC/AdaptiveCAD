@@ -45,8 +45,8 @@ def test_scene_gpu_pack_updates_after_transform():
     after = sc.to_gpu_structs()["xform"][0]
     # Matrices should differ
     assert not mat_equals(before, after)
-    # Check translation encoded
-    A = after.reshape(4, 4)
+    # Check translation encoded (reshape with order='F' to match GLSL column-major packing)
+    A = after.reshape(4, 4, order="F")
     assert np.allclose(A[:3, 3], [1, 2, 3], atol=1e-5)
 
 
@@ -59,7 +59,8 @@ def test_multiple_prims_packing_order():
     p1.set_transform(pos=[0.5, 0, 0])
     p2.set_transform(pos=[-0.5, 0, 0])
     pack = sc.to_gpu_structs()
-    x1 = pack["xform"][0].reshape(4, 4)
-    x2 = pack["xform"][1].reshape(4, 4)
+    # Reshape with order='F' to match GLSL column-major packing
+    x1 = pack["xform"][0].reshape(4, 4, order="F")
+    x2 = pack["xform"][1].reshape(4, 4, order="F")
     assert np.allclose(x1[:3, 3], [0.5, 0, 0], atol=1e-6)
     assert np.allclose(x2[:3, 3], [-0.5, 0, 0], atol=1e-6)

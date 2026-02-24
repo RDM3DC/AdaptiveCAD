@@ -19,6 +19,7 @@ def test_pi_a_viewer_missing_deps(monkeypatch):
         return real_import(name, *args, **kwargs)
 
     monkeypatch.setattr(builtins, "__import__", fake_import)
-    mod = importlib.import_module("adaptivecad.gui.pi_a_viewer")
+    # Force-reload so HAS_GUI is re-evaluated with the mocked import
+    mod = importlib.reload(importlib.import_module("adaptivecad.gui.pi_a_viewer"))
     with pytest.raises(RuntimeError):
         mod.main()

@@ -23,12 +23,150 @@ MAX_PRIMS = 48  # keep in sync with shader arrays
     KIND_GYROID,
     KIND_TREFOIL,
     KIND_HELICOID,
-) = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
+    KIND_ORBITAL,
+    KIND_MESH_IMPORT,
+) = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
 OP_SOLID, OP_SUBTRACT, OP_INTERSECT = 0, 1, 2
 
 
 def pia_scale(r, beta):  # toy metric scaling
     return r * (1.0 + 0.125 * beta * r * r)
+
+
+def _gen_laguerre(k: int, alpha: float, x: float) -> float:
+    """Generalized Laguerre polynomial L_k^alpha(x) via recurrence."""
+
+    k = int(k)
+    if k <= 0:
+        return 1.0
+    if k == 1:
+        return 1.0 + float(alpha) - float(x)
+    Lkm2 = 1.0
+    Lkm1 = 1.0 + float(alpha) - float(x)
+    for n in range(1, k):
+        # (n+1) L_{n+1} = (2n+1+alpha-x) L_n - (n+alpha) L_{n-1}
+        Ln1 = ((2.0 * n + 1.0 + float(alpha) - float(x)) * Lkm1 - (n + float(alpha)) * Lkm2) / (n + 1.0)
+        Lkm2, Lkm1 = Lkm1, Ln1
+    return float(Lkm1)
+
+
+def _real_sph_harm(l: int, m: int, theta: float, phi: float) -> float:
+    """Real, orthonormal spherical harmonics for l<=3.
+
+    Convention: m>0 uses cos(m*phi), m<0 uses sin(|m|*phi), m=0 zonal.
+    """
+
+    import math
+
+    l = int(l)
+    m = int(m)
+    ct = math.cos(theta)
+    st = math.sin(theta)
+    if l == 0:
+        return 0.2820947918
+    if l == 1:
+        if m == 0:
+            return 0.4886025119 * ct
+        if m == 1:
+            return 0.4886025119 * st * math.cos(phi)
+        if m == -1:
+            return 0.4886025119 * st * math.sin(phi)
+        return 0.0
+    if l == 2:
+        if m == 0:
+            return 0.3153915653 * (3.0 * ct * ct - 1.0)
+        if m == 1:
+            return 1.0925484306 * st * ct * math.cos(phi)
+        if m == -1:
+            return 1.0925484306 * st * ct * math.sin(phi)
+        if m == 2:
+            return 0.5462742153 * st * st * math.cos(2.0 * phi)
+        if m == -2:
+            return 0.5462742153 * st * st * math.sin(2.0 * phi)
+        return 0.0
+    if l == 3:
+        if m == 0:
+            return 0.3731763326 * (5.0 * ct * ct * ct - 3.0 * ct)
+        if m == 1:
+            return 0.4570457995 * st * (5.0 * ct * ct - 1.0) * math.cos(phi)
+        if m == -1:
+            return 0.4570457995 * st * (5.0 * ct * ct - 1.0) * math.sin(phi)
+        if m == 2:
+            return 1.4453057213 * st * st * ct * math.cos(2.0 * phi)
+        if m == -2:
+            return 1.4453057213 * st * st * ct * math.sin(2.0 * phi)
+        if m == 3:
+            return 0.5900435899 * st * st * st * math.cos(3.0 * phi)
+        if m == -3:
+            return 0.5900435899 * st * st * st * math.sin(3.0 * phi)
+        return 0.0
+    return 0.0
+
+
+def hydrogenic_density(p: np.ndarray, n: int, l: int, m: int) -> float:
+    """Unnormalized hydrogenic orbital density |psi|^2 (a0=1).
+
+    Intended for geometry: take an isosurface of density at a user-chosen threshold.
+    """
+
+    import math
+
+    n = int(n)
+    l = int(l)
+    m = int(m)
+    if n < 1:
+        return 0.0
+    if l < 0 or l >= n:
+        return 0.0
+    if abs(m) > l:
+        return 0.0
+
+    x, y, z = float(p[0]), float(p[1]), float(p[2])
+    r = math.sqrt(x * x + y * y + z * z)
+    r_safe = max(1e-9, r)
+    theta = math.acos(max(-1.0, min(1.0, z / r_safe)))
+    phi = math.atan2(y, x)
+
+    # rho = 2r/(n a0), with a0=1
+    rho = 2.0 * r_safe / float(n)
+    k = n - l - 1
+    alpha = 2.0 * float(l) + 1.0
+    L = _gen_laguerre(k, alpha, rho)
+    R = math.exp(-0.5 * rho) * (rho ** float(l)) * L
+    Y = _real_sph_harm(l, m, theta, phi)
+    psi = R * Y
+    return float(psi * psi)
+
+
+def sd_hydrogenic_orbital(p: np.ndarray, n: int, l: int, m: int, iso: float, thickness: float) -> float:
+    """Distance estimate for isosurface hydrogenic_density(p)=iso.
+
+    Uses finite-difference gradient of F(p)=density-iso:
+      d ~= |F| / |grad F| - thickness
+    """
+
+    import math
+
+    iso = float(iso)
+    thickness = float(max(1e-6, thickness))
+
+    x, y, z = float(p[0]), float(p[1]), float(p[2])
+    r = math.sqrt(x * x + y * y + z * z)
+    eps = 1e-3 * (1.0 + 0.25 * r)
+
+    def F(pt: np.ndarray) -> float:
+        return hydrogenic_density(pt, n, l, m) - iso
+
+    f0 = F(p)
+    ex = np.array([eps, 0.0, 0.0], dtype=np.float64)
+    ey = np.array([0.0, eps, 0.0], dtype=np.float64)
+    ez = np.array([0.0, 0.0, eps], dtype=np.float64)
+    gx = (F(p + ex) - F(p - ex)) / (2.0 * eps)
+    gy = (F(p + ey) - F(p - ey)) / (2.0 * eps)
+    gz = (F(p + ez) - F(p - ez)) / (2.0 * eps)
+    g = math.sqrt(gx * gx + gy * gy + gz * gz)
+    g = max(g, 1e-8)
+    return abs(f0) / g - thickness
 
 
 # --- Primitive SDFs (local space) ---
@@ -474,6 +612,16 @@ class Prim:
         # Added Euler + non-uniform scale tracking
         self.euler = np.array([0.0, 0.0, 0.0], dtype=np.float32)  # degrees (rx, ry, rz)
         self.scale = np.array([1.0, 1.0, 1.0], dtype=np.float32)
+        # SDF modifiers (Phase 1)
+        self.shell = 0.0       # shell thickness (0 = off)
+        self.round = 0.0       # round radius (0 = off)
+        self.twist = 0.0       # twist rate (radians per unit Y, 0 = off)
+        self.bend = 0.0        # bend rate (0 = off)
+        self.taper = 0.0       # taper rate along Y (0 = off)
+        self.elongate = np.array([0.0, 0.0, 0.0], dtype=np.float32)  # elongation half-extents
+        self.mirror = np.array([False, False, False])  # mirror axes (X, Y, Z)
+        # For imported meshes
+        self.mesh_sdf = None  # MeshSDF instance for KIND_MESH_IMPORT
 
     def set_transform(self, pos=None, euler=None, scale=None):
         from .math import rot_x, rot_y, rot_z, scale3
@@ -544,7 +692,7 @@ class Scene:
                 r = pia_scale(pr.params[0], pr.beta + self.global_beta)
                 di = sd_sphere(pl, r)
             elif pr.kind in (KIND_BOX, "box"):
-                di = sd_box(pl, pr.params[:3])
+                di = sd_box(pl, pr.params[:3]) - pr.beta
             elif pr.kind in (KIND_CAPSULE, "capsule"):
                 r = pia_scale(pr.params[0], pr.beta + self.global_beta)
                 di = sd_capsule_y(pl, r, pr.params[1])
@@ -617,6 +765,20 @@ class Scene:
                 turns = pr.params[3] if len(pr.params) > 3 else 2.0
                 thickness = max(1e-6, pr.beta)
                 di = sd_helicoid_ribbon(pl, r_inner, r_outer, pitch, turns, thickness)
+            elif pr.kind in (KIND_ORBITAL, "orbital", "hydrogenic_orbital"):
+                # Params: [n, l, m, iso]; thickness comes from beta
+                n = int(pr.params[0]) if len(pr.params) > 0 else 2
+                l = int(pr.params[1]) if len(pr.params) > 1 else 1
+                m = int(pr.params[2]) if len(pr.params) > 2 else 0
+                iso = float(pr.params[3]) if len(pr.params) > 3 else 0.02
+                thickness = max(1e-6, pr.beta)
+                di = sd_hydrogenic_orbital(pl, n, l, m, iso, thickness)
+            elif pr.kind in (KIND_MESH_IMPORT, "mesh_import"):
+                # Imported mesh SDF
+                if pr.mesh_sdf is not None:
+                    di = pr.mesh_sdf.evaluate(pl)
+                else:
+                    continue
             else:
                 continue
             if pr.op == "subtract":
@@ -637,6 +799,8 @@ class Scene:
         params = np.zeros((max_prims, 4), dtype=np.float32)
         xform = np.zeros((max_prims, 16), dtype=np.float32)
         xform_inv = np.zeros((max_prims, 16), dtype=np.float32)
+        mod = np.zeros((max_prims, 4), dtype=np.float32)   # shell, round, twist, taper
+        mod2 = np.zeros((max_prims, 4), dtype=np.float32)  # elongate xyz, mirror_flags
         for i, pr in enumerate(self.prims[:n]):
             if pr.kind in (KIND_SPHERE, "sphere"):
                 kind[i] = KIND_SPHERE
@@ -715,6 +879,14 @@ class Scene:
                 pitch = pr.params[2] if len(pr.params) > 2 else 0.35
                 turns = pr.params[3] if len(pr.params) > 3 else 2.0
                 params[i] = [r_inner, r_outer, pitch, turns]
+            elif pr.kind in (KIND_ORBITAL, "orbital", "hydrogenic_orbital"):
+                kind[i] = KIND_ORBITAL
+                # Pack n, l, m, iso
+                n = float(pr.params[0]) if len(pr.params) > 0 else 2.0
+                l = float(pr.params[1]) if len(pr.params) > 1 else 1.0
+                m = float(pr.params[2]) if len(pr.params) > 2 else 0.0
+                iso = float(pr.params[3]) if len(pr.params) > 3 else 0.02
+                params[i] = [n, l, m, iso]
             else:
                 kind[i] = KIND_NONE
 
@@ -726,6 +898,13 @@ class Scene:
                 op[i] = OP_SOLID
             beta[i] = np.float32(pr.beta + self.global_beta)
             color[i] = pr.color[:3].astype(np.float32)
+            # Pack SDF modifiers
+            mod[i] = [float(pr.shell), float(pr.round), float(pr.twist), float(pr.taper)]
+            mirror_bits = (int(bool(pr.mirror[0]))
+                           | (int(bool(pr.mirror[1])) << 1)
+                           | (int(bool(pr.mirror[2])) << 2))
+            mod2[i] = [float(pr.elongate[0]), float(pr.elongate[1]),
+                        float(pr.elongate[2]), float(mirror_bits)]
             # Pack transforms column-major for GLSL compatibility
             fwd = pr.xform.M.astype(np.float32)
             try:
@@ -744,6 +923,8 @@ class Scene:
             "params": params,
             "xform": xform,
             "xform_inv": xform_inv,
+            "mod": mod,
+            "mod2": mod2,
             "bg": self.bg_color.astype(np.float32),
             "env": self.env_light.astype(np.float32),
         }

@@ -18,7 +18,6 @@ import sys
 
 import numpy as np
 
-
 # Allow running without installing package
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "."))
 if _REPO_ROOT not in sys.path:
@@ -112,10 +111,10 @@ def main() -> int:
 
     args = ap.parse_args()
 
+    from adaptivecad.sim.mass_spring import build_lattice_mk, solve_modes
     from adaptivecad.sim.materials import PLA
     from adaptivecad.sim.sdf_io import load_analytic_scene_list_from_ama
-    from adaptivecad.sim.sdf_voxelize import voxelize_scene, voxel_grid
-    from adaptivecad.sim.mass_spring import build_lattice_mk, solve_modes
+    from adaptivecad.sim.sdf_voxelize import voxel_grid, voxelize_scene
 
     scene_list = load_analytic_scene_list_from_ama(args.ama)
     scene = _build_scene(scene_list)

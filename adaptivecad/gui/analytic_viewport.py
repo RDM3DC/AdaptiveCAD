@@ -5,42 +5,92 @@ injection of a shared AACore analytic scene so multiple view components
 can operate on the same underlying primitive set.
 """
 
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QSlider,
-    QComboBox, QCheckBox, QGroupBox, QFormLayout, QSpinBox, QDoubleSpinBox,
-    QScrollArea, QSizePolicy, QInputDialog, QToolButton, QGridLayout,
-    QTextEdit, QLineEdit, QListWidget, QListWidgetItem, QFileDialog,
-    QMessageBox, QProgressDialog,
-    QMainWindow, QDockWidget, QTabWidget, QPlainTextEdit,
-    QTableWidget, QTableWidgetItem
+import ctypes
+import importlib.util
+import json
+import logging
+import os
+import sys
+import time
+from functools import lru_cache, partial
+from pathlib import Path
+
+import numpy as np
+from OpenGL.GL import *
+from PySide6.QtCore import QPointF, QSize, Qt, QThread, QTimer, Signal
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QGuiApplication,
+    QMouseEvent,
+    QPainter,
+    QPen,
+    QPolygonF,
+    QSurfaceFormat,
+    QWheelEvent,
 )
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
-from PySide6.QtGui import QSurfaceFormat, QMouseEvent, QWheelEvent, QPainter, QPen, QColor
-from PySide6.QtCore import Qt, QSize, QTimer, Signal, QThread
-from PySide6.QtGui import QGuiApplication
-from OpenGL.GL import *
-import numpy as np
-from pathlib import Path
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDockWidget,
+    QDoubleSpinBox,
+    QFileDialog,
+    QFormLayout,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMainWindow,
+    QMessageBox,
+    QPlainTextEdit,
+    QProgressDialog,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QSlider,
+    QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
+    QTabWidget,
+    QTextEdit,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
+
+from adaptivecad.aacore.sdf import (
+    KIND_BOX,
+    KIND_CAPSULE,
+    KIND_GYROID,
+    KIND_HYPERBOLIC,
+    KIND_KLEIN,
+    KIND_MANDELBULB,
+    KIND_MENGER,
+    KIND_MOBIUS,
+    KIND_QUASICRYSTAL,
+    KIND_SPHERE,
+    KIND_SUPERELLIPSOID,
+    KIND_TORUS,
+    KIND_TORUS4D,
+    KIND_TREFOIL,
+    MAX_PRIMS,
+    Prim,
+)
+from adaptivecad.aacore.sdf import Scene as AACoreScene
 from adaptivecad.sketch.model import SketchDocument
 from adaptivecad.sketch.units import Units
-from adaptivecad.aacore.sdf import (
-    Scene as AACoreScene, Prim, KIND_SPHERE, KIND_BOX, KIND_CAPSULE, KIND_TORUS,
-    KIND_MOBIUS, KIND_SUPERELLIPSOID, KIND_QUASICRYSTAL, KIND_TORUS4D, KIND_MANDELBULB, KIND_KLEIN, KIND_MENGER, KIND_HYPERBOLIC, KIND_GYROID, KIND_TREFOIL, OP_SOLID, OP_SUBTRACT, MAX_PRIMS
-)
-import time, os
-import sys
-import json
-import importlib.util
-import ctypes
-from functools import partial, lru_cache
-import logging
+
 log = logging.getLogger("adaptivecad.gui")
 try:
     from adaptivecad.ai.intent_router import CADActionBus, chat_with_tools
     from adaptivecad.geometry.pia_primitives import (
         make_pi_circle_profile,
-        upgrade_profile_meta_to_pia,
         pi_circle_points,
+        upgrade_profile_meta_to_pia,
     )
     _HAVE_AI = True
 except Exception:
@@ -114,7 +164,6 @@ def _cupy_available() -> bool:
         return False
 
     # --- 2D Sketch Overlay (Polyline + Snaps) ---------------------------------
-    SNAP_PX = 10  # pixel radius for snapping
 
     class SketchEntity:
         def __init__(self):
@@ -131,7 +180,6 @@ def _cupy_available() -> bool:
             self.pts = [ _np.array(p, dtype=_np.float32) for p in (pts or []) ]  # (x,y)
             self.closed = False
         def snap_points(self):
-            import numpy as _np
             out = []
             out += self.pts
             for a,b in zip(self.pts[:-1], self.pts[1:]):
@@ -176,7 +224,6 @@ def _cupy_available() -> bool:
             self.p0 = _np.array(p0, dtype=_np.float32)
             self.p1 = _np.array(p1, dtype=_np.float32) if p1 is not None else None
         def snap_points(self):
-            import numpy as _np
             pts = [self.p0]
             if self.p1 is not None:
                 pts.append(self.p1)
@@ -202,7 +249,9 @@ def _cupy_available() -> bool:
             self.center = _np.array(center, dtype=_np.float32)
             self.radius = float(radius)
         def snap_points(self):
-            import numpy as _np, math as _m
+            import math as _m
+
+            import numpy as _np
             pts = [self.center]
             if self.radius > 1e-6:
                 for ang in (0,90,180,270):
@@ -210,7 +259,9 @@ def _cupy_available() -> bool:
                     pts.append(self.center + self.radius * _np.array([_np.cos(a), _np.sin(a)], _np.float32))
             return pts
         def draw(self, p: QPainter, view):
-            import numpy as _np, math as _m
+            import math as _m
+
+            import numpy as _np
             if self.radius <= 0: return
             segs = 40
             pts = []
@@ -293,7 +344,6 @@ def _cupy_available() -> bool:
             r = float(_np.hypot(x1-cx, y1-cy))
             return _np.array([cx,cy], _np.float32), r
         def snap_points(self):
-            import numpy as _np
             pts=[]
             if self.p0 is not None: pts.append(self.p0)
             if self.p2 is not None: pts.append(self.p2)
@@ -304,7 +354,9 @@ def _cupy_available() -> bool:
                 pts.append((self.p0 + self.p2)/2.0)
             return pts
         def draw(self, p: QPainter, view):
-            import numpy as _np, math as _m
+            import math as _m
+
+            import numpy as _np
             if self.p0 is None:
                 return
             pen=QPen(QColor(200,240,255)); pen.setWidth(2)
@@ -359,7 +411,6 @@ def _cupy_available() -> bool:
             self.p0 = _np.array(p0, dtype=_np.float32)
             self.p1 = _np.array(p1, dtype=_np.float32) if p1 is not None else None
         def snap_points(self):
-            import numpy as _np
             pts = [self.p0]
             if self.p1 is not None:
                 pts.append(self.p1)
@@ -404,7 +455,6 @@ def _cupy_available() -> bool:
             r = float(_np.hypot(x1-cx, y1-cy))
             return _np.array([cx,cy], _np.float32), r
         def snap_points(self):
-            import numpy as _np
             pts=[]
             if self.p0 is not None: pts.append(self.p0)
             if self.p2 is not None: pts.append(self.p2)
@@ -425,7 +475,9 @@ def _cupy_available() -> bool:
                 out.append(((self.p0+self.p2)/2.0,'mid'))
             return out
         def draw(self, p: QPainter, view):
-            import numpy as _np, math as _m
+            import math as _m
+
+            import numpy as _np
             if self.p0 is None:
                 return
             pen = QPen(QColor(200,240,255)); pen.setWidth(2)
@@ -727,7 +779,9 @@ def _cupy_available() -> bool:
             self.center = _np.array(center, dtype=_np.float32)
             self.radius = float(radius)
         def snap_points(self):
-            import numpy as _np, math as _m
+            import math as _m
+
+            import numpy as _np
             pts = [self.center]
             if self.radius > 1e-6:
                 for ang in (0,90,180,270):
@@ -738,7 +792,9 @@ def _cupy_available() -> bool:
             out=[(self.center,'center')]
             return out
         def draw(self, p: QPainter, view):
-            import numpy as _np, math as _m
+            import math as _m
+
+            import numpy as _np
             if self.radius <= 0: return
             segs = 40
             pts = []
@@ -812,6 +868,8 @@ def _cupy_available() -> bool:
 
 # --- Gizmo helper functions (move/rotate/scale snapping) ---
 import math
+
+
 def _deg2rad(d): return d * math.pi / 180.0
 def _snap_angle(deg, step_deg):
     if step_deg <= 0: return deg
@@ -956,7 +1014,6 @@ except NameError:  # define overlay classes (PIL present path)
             import numpy as _np
             self.pts = [ _np.array(p, dtype=_np.float32) for p in (pts or []) ]
         def snap_points(self):
-            import numpy as _np
             out = [] + self.pts
             for a,b in zip(self.pts[:-1], self.pts[1:]):
                 out.append((a+b)/2.0)
@@ -977,7 +1034,6 @@ except NameError:  # define overlay classes (PIL present path)
             self.p0 = _np.array(p0, dtype=_np.float32)
             self.p1 = _np.array(p1, dtype=_np.float32) if p1 is not None else None
         def snap_points(self):
-            import numpy as _np
             pts = [self.p0]
             if self.p1 is not None:
                 pts.append(self.p1)
@@ -1005,7 +1061,9 @@ except NameError:  # define overlay classes (PIL present path)
             self.center = _np.array(center, dtype=_np.float32)
             self.radius = float(radius)
         def snap_points(self):
-            import numpy as _np, math as _m
+            import math as _m
+
+            import numpy as _np
             pts = [self.center]
             if self.radius>1e-6:
                 for ang in (0,90,180,270):
@@ -1015,7 +1073,9 @@ except NameError:  # define overlay classes (PIL present path)
         def snap_points_typed(self):
             return [(self.center,'center')]
         def draw(self, p: QPainter, view):
-            import numpy as _np, math as _m
+            import math as _m
+
+            import numpy as _np
             if self.radius <= 0: return
             segs=40; pts=[]
             for i in range(segs+1):
@@ -1085,7 +1145,6 @@ except NameError:  # define overlay classes (PIL present path)
             r = float(_np.hypot(x1-cx, y1-cy))
             return _np.array([cx,cy], _np.float32), r
         def snap_points(self):
-            import numpy as _np
             pts=[]
             if self.p0 is not None: pts.append(self.p0)
             if self.p2 is not None: pts.append(self.p2)
@@ -1106,7 +1165,9 @@ except NameError:  # define overlay classes (PIL present path)
                 out.append(((self.p0+self.p2)/2.0,'mid'))
             return out
         def draw(self, p: QPainter, view):
-            import numpy as _np, math as _m
+            import math as _m
+
+            import numpy as _np
             if self.p0 is None:
                 return
             pen=QPen(QColor(200,240,255)); pen.setWidth(2); p.setPen(pen)
@@ -1195,7 +1256,8 @@ except NameError:  # define overlay classes (PIL present path)
                 pass
             return None
         def draw(self, p: QPainter, view):
-            import numpy as _np, numpy as np
+            import numpy as _np
+            import numpy as np
             a = self._xy(self.ref_a); b = self._xy(self.ref_b)
             if a is None or b is None: return
             v = b - a
@@ -1686,6 +1748,73 @@ class AnalyticViewport(QOpenGLWidget):
                 except Exception:
                     continue
             p.end()
+        # XYZ orientation gizmo (bottom-left corner)
+        self._draw_axes_gizmo()
+
+    # ------------------------------------------------------------------
+    # XYZ orientation axes gizmo
+    # ------------------------------------------------------------------
+    def _draw_axes_gizmo(self):
+        """Draw a small XYZ orientation indicator in the bottom-left corner."""
+        import math as _m
+
+        R = self._cam_basis()  # columns: right, up, -forward
+        axis_len = 38  # pixels
+        margin = 50
+        cx = margin
+        cy = self.height() - margin
+
+        # Project each world axis through camera basis to get screen offsets
+        axes = [
+            (np.array([1, 0, 0], np.float32), QColor(230, 60, 60), "X"),
+            (np.array([0, 1, 0], np.float32), QColor(60, 230, 60), "Y"),
+            (np.array([0, 0, 1], np.float32), QColor(80, 120, 255), "Z"),
+        ]
+
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+        for world_dir, color, label in axes:
+            # Project onto screen right / up
+            sx = float(np.dot(world_dir, R[:, 0])) * axis_len
+            sy = -float(np.dot(world_dir, R[:, 1])) * axis_len  # flip Y for screen
+
+            ex, ey = cx + sx, cy + sy
+
+            # Shaft
+            pen = QPen(color, 2)
+            p.setPen(pen)
+            p.drawLine(int(cx), int(cy), int(ex), int(ey))
+
+            # Arrow head
+            length = _m.hypot(sx, sy)
+            if length > 1e-3:
+                angle = _m.atan2(sy, sx)
+                arrow = 7
+                lx = ex - arrow * _m.cos(angle - _m.pi / 6)
+                ly = ey - arrow * _m.sin(angle - _m.pi / 6)
+                rx = ex - arrow * _m.cos(angle + _m.pi / 6)
+                ry = ey - arrow * _m.sin(angle + _m.pi / 6)
+                tri = QPolygonF([QPointF(ex, ey), QPointF(lx, ly), QPointF(rx, ry)])
+                p.setBrush(QBrush(color))
+                p.drawPolygon(tri)
+
+            # Label
+            font = p.font()
+            font.setPixelSize(11)
+            font.setBold(True)
+            p.setFont(font)
+            p.setPen(color)
+            offset = 10
+            lx2 = ex + offset * (sx / max(length, 1e-3))
+            ly2 = ey + offset * (sy / max(length, 1e-3))
+            p.drawText(int(lx2) - 4, int(ly2) + 4, label)
+
+        # Center dot
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QBrush(QColor(180, 180, 180)))
+        p.drawEllipse(cx - 3, cy - 3, 6, 6)
+        p.end()
 
     # --- Sketch projection helpers ---
     def _world_to_screen(self, p3):
@@ -1795,7 +1924,8 @@ class AnalyticViewport(QOpenGLWidget):
         glUniform3f(glGetUniformLocation(self.prog,"u_bg"), *self.scene.bg_color)
         pack = self.scene.to_gpu_structs(max_prims=MAX_PRIMS)
         n = int(pack['count'])
-        U = lambda name: glGetUniformLocation(self.prog, name)
+        def U(name):
+            return glGetUniformLocation(self.prog, name)
         glUniform1i(U("u_count"), n)
         glUniform1iv(U("u_kind"), n, pack['kind'])
         glUniform1iv(U("u_op"), n, pack['op'])
@@ -1805,6 +1935,10 @@ class AnalyticViewport(QOpenGLWidget):
         glUniformMatrix4fv(U("u_xform"), n, GL_FALSE, pack['xform'])
         if 'xform_inv' in pack:
             glUniformMatrix4fv(U("u_xform_inv"), n, GL_FALSE, pack['xform_inv'])
+        if 'mod' in pack:
+            glUniform4fv(U("u_mod"), n, pack['mod'])
+        if 'mod2' in pack:
+            glUniform4fv(U("u_mod2"), n, pack['mod2'])
         glUniform1i(U("u_mode"), 0)
         mode_val = self.debug_mode if debug_override is None else debug_override
         glUniform1i(U("u_debug"), int(mode_val))
@@ -2265,12 +2399,11 @@ class AnalyticViewport(QOpenGLWidget):
             try:
                 self._perform_pick(int(event.position().x()), int(event.position().y()))
                 pid = self.selected_index
-                if pid >= 0:
-                    try:
-                        if hasattr(self.parent(), '_select_prim'):
-                            self.parent()._select_prim(pid)
-                    except Exception:
-                        pass
+                try:
+                    if hasattr(self.parent(), '_select_prim'):
+                        self.parent()._select_prim(pid)
+                except Exception:
+                    pass
                 self.update()
             except Exception as e:
                 log.debug(f"mousePressEvent pick failed: {e}")
@@ -2431,7 +2564,7 @@ class AnalyticViewport(QOpenGLWidget):
                             for i in range(len(ent.pts)-1):
                                 a = ent.pts[i]; b = ent.pts[i+1]
                                 ab = b - a; t = 0.0
-                                denom = float(np.dot(ab, ab));
+                                denom = float(np.dot(ab, ab))
                                 if denom > 1e-9:
                                     t = max(0.0, min(1.0, float(np.dot(w2 - a, ab) / denom)))
                                 p = a + t*ab
@@ -2442,7 +2575,7 @@ class AnalyticViewport(QOpenGLWidget):
                         elif isinstance(ent, Line2D) and ent.p1 is not None:
                             a = ent.p0; b = ent.p1
                             ab = b - a; t = 0.0
-                            denom = float(np.dot(ab, ab));
+                            denom = float(np.dot(ab, ab))
                             if denom > 1e-9:
                                 t = max(0.0, min(1.0, float(np.dot(w2 - a, ab) / denom)))
                             p = a + t*ab
@@ -2636,6 +2769,15 @@ class AnalyticViewport(QOpenGLWidget):
             if pr is not None:
                 prev_pos = pr.xform.M[:3,3].copy()
                 new_pos = prev_pos + dp.astype(np.float32)
+                # Grid-snap move (hold Alt to disable)
+                try:
+                    mods_mv = event.modifiers()
+                except Exception:
+                    mods_mv = Qt.KeyboardModifier.NoModifier
+                alt_mv = Qt.KeyboardModifier.AltModifier
+                snap_step = float(getattr(panel, '_snap_move_step', 0.0)) if panel is not None else 0.0
+                if snap_step > 0 and not bool(mods_mv & alt_mv):
+                    new_pos = np.round(new_pos / snap_step).astype(np.float32) * np.float32(snap_step)
                 pr.xform.M[:3,3] = new_pos
                 try:
                     self.scene._notify()
@@ -3078,10 +3220,11 @@ class AnalyticViewportPanel(QWidget):
 
         def run(self) -> None:  # pragma: no cover - long-running worker
             try:
-                from mandelbulb_make import field_sample
-                from skimage.measure import marching_cubes
-                from adaptivecad.aacore.sdf import mandelbulb_color_cpu
                 import numpy as _np
+                from skimage.measure import marching_cubes
+
+                from adaptivecad.aacore.sdf import mandelbulb_color_cpu
+                from mandelbulb_make import field_sample
 
                 bounds = (
                     -self._extent,
@@ -3112,7 +3255,7 @@ class AnalyticViewportPanel(QWidget):
                         self._pi_mu,
                         use_gpu=self._use_gpu,
                     )
-                except Exception as exc:
+                except Exception:
                     if self._use_gpu:
                         self.progress.emit("GPU sampling failed; falling back to CPU."
                                             " (see console for details)")
@@ -3284,7 +3427,7 @@ class AnalyticViewportPanel(QWidget):
                 mesh_vc.export(ply_path)
 
                 self.finished.emit(True, stl_path, ply_path, "")
-            except Exception as exc:  # pragma: no cover - runtime failure path
+            except Exception:  # pragma: no cover - runtime failure path
                 import traceback
 
                 self.finished.emit(False, "", "", traceback.format_exc())
@@ -3416,6 +3559,7 @@ class AnalyticViewportPanel(QWidget):
         self._space_local = True    # True local, False world
         self._snap_angle_deg = 5.0
         self._snap_scale_step = 0.1
+        self._snap_move_step = 0.1  # world-unit grid snap for move
         self._move_drag_free: bool = False  # require modifier unless explicitly toggled
         # References to select UI controls we want to drive programmatically
         self._cb_sketch = None
@@ -3598,7 +3742,7 @@ class AnalyticViewportPanel(QWidget):
         fm.addRow("Field Threshold", self._field_clip_spin)
 
         right.addWidget(gb_modes)
-        self._register_section("debug_modes", "Debug", gb_modes)
+        self._register_section("debug_modes", "Debug", gb_modes, default_visible=False)
 
         # --- Compute / Export ---
         gb_tools = QGroupBox("Compute / Export")
@@ -3673,7 +3817,7 @@ class AnalyticViewportPanel(QWidget):
             pass
 
         left.addWidget(gb_tools)
-        self._register_section("compute_export", "Compute", gb_tools)
+        self._register_section("compute_export", "Compute", gb_tools, default_visible=False)
 
         # --- Feature Toggles ---
         gb_feat = QGroupBox("Features"); vf = QVBoxLayout(); gb_feat.setLayout(vf)
@@ -3802,6 +3946,155 @@ class AnalyticViewportPanel(QWidget):
             scroll = _make_scroll(side_widget)
             root.addWidget(scroll)
         self._refresh_prim_label()
+        # Apply modern dark theme to the panel
+        self._apply_panel_stylesheet()
+
+    def _apply_panel_stylesheet(self):
+        self.setStyleSheet("""
+        /* ── Base ── */
+        QWidget { background-color: #1a1d23; color: #cdd6f4; font-size: 12px; }
+        QScrollArea { border: none; background: #1a1d23; }
+
+        /* ── Group Boxes ── */
+        QGroupBox {
+            border: 1px solid #313244;
+            border-radius: 8px;
+            margin-top: 14px;
+            padding: 10px 6px 6px 6px;
+            font-weight: 600;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            left: 10px;
+            padding: 0 6px;
+            color: #89b4fa;
+        }
+
+        /* ── Inputs ── */
+        QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTextEdit, QPlainTextEdit {
+            background-color: #11111b;
+            border: 1px solid #313244;
+            border-radius: 5px;
+            padding: 4px 6px;
+            selection-background-color: #45475a;
+            color: #cdd6f4;
+        }
+        QComboBox::drop-down { border: none; }
+        QComboBox QAbstractItemView {
+            background-color: #1e1e2e;
+            border: 1px solid #45475a;
+            selection-background-color: #313244;
+        }
+
+        /* ── Buttons ── */
+        QPushButton {
+            background-color: #313244;
+            border: 1px solid #45475a;
+            border-radius: 6px;
+            padding: 5px 10px;
+            color: #cdd6f4;
+            font-weight: 500;
+        }
+        QPushButton:hover { background-color: #45475a; border-color: #585b70; }
+        QPushButton:pressed { background-color: #181825; }
+        QPushButton:disabled { color: #585b70; background-color: #1e1e2e; border-color: #313244; }
+
+        /* Toolbar-specific buttons */
+        QPushButton#toolbarBtn {
+            background-color: #1e1e2e;
+            border: 1px solid #45475a;
+            border-radius: 5px;
+            padding: 6px 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        QPushButton#toolbarBtn:hover { background-color: #313244; border-color: #89b4fa; color: #89b4fa; }
+        QPushButton#toolbarBtn:pressed { background-color: #11111b; }
+
+        /* Add-prim grid buttons */
+        QPushButton#addPrimBtn {
+            background-color: #1e1e2e;
+            border: 1px solid #313244;
+            border-radius: 4px;
+            padding: 4px 2px;
+            font-size: 10px;
+        }
+        QPushButton#addPrimBtn:hover { background-color: #313244; border-color: #a6e3a1; color: #a6e3a1; }
+
+        /* ── Checkable buttons (gizmo mode/axis) ── */
+        QPushButton:checked {
+            background-color: #89b4fa;
+            color: #1e1e2e;
+            border-color: #89b4fa;
+            font-weight: 700;
+        }
+
+        /* ── Checkboxes ── */
+        QCheckBox { spacing: 6px; }
+        QCheckBox::indicator {
+            width: 16px; height: 16px;
+            border-radius: 3px;
+            border: 1px solid #45475a;
+            background: #11111b;
+        }
+        QCheckBox::indicator:checked { background-color: #89b4fa; border-color: #89b4fa; }
+
+        /* ── Sliders ── */
+        QSlider::groove:horizontal {
+            height: 6px;
+            background: #313244;
+            border-radius: 3px;
+        }
+        QSlider::handle:horizontal {
+            width: 14px; height: 14px;
+            margin: -4px 0;
+            background: #89b4fa;
+            border-radius: 7px;
+        }
+        QSlider::handle:horizontal:hover { background: #b4d0fb; }
+
+        /* ── Tool buttons (section toggles) ── */
+        QToolButton {
+            background-color: #1e1e2e;
+            border: 1px solid #313244;
+            border-radius: 4px;
+            padding: 3px 6px;
+            color: #a6adc8;
+            font-size: 10px;
+        }
+        QToolButton:checked { background-color: #313244; color: #89b4fa; border-color: #89b4fa; }
+        QToolButton:hover { background-color: #313244; }
+
+        /* ── Labels ── */
+        QLabel { color: #bac2de; }
+
+        /* ── Tabs ── */
+        QTabWidget::pane { border: 1px solid #313244; }
+        QTabBar::tab {
+            background: #1e1e2e;
+            border: 1px solid #313244;
+            padding: 5px 10px;
+            margin-right: 2px;
+            border-top-left-radius: 4px;
+            border-top-right-radius: 4px;
+            color: #a6adc8;
+        }
+        QTabBar::tab:selected { background: #313244; color: #cdd6f4; }
+
+        /* ── Scrollbar ── */
+        QScrollBar:vertical {
+            width: 8px;
+            background: #1a1d23;
+            border: none;
+        }
+        QScrollBar::handle:vertical {
+            background: #45475a;
+            border-radius: 4px;
+            min-height: 20px;
+        }
+        QScrollBar::handle:vertical:hover { background: #585b70; }
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+        """)
 
     def _build_dashboard_bottom_panel(self) -> QWidget:
         tabs = QTabWidget()
@@ -3904,8 +4197,8 @@ class AnalyticViewportPanel(QWidget):
 
     def _tool_read_ama_scene_scales(self, ama_path: str) -> tuple[dict | None, float | None, float | None]:
         try:
-            import zipfile
             import json
+            import zipfile
         except Exception:
             return None, None, None
 
@@ -4017,9 +4310,9 @@ class AnalyticViewportPanel(QWidget):
     def _on_tool_run_pr(self) -> None:
         # Run in a background thread; then load AMA in the UI thread.
         try:
-            import threading
-            import tempfile
             import base64
+            import tempfile
+            import threading
         except Exception:
             return
 
@@ -4069,7 +4362,11 @@ class AnalyticViewportPanel(QWidget):
                     elif isinstance(obj, dict) and isinstance(obj.get("ama_data"), str):
                         ama_bytes = base64.b64decode(obj.get("ama_data"))
                 else:
-                    from adaptivecad.pr import PRFieldConfig, relax_phase_field, export_phase_field_as_ama
+                    from adaptivecad.pr import (
+                        PRFieldConfig,
+                        export_phase_field_as_ama,
+                        relax_phase_field,
+                    )
 
                     cfg = PRFieldConfig(
                         size=int(payload["size"]),
@@ -4149,9 +4446,9 @@ class AnalyticViewportPanel(QWidget):
 
     def _on_tool_run_blackholes(self) -> None:
         try:
-            import threading
-            import tempfile
             import base64
+            import tempfile
+            import threading
         except Exception:
             return
 
@@ -4199,11 +4496,12 @@ class AnalyticViewportPanel(QWidget):
             if ama_bytes is None:
                 try:
                     # Local generation without server: use the same logic as generate_binary_blackholes_ama.py
-                    import zipfile
-                    import json
-                    import numpy as np
                     import hashlib
+                    import json
+                    import zipfile
                     from datetime import datetime, timezone
+
+                    import numpy as np
 
                     # Build field
                     xs = np.linspace(-1.0, 1.0, size, dtype=np.float32)
@@ -4396,8 +4694,8 @@ class AnalyticViewportPanel(QWidget):
         
         Returns True if a mesh was loaded, False otherwise.
         """
-        import zipfile
         import tempfile
+        import zipfile
         
         mesh_ref = None
         if isinstance(scene_obj, dict):
@@ -4700,11 +4998,12 @@ class AnalyticViewportPanel(QWidget):
             field_ref = key
 
         try:
-            import numpy as np
-            import trimesh  # type: ignore
-            from io import BytesIO
             import tempfile
             import zipfile
+            from io import BytesIO
+
+            import numpy as np
+            import trimesh  # type: ignore
         except Exception:
             return
 
@@ -6185,8 +6484,74 @@ class AnalyticViewportPanel(QWidget):
         spin_scl.valueChanged.connect(_upd_scl)
         fg.addRow("Angle Snap", spin_ang)
         fg.addRow("Scale Snap", spin_scl)
+        spin_mv = QDoubleSpinBox(); spin_mv.setRange(0.0,10.0); spin_mv.setDecimals(3); spin_mv.setSingleStep(0.05); spin_mv.setValue(self._snap_move_step)
+        def _upd_mv(_v): self._snap_move_step = float(spin_mv.value())
+        spin_mv.valueChanged.connect(_upd_mv)
+        fg.addRow("Move Snap", spin_mv)
         side.addWidget(gb_gizmo)
         self._register_section("gizmo", "Gizmo", gb_gizmo)
+
+        # --- SDF Modifiers ---
+        gb_mod = QGroupBox("Modifiers"); fm = QFormLayout(); gb_mod.setLayout(fm)
+        # Shell
+        sp_shell = QDoubleSpinBox(); sp_shell.setRange(0.0, 5.0); sp_shell.setDecimals(3); sp_shell.setSingleStep(0.01); sp_shell.setValue(0.0)
+        sp_shell.setToolTip("Hollow shell thickness (0 = solid)")
+        fm.addRow("Shell", sp_shell)
+        # Round
+        sp_round = QDoubleSpinBox(); sp_round.setRange(0.0, 5.0); sp_round.setDecimals(3); sp_round.setSingleStep(0.01); sp_round.setValue(0.0)
+        sp_round.setToolTip("Round/offset the surface outward")
+        fm.addRow("Round", sp_round)
+        # Twist
+        sp_twist = QDoubleSpinBox(); sp_twist.setRange(-20.0, 20.0); sp_twist.setDecimals(2); sp_twist.setSingleStep(0.1); sp_twist.setValue(0.0)
+        sp_twist.setToolTip("Twist rate around Y axis (radians/unit)")
+        fm.addRow("Twist", sp_twist)
+        # Taper
+        sp_taper = QDoubleSpinBox(); sp_taper.setRange(-5.0, 5.0); sp_taper.setDecimals(2); sp_taper.setSingleStep(0.05); sp_taper.setValue(0.0)
+        sp_taper.setToolTip("Taper along Y axis (scale XZ linearly)")
+        fm.addRow("Taper", sp_taper)
+        # Elongate
+        sp_elong = [None, None, None]
+        for ax_i, ax_lbl in enumerate(("Elong X", "Elong Y", "Elong Z")):
+            sp = QDoubleSpinBox(); sp.setRange(0.0, 10.0); sp.setDecimals(3); sp.setSingleStep(0.05); sp.setValue(0.0)
+            sp.setToolTip(f"Elongate half-extent along {ax_lbl[-1]} axis")
+            fm.addRow(ax_lbl, sp)
+            sp_elong[ax_i] = sp
+        # Mirror checkboxes
+        row_mir = QWidget(); hmir = QHBoxLayout(row_mir); hmir.setContentsMargins(0,0,0,0)
+        cb_mir_x = QCheckBox("X"); cb_mir_y = QCheckBox("Y"); cb_mir_z = QCheckBox("Z")
+        for cb in (cb_mir_x, cb_mir_y, cb_mir_z):
+            hmir.addWidget(cb)
+        fm.addRow("Mirror", row_mir)
+        # Store widget refs
+        self._mod_shell = sp_shell
+        self._mod_round = sp_round
+        self._mod_twist = sp_twist
+        self._mod_taper = sp_taper
+        self._mod_elong = sp_elong
+        self._mod_mir = (cb_mir_x, cb_mir_y, cb_mir_z)
+        # Connect signals → apply
+        def _apply_mod(_=None):
+            idx = getattr(self, '_current_sel', -1)
+            if idx < 0 or idx >= len(self.view.scene.prims):
+                return
+            pr = self.view.scene.prims[idx]
+            pr.shell = sp_shell.value()
+            pr.round = sp_round.value()
+            pr.twist = sp_twist.value()
+            pr.taper = sp_taper.value()
+            pr.elongate[:] = [sp_elong[0].value(), sp_elong[1].value(), sp_elong[2].value()]
+            pr.mirror[:] = [cb_mir_x.isChecked(), cb_mir_y.isChecked(), cb_mir_z.isChecked()]
+            try: self.view.scene._notify()
+            except Exception: pass
+            self.view.update()
+        for sp in (sp_shell, sp_round, sp_twist, sp_taper, sp_elong[0], sp_elong[1], sp_elong[2]):
+            sp.valueChanged.connect(_apply_mod)
+        for cb in (cb_mir_x, cb_mir_y, cb_mir_z):
+            cb.stateChanged.connect(_apply_mod)
+        gb_mod.setEnabled(False)
+        self._mod_group = gb_mod
+        side.addWidget(gb_mod)
+        self._register_section("modifiers", "Modifiers", gb_mod)
         
         # --- Sketch (2D) overlay ---
         gb_sk = QGroupBox("Sketch (2D)"); fs = QFormLayout(); gb_sk.setLayout(fs)
@@ -6409,15 +6774,66 @@ class AnalyticViewportPanel(QWidget):
         # Backing model
         self._sketch_doc = SketchDocument(units=Units.MM)
         
-        # --- Actions ---
-        gb_act = QGroupBox("Actions"); va = QVBoxLayout(); gb_act.setLayout(va)
-        btn_save = QPushButton("Save G-Buffers [G]"); btn_save.setEnabled(False)
-        btn_help = QPushButton("Print Shortcuts [H]"); btn_help.clicked.connect(lambda: log.info(self.view._shortcuts_help()))
-        btn_showcase = QPushButton("Showcase Primitives")
-        btn_clear_scene = QPushButton("Clear Scene")
+        # --- Environment ---
+        gb_env = QGroupBox("Environment"); fe = QFormLayout(); gb_env.setLayout(fe)
+        self._bg_sliders = []
+        for i, ch in enumerate(['R','G','B']):
+            s = QSlider(Qt.Orientation.Horizontal); s.setRange(0,255); s.setValue(int(self.view.scene.bg_color[i]*255)); s.valueChanged.connect(self._on_bg_changed)
+            fe.addRow(f"BG {ch}", s); self._bg_sliders.append(s)
+        self._env_sliders = []
+        for i, ch in enumerate(['X','Y','Z']):
+            s = QSlider(Qt.Orientation.Horizontal); s.setRange(-150,150); s.setValue(int(self.view.scene.env_light[i]*100)); s.valueChanged.connect(self._on_env_changed)
+            fe.addRow(f"Light {ch}", s); self._env_sliders.append(s)
+        side.addWidget(gb_env)
+        self._register_section("environment", "Environment", gb_env)
+        
+        # --- Quick Toolbar ---
+        gb_toolbar = QGroupBox("Toolbar")
+        _tb_layout = QVBoxLayout(); gb_toolbar.setLayout(_tb_layout)
+        # Row 1: Boolean / Operation buttons
+        _tb_ops_row = QHBoxLayout()
+        _btn_set_solid = QPushButton("\u2b24 Solid")
+        _btn_set_solid.setToolTip("Set selected prim to Solid (union)")
+        _btn_set_solid.clicked.connect(lambda: self._set_selected_op('solid'))
+        _btn_set_subtract = QPushButton("\u2296 Cut")
+        _btn_set_subtract.setToolTip("Set selected prim to Subtract (cut/boolean difference)")
+        _btn_set_subtract.clicked.connect(lambda: self._set_selected_op('subtract'))
+        _btn_set_intersect = QPushButton("\u2a53 Intersect")
+        _btn_set_intersect.setToolTip("Set selected prim to Intersect (boolean intersection)")
+        _btn_set_intersect.clicked.connect(lambda: self._set_selected_op('intersect'))
+        for b in (_btn_set_solid, _btn_set_subtract, _btn_set_intersect):
+            b.setObjectName("toolbarBtn")
+            _tb_ops_row.addWidget(b)
+        _tb_layout.addLayout(_tb_ops_row)
+        # Row 2: Common actions
+        _tb_act_row = QHBoxLayout()
+        _btn_tb_dup = QPushButton("\u2398 Duplicate")
+        _btn_tb_dup.setToolTip("Duplicate selected primitive")
+        _btn_tb_dup.clicked.connect(self._duplicate_selected)
+        _btn_tb_del = QPushButton("\u2716 Delete")
+        _btn_tb_del.setToolTip("Delete selected primitive")
+        _btn_tb_del.clicked.connect(self._delete_selected)
+        _btn_tb_center = QPushButton("\u25ce Center")
+        _btn_tb_center.setToolTip("Center camera on selected primitive")
+        _btn_tb_center.clicked.connect(self._center_on_selected)
+        _btn_tb_cam = QPushButton("\u21ba Reset Cam")
+        _btn_tb_cam.setToolTip("Reset camera to default position")
+        _btn_tb_cam.clicked.connect(self._reset_camera)
+        for b in (_btn_tb_dup, _btn_tb_del, _btn_tb_center, _btn_tb_cam):
+            b.setObjectName("toolbarBtn")
+            _tb_act_row.addWidget(b)
+        _tb_layout.addLayout(_tb_act_row)
+        # Row 3: Export / Showcase / Clear
+        _tb_misc_row = QHBoxLayout()
+        btn_export = QPushButton("\U0001f4be Export JSON")
+        btn_export.setToolTip("Export scene to JSON file")
+        btn_export.clicked.connect(self._export_scene_json)
+        btn_showcase = QPushButton("\u2728 Showcase")
+        btn_showcase.setToolTip("Add a showcase set of primitives")
+        btn_clear_scene = QPushButton("\U0001f5d1 Clear All")
+        btn_clear_scene.setToolTip("Remove all primitives from the scene")
         def _do_showcase():
             try:
-                # Add a small curated set if budget allows
                 if len(self.view.scene.prims) < MAX_PRIMS - 6:
                     self.view.scene.add(Prim(KIND_SPHERE, [0.7,0,0,0], beta=0.08, color=(0.95,0.45,0.35)))
                     self.view.scene.add(Prim(KIND_TORUS, [1.0,0.22,0,0], beta=0.03, color=(0.6,0.85,0.5)))
@@ -6425,7 +6841,6 @@ class AnalyticViewportPanel(QWidget):
                     self.view.scene.add(Prim(KIND_SUPERELLIPSOID, [1.1,3.5,0,0], beta=0.0, color=(0.95,0.9,0.85)))
                     self.view.scene.add(Prim(KIND_GYROID, [2.2,0.0,0.035,0], beta=0.0, color=(0.65,0.9,0.3)))
                     self.view.scene.add(Prim(KIND_TREFOIL, [0.8,0.08,96,0], beta=0.0, color=(0.95,0.6,0.25)))
-                    # Offset for variety
                     try:
                         for i, pr in enumerate(self.view.scene.prims[-6:]):
                             pr.xform.M[:3,3] += np.array([ (i%3-1)*1.6, (i//3-0.5)*1.4, 0.0 ], np.float32)
@@ -6448,63 +6863,47 @@ class AnalyticViewportPanel(QWidget):
                 pass
         btn_showcase.clicked.connect(_do_showcase)
         btn_clear_scene.clicked.connect(_do_clear_scene)
-        # keep references so the wheel can trigger them
         self._btn_showcase = btn_showcase
         self._btn_clear_scene = btn_clear_scene
-        va.addWidget(btn_save); va.addWidget(btn_help); va.addWidget(btn_showcase); va.addWidget(btn_clear_scene); side.addWidget(gb_act)
-        self._register_section("actions", "Actions", gb_act)
-        
-        # --- Environment ---
-        gb_env = QGroupBox("Environment"); fe = QFormLayout(); gb_env.setLayout(fe)
-        self._bg_sliders = []
-        for i, ch in enumerate(['R','G','B']):
-            s = QSlider(Qt.Orientation.Horizontal); s.setRange(0,255); s.setValue(int(self.view.scene.bg_color[i]*255)); s.valueChanged.connect(self._on_bg_changed)
-            fe.addRow(f"BG {ch}", s); self._bg_sliders.append(s)
-        self._env_sliders = []
-        for i, ch in enumerate(['X','Y','Z']):
-            s = QSlider(Qt.Orientation.Horizontal); s.setRange(-150,150); s.setValue(int(self.view.scene.env_light[i]*100)); s.valueChanged.connect(self._on_env_changed)
-            fe.addRow(f"Light {ch}", s); self._env_sliders.append(s)
-        side.addWidget(gb_env)
-        self._register_section("environment", "Environment", gb_env)
-        
+        for b in (btn_export, btn_showcase, btn_clear_scene):
+            b.setObjectName("toolbarBtn")
+            _tb_misc_row.addWidget(b)
+        _tb_layout.addLayout(_tb_misc_row)
+        side.addWidget(gb_toolbar)
+        self._register_section("toolbar", "Toolbar", gb_toolbar)
+
         # --- Primitives + Editing ---
         gb_prims = QGroupBox("Primitives"); vp = QVBoxLayout(); gb_prims.setLayout(vp)
         self._prim_list_label = QLabel("(0)")
         self._prim_buttons_box = QVBoxLayout()
-        btn_add_sphere = QPushButton("Add Sphere"); btn_add_sphere.clicked.connect(lambda: self._add_prim('sphere'))
-        btn_add_box = QPushButton("Add Box"); btn_add_box.clicked.connect(lambda: self._add_prim('box'))
-        btn_add_capsule = QPushButton("Add Capsule"); btn_add_capsule.clicked.connect(lambda: self._add_prim('capsule'))
-        btn_add_torus = QPushButton("Add Torus"); btn_add_torus.clicked.connect(lambda: self._add_prim('torus'))
-        btn_add_mobius = QPushButton("Add Mobius"); btn_add_mobius.clicked.connect(lambda: self._add_prim('mobius'))
-        btn_add_superell = QPushButton("Add Superellipsoid"); btn_add_superell.clicked.connect(lambda: self._add_prim('superellipsoid'))
-        btn_add_qc = QPushButton("Add QuasiCrystal"); btn_add_qc.clicked.connect(lambda: self._add_prim('quasicrystal'))
-        btn_add_torus4d = QPushButton("Add 4D Torus"); btn_add_torus4d.clicked.connect(lambda: self._add_prim('torus4d'))
-        btn_add_mandelbulb = QPushButton("Add Mandelbulb"); btn_add_mandelbulb.clicked.connect(lambda: self._add_prim('mandelbulb'))
-        btn_add_klein = QPushButton("Add Klein Bottle"); btn_add_klein.clicked.connect(lambda: self._add_prim('klein'))
-        btn_add_menger = QPushButton("Add Menger Sponge"); btn_add_menger.clicked.connect(lambda: self._add_prim('menger'))
-        btn_add_hyperbolic = QPushButton("Add Hyperbolic Tiling"); btn_add_hyperbolic.clicked.connect(lambda: self._add_prim('hyperbolic'))
-        btn_add_gyroid = QPushButton("Add Gyroid"); btn_add_gyroid.clicked.connect(lambda: self._add_prim('gyroid'))
-        btn_add_trefoil = QPushButton("Add Trefoil Knot"); btn_add_trefoil.clicked.connect(lambda: self._add_prim('trefoil'))
-        btn_del_last = QPushButton("Delete Last"); btn_del_last.clicked.connect(self._del_last)
-        btn_dup_sel = QPushButton("Duplicate Selected"); btn_dup_sel.clicked.connect(self._duplicate_selected)
-        btn_center_sel = QPushButton("Center On Selected"); btn_center_sel.clicked.connect(self._center_on_selected)
-        btn_reset_cam = QPushButton("Reset Camera"); btn_reset_cam.clicked.connect(self._reset_camera)
-        btn_export = QPushButton("Export Scene JSON"); btn_export.clicked.connect(self._export_scene_json)
-        for b in (self._prim_list_label, btn_add_sphere, btn_add_box, btn_add_capsule, btn_add_torus, btn_add_mobius, btn_add_superell, btn_add_qc, btn_add_torus4d, btn_add_mandelbulb, btn_add_klein, btn_add_menger, btn_add_hyperbolic, btn_add_gyroid, btn_add_trefoil, btn_del_last):
-            vp.addWidget(b)
-        for b in (btn_dup_sel, btn_center_sel, btn_reset_cam, btn_export):
-            vp.addWidget(b)
+        # Add-prim buttons in a compact grid
+        _add_grid = QGridLayout(); _add_grid.setSpacing(3)
+        _prim_defs = [
+            ("Sphere", 'sphere'), ("Box", 'box'), ("Capsule", 'capsule'),
+            ("Torus", 'torus'), ("Mobius", 'mobius'), ("Superellipsoid", 'superellipsoid'),
+            ("QuasiCrystal", 'quasicrystal'), ("4D Torus", 'torus4d'), ("Mandelbulb", 'mandelbulb'),
+            ("Klein Bottle", 'klein'), ("Menger", 'menger'), ("Hyperbolic", 'hyperbolic'),
+            ("Gyroid", 'gyroid'), ("Trefoil Knot", 'trefoil'),
+        ]
+        for _pi, (_plbl, _pkind) in enumerate(_prim_defs):
+            _pb = QPushButton(_plbl)
+            _pb.setObjectName("addPrimBtn")
+            _pb.clicked.connect(lambda checked=False, k=_pkind: self._add_prim(k))
+            _add_grid.addWidget(_pb, _pi // 3, _pi % 3)
+        vp.addWidget(self._prim_list_label)
+        vp.addLayout(_add_grid)
         vb_holder = QWidget(); vb_holder.setLayout(self._prim_buttons_box); vp.addWidget(vb_holder)
         # Edit group
         self._edit_group = QGroupBox("Edit Selected"); fe2 = QFormLayout(); self._edit_group.setLayout(fe2)
-        from PySide6.QtWidgets import QComboBox as _QCB2, QColorDialog
+        from PySide6.QtWidgets import QColorDialog
+        from PySide6.QtWidgets import QComboBox as _QCB2
         def dspin(r=(-10,10), step=0.01, val=0.0):
             sp = QDoubleSpinBox(); sp.setRange(r[0], r[1]); sp.setSingleStep(step); sp.setDecimals(4); sp.setValue(val); return sp
         self._sp_pos = [dspin() for _ in range(3)]
         self._sp_param = [dspin((0,10),0.01,0.5) for _ in range(2)]
         self._sp_beta = dspin((-1,1),0.01,0.0)
         self._btn_color = QPushButton("Color...")
-        self._op_box = _QCB2(); self._op_box.addItems(["solid","subtract"])
+        self._op_box = _QCB2(); self._op_box.addItems(["solid","subtract","intersect"])
         fe2.addRow("Pos X/Y/Z", self._make_row(self._sp_pos))
         fe2.addRow("Param A/B", self._make_row(self._sp_param))
         fe2.addRow("Beta", self._sp_beta)
@@ -6578,7 +6977,7 @@ class AnalyticViewportPanel(QWidget):
         ff.addRow("Orbit Shell R", self._fractal_shell_spin)
         ff.addRow("NI Palette Scale", self._fractal_ni_spin)
         side.addWidget(gb_fractal)
-        self._register_section("fractal_color", "Fractal Color", gb_fractal)
+        self._register_section("fractal_color", "Fractal Color", gb_fractal, default_visible=False)
         self._sync_fractal_controls()
 
         # --- Mandelbulb Mesh Export ---
@@ -6672,7 +7071,7 @@ class AnalyticViewportPanel(QWidget):
         fb_mb.addRow(self._make_row([self._mb_reload_btn, self._mb_clear_overlay_btn]))
 
         side.addWidget(gb_mb)
-        self._register_section("mandelbulb_export", "Mandelbulb Export", gb_mb, default_visible=True)
+        self._register_section("mandelbulb_export", "Mandelbulb Export", gb_mb, default_visible=False)
         
         # --- Tesseract (4D hypercube) ---
         gb_tess = QGroupBox("Tesseract (4D Hypercube)"); ft = QFormLayout(); gb_tess.setLayout(ft)
@@ -6686,8 +7085,8 @@ class AnalyticViewportPanel(QWidget):
         # 4D rotation angles
         def r4spin():
             s = QDoubleSpinBox(); s.setRange(-360.0, 360.0); s.setDecimals(2); s.setSingleStep(1.0); s.setValue(0.0); return s
-        self._tess_ang_xy = r4spin(); self._tess_ang_xz = r4spin(); self._tess_ang_xw = r4spin();
-        self._tess_ang_yz = r4spin(); self._tess_ang_yw = r4spin(); self._tess_ang_zw = r4spin();
+        self._tess_ang_xy = r4spin(); self._tess_ang_xz = r4spin(); self._tess_ang_xw = r4spin()
+        self._tess_ang_yz = r4spin(); self._tess_ang_yw = r4spin(); self._tess_ang_zw = r4spin()
         self._tess_autospin = QCheckBox("Auto-Spin"); self._tess_autospin.setChecked(True)
         self._tess_speed = QDoubleSpinBox(); self._tess_speed.setRange(0.0, 360.0); self._tess_speed.setDecimals(2); self._tess_speed.setSingleStep(5.0); self._tess_speed.setValue(30.0)
         btn_tess = QPushButton("Add Tesseract")
@@ -6707,7 +7106,7 @@ class AnalyticViewportPanel(QWidget):
         ft.addRow("Spin", row_spin)
         ft.addRow(btn_tess)
         side.addWidget(gb_tess)
-        self._register_section("tesseract", "Tesseract", gb_tess)
+        self._register_section("tesseract", "Tesseract", gb_tess, default_visible=False)
         
         # rigs & timer
         self._rigs = []
@@ -6729,7 +7128,7 @@ class AnalyticViewportPanel(QWidget):
         fs.addRow(row_scale_btns)
         fs.addRow(self._scale_status)
         side.addWidget(gb_scale)
-        self._register_section("scale", "Scale Journey", gb_scale)
+        self._register_section("scale", "Scale Journey", gb_scale, default_visible=False)
 
         
         # --- Molecules ---
@@ -6748,7 +7147,7 @@ class AnalyticViewportPanel(QWidget):
         fmol.addRow("Spin", row_spinmol)
         fmol.addRow(btn_imp_xyz)
         side.addWidget(gb_mol)
-        self._register_section("molecules", "Molecules", gb_mol)
+        self._register_section("molecules", "Molecules", gb_mol, default_visible=False)
         
         # finalize
         side.addStretch(1)
@@ -7310,6 +7709,29 @@ class AnalyticViewportPanel(QWidget):
             self.view.scene.remove_index(len(self.view.scene.prims)-1)
             self._refresh_prim_label(); self.view.update()
 
+    def _delete_selected(self):
+        if not (0 <= self._current_sel < len(self.view.scene.prims)):
+            return
+        try:
+            self.view.scene.remove_index(self._current_sel)
+            self._current_sel = -1
+            self.view.selected_index = -1
+            self._edit_group.setEnabled(False)
+            self._refresh_prim_label(); self.view.update()
+        except Exception as e:
+            log.debug(f"delete selected failed: {e}")
+
+    def _set_selected_op(self, op: str):
+        if not (0 <= self._current_sel < len(self.view.scene.prims)):
+            return
+        pr = self.view.scene.prims[self._current_sel]
+        pr.op = op
+        idx = {'solid': 0, 'subtract': 1, 'intersect': 2}.get(op, 0)
+        self._op_box.blockSignals(True); self._op_box.setCurrentIndex(idx); self._op_box.blockSignals(False)
+        try: self.view.scene._notify()
+        except Exception: pass
+        self.view.update()
+
     def _duplicate_selected(self):
         if not (0 <= self._current_sel < len(self.view.scene.prims)):
             return
@@ -7423,7 +7845,9 @@ class AnalyticViewportPanel(QWidget):
 
     def _select_prim(self, idx:int):
         if not (0 <= idx < len(self.view.scene.prims)):
-            self._current_sel = -1; self._edit_group.setEnabled(False);
+            self._current_sel = -1; self._edit_group.setEnabled(False)
+            if hasattr(self, '_mod_group'):
+                self._mod_group.setEnabled(False)
             self._update_mandelbulb_export_ui(None)
             return
         self._current_sel = idx
@@ -7441,7 +7865,8 @@ class AnalyticViewportPanel(QWidget):
         self._sp_param[0].blockSignals(True); self._sp_param[0].setValue(float(pr.params[0])); self._sp_param[0].blockSignals(False)
         self._sp_param[1].blockSignals(True); self._sp_param[1].setValue(float(pr.params[1] if pr.kind!=KIND_SPHERE else 0.0)); self._sp_param[1].blockSignals(False)
         self._sp_beta.blockSignals(True); self._sp_beta.setValue(pr.beta); self._sp_beta.blockSignals(False)
-        self._op_box.blockSignals(True); self._op_box.setCurrentIndex(0 if pr.op=='solid' else 1); self._op_box.blockSignals(False)
+        _op_idx = {'solid': 0, 'subtract': 1, 'intersect': 2}.get(pr.op, 0)
+        self._op_box.blockSignals(True); self._op_box.setCurrentIndex(_op_idx); self._op_box.blockSignals(False)
         self._current_color = tuple(pr.color[:3])
         # rotation / scale sync
         if hasattr(pr, 'euler'):
@@ -7496,6 +7921,28 @@ class AnalyticViewportPanel(QWidget):
         except Exception:
             pass
 
+        # Populate modifier spinboxes
+        if hasattr(self, '_mod_group'):
+            self._mod_group.setEnabled(True)
+            for w in (self._mod_shell, self._mod_round, self._mod_twist, self._mod_taper):
+                w.blockSignals(True)
+            self._mod_shell.setValue(float(getattr(pr, 'shell', 0.0)))
+            self._mod_round.setValue(float(getattr(pr, 'round', 0.0)))
+            self._mod_twist.setValue(float(getattr(pr, 'twist', 0.0)))
+            self._mod_taper.setValue(float(getattr(pr, 'taper', 0.0)))
+            for w in (self._mod_shell, self._mod_round, self._mod_twist, self._mod_taper):
+                w.blockSignals(False)
+            elong = getattr(pr, 'elongate', [0, 0, 0])
+            for i in range(3):
+                self._mod_elong[i].blockSignals(True)
+                self._mod_elong[i].setValue(float(elong[i]))
+                self._mod_elong[i].blockSignals(False)
+            mir = getattr(pr, 'mirror', [False, False, False])
+            for i in range(3):
+                self._mod_mir[i].blockSignals(True)
+                self._mod_mir[i].setChecked(bool(mir[i]))
+                self._mod_mir[i].blockSignals(False)
+
         self._update_mandelbulb_export_ui(pr)
 
     def _apply_edit(self):
@@ -7509,7 +7956,7 @@ class AnalyticViewportPanel(QWidget):
         if pr.kind != KIND_SPHERE:
             pr.params[1] = self._sp_param[1].value()
         pr.beta = self._sp_beta.value()
-        pr.op = 'solid' if self._op_box.currentIndex()==0 else 'subtract'
+        pr.op = ['solid', 'subtract', 'intersect'][min(self._op_box.currentIndex(), 2)]
         pr.color[:3] = np.array(self._current_color[:3])
         # translation driven by move spinners
         if hasattr(self, '_sp_move'):
@@ -7765,10 +8212,13 @@ def preview_primitive(panel):
             return
         if not (0 <= getattr(panel, '_current_sel', -1) < len(panel.view.scene.prims)):
             return
-        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel
-        from PySide6.QtGui import QImage, QPixmap
-        from adaptivecad.aacore.sdf import Scene as _Scene, Prim as _Prim, mandelbulb_color_cpu, KIND_MANDELBULB
         import numpy as _np
+        from PySide6.QtGui import QImage, QPixmap
+        from PySide6.QtWidgets import QDialog, QLabel, QVBoxLayout
+
+        from adaptivecad.aacore.sdf import KIND_MANDELBULB, mandelbulb_color_cpu
+        from adaptivecad.aacore.sdf import Prim as _Prim
+        from adaptivecad.aacore.sdf import Scene as _Scene
 
         pr = panel.view.scene.prims[panel._current_sel]
         tmp_scene = _Scene()
@@ -7814,7 +8264,7 @@ def preview_primitive(panel):
                     nx = tmp_scene.sdf(p_hit + _np.array([delta,0,0]))[0] - tmp_scene.sdf(p_hit - _np.array([delta,0,0]))[0]
                     ny = tmp_scene.sdf(p_hit + _np.array([0,delta,0]))[0] - tmp_scene.sdf(p_hit - _np.array([0,delta,0]))[0]
                     nz = tmp_scene.sdf(p_hit + _np.array([0,0,delta]))[0] - tmp_scene.sdf(p_hit - _np.array([0,0,delta]))[0]
-                    n = _np.array([nx, ny, nz], dtype=_np.float64);
+                    n = _np.array([nx, ny, nz], dtype=_np.float64)
                     n = n / max(1e-9, _np.linalg.norm(n))
                     if pr.kind == KIND_MANDELBULB:
                         Mi = _np.linalg.inv(pr.xform.M)

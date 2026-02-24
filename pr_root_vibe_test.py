@@ -32,7 +32,6 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
-
 # Allow running without installing package
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "."))
 if _REPO_ROOT not in sys.path:
@@ -152,10 +151,10 @@ def _build_system(
     unit_mm: float,
     clamp_layers: int,
 ):
+    from adaptivecad.sim.mass_spring import build_lattice_mk
     from adaptivecad.sim.materials import PLA
     from adaptivecad.sim.sdf_io import load_analytic_scene_list_from_ama
     from adaptivecad.sim.sdf_voxelize import voxelize_scene
-    from adaptivecad.sim.mass_spring import build_lattice_mk
 
     scene_list = load_analytic_scene_list_from_ama(ama_path)
     scene = _build_scene(scene_list)
