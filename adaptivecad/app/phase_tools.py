@@ -15,7 +15,7 @@ import numpy as np
 
 from adaptivecad.aacore.math import Xform
 from adaptivecad.aacore.sdf import KIND_CAPSULE, MAX_PRIMS, Prim
-from adaptivecad.pi.kernel import PiAParams, make_adaptive_circle
+from adaptivecad.pi.kernel import PiAParams, make_adaptive_circle, make_polar_adaptive_circle
 from adaptivecad.torus_phase import TorusPath, wrap_to_pi
 
 
@@ -155,6 +155,61 @@ def add_polyline_tube(
     return added
 
 
+def build_polyline_tube_prims(
+    points_xyz: np.ndarray,
+    *,
+    tube_radius: float = 0.05,
+    color: tuple[float, float, float] = (0.9, 0.6, 0.2),
+    closed: bool = True,
+    available: int | None = None,
+    display_name: str | None = None,
+) -> list[Prim]:
+    """Build capsule primitives for a polyline tube without adding them to a scene."""
+
+    points = np.asarray(points_xyz, dtype=float)
+    if points.ndim != 2 or points.shape[1] != 3:
+        raise ValueError("points_xyz must have shape (N,3)")
+    if points.shape[0] < 2:
+        return []
+
+    segment_budget = int(MAX_PRIMS if available is None else max(0, available))
+    if segment_budget <= 0:
+        return []
+
+    segments = points.shape[0] if closed else (points.shape[0] - 1)
+    target_segments = min(segment_budget, segments)
+    target_points = target_segments + (0 if closed else 1)
+    if closed:
+        target_points = target_segments
+
+    if closed:
+        pts = _resample_polyline(points, max(2, target_segments))
+    else:
+        pts = _resample_polyline(points, max(2, target_points))
+
+    prims: list[Prim] = []
+    if closed:
+        n = pts.shape[0]
+        iterator = ((pts[i], pts[(i + 1) % n]) for i in range(n))
+    else:
+        iterator = ((pts[i], pts[i + 1]) for i in range(pts.shape[0] - 1))
+
+    for seg_index, (p0, p1) in enumerate(iterator):
+        M, h = _capsule_xform_between(p0, p1)
+        if h <= 1e-8:
+            continue
+        pr = Prim(KIND_CAPSULE, [float(tube_radius), float(h), 0.0, 0.0], xform=Xform())
+        pr.color = np.asarray(color, dtype=np.float64)
+        pr.xform.M = M
+        if display_name:
+            pr.display_name = f"{display_name} {seg_index + 1}"
+        prims.append(pr)
+        if len(prims) >= segment_budget:
+            break
+
+    return prims
+
+
 def add_pi_a_adaptive_circle_demo(
     scene,
     *,
@@ -171,7 +226,124 @@ def add_pi_a_adaptive_circle_demo(
     params = params or PiAParams(beta=0.25, s0=1.0, clamp=0.35)
     pts2 = make_adaptive_circle(radius=radius, n=int(n), kappa=float(kappa), scale=float(scale), params=params)
     pts3 = np.column_stack([pts2[:, 0], pts2[:, 1], np.full((pts2.shape[0],), float(z))])
-    return add_polyline_tube(scene, pts3, tube_radius=tube_radius, color=(0.2, 0.8, 0.6), closed=True)
+    added = 0
+    for pr in build_polyline_tube_prims(
+        pts3,
+        tube_radius=tube_radius,
+        color=(0.2, 0.8, 0.6),
+        closed=True,
+        available=max(0, int(MAX_PRIMS) - int(len(getattr(scene, "prims", [])))),
+        display_name="πₐ Adaptive Circle",
+    ):
+        scene.add(pr)
+        added += 1
+    return added
+
+
+def build_pi_a_adaptive_circle_prims(
+    *,
+    radius: float = 1.0,
+    tube_radius: float = 0.05,
+    kappa: float = 1.0,
+    scale: float = 1.0,
+    params: PiAParams | None = None,
+    n: int = 42,
+    z: float = 0.0,
+    available: int | None = None,
+) -> list[Prim]:
+    """Build a πₐ adaptive circle as a list of capsule primitives."""
+
+    params = params or PiAParams(beta=0.25, s0=1.0, clamp=0.35)
+    pts2 = make_adaptive_circle(radius=radius, n=int(n), kappa=float(kappa), scale=float(scale), params=params)
+    pts3 = np.column_stack([pts2[:, 0], pts2[:, 1], np.full((pts2.shape[0],), float(z))])
+    return build_polyline_tube_prims(
+        pts3,
+        tube_radius=tube_radius,
+        color=(0.2, 0.8, 0.6),
+        closed=True,
+        available=available,
+        display_name="πₐ Adaptive Circle",
+    )
+
+
+def add_polar_pi_adaptive_circle_demo(
+    scene,
+    *,
+    radius: float = 1.0,
+    tube_radius: float = 0.05,
+    kappa: float = 0.45,
+    scale: float = 1.0,
+    params: PiAParams | None = None,
+    n: int = 72,
+    angular_amplitude: float = 0.28,
+    angular_frequency: int = 3,
+    phase: float = 0.0,
+    z: float = 0.0,
+) -> int:
+    """Create a warped adaptive-π tube where π varies with polar angle."""
+
+    params = params or PiAParams(beta=0.22, s0=1.0, clamp=0.35)
+    pts2 = make_polar_adaptive_circle(
+        radius=radius,
+        n=int(n),
+        kappa=float(kappa),
+        scale=float(scale),
+        params=params,
+        angular_amplitude=float(angular_amplitude),
+        angular_frequency=int(angular_frequency),
+        phase=float(phase),
+    )
+    pts3 = np.column_stack([pts2[:, 0], pts2[:, 1], np.full((pts2.shape[0],), float(z))])
+    added = 0
+    for pr in build_polyline_tube_prims(
+        pts3,
+        tube_radius=tube_radius,
+        color=(0.95, 0.42, 0.18),
+        closed=True,
+        available=max(0, int(MAX_PRIMS) - int(len(getattr(scene, "prims", [])))),
+        display_name="Polar πₐ Shape",
+    ):
+        scene.add(pr)
+        added += 1
+    return added
+
+
+def build_polar_pi_adaptive_circle_prims(
+    *,
+    radius: float = 1.0,
+    tube_radius: float = 0.05,
+    kappa: float = 0.45,
+    scale: float = 1.0,
+    params: PiAParams | None = None,
+    n: int = 72,
+    angular_amplitude: float = 0.28,
+    angular_frequency: int = 3,
+    phase: float = 0.0,
+    z: float = 0.0,
+    available: int | None = None,
+) -> list[Prim]:
+    """Build a polar adaptive-π tube as a list of capsule primitives."""
+
+    params = params or PiAParams(beta=0.22, s0=1.0, clamp=0.35)
+    pts2 = make_polar_adaptive_circle(
+        radius=radius,
+        n=int(n),
+        kappa=float(kappa),
+        scale=float(scale),
+        params=params,
+        angular_amplitude=float(angular_amplitude),
+        angular_frequency=int(angular_frequency),
+        phase=float(phase),
+    )
+    pts3 = np.column_stack([pts2[:, 0], pts2[:, 1], np.full((pts2.shape[0],), float(z))])
+    return build_polyline_tube_prims(
+        pts3,
+        tube_radius=tube_radius,
+        color=(0.95, 0.42, 0.18),
+        closed=True,
+        available=available,
+        display_name="Polar πₐ Shape",
+    )
 
 
 def add_torus_phase_path_demo(

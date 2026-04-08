@@ -25,7 +25,7 @@ uniform int  u_fractal_mode;       // 0 smooth escape, 1 orbit trap, 2 angular
 uniform float u_fractal_orbit_shell; // orbit trap shell radius in fractal space
 uniform float u_fractal_ni_scale;  // normalized iteration palette scale
 
-const int KIND_NONE=0, KIND_SPHERE=1, KIND_BOX=2, KIND_CAPSULE=3, KIND_TORUS=4, KIND_MOBIUS=5, KIND_SUPERELLIPSOID=6, KIND_QUASICRYSTAL=7, KIND_TORUS4D=8, KIND_MANDELBULB=9, KIND_KLEIN=10, KIND_MENGER=11, KIND_HYPERBOLIC=12, KIND_GYROID=13, KIND_TREFOIL=14, KIND_HELICOID=15, KIND_ORBITAL=16;
+const int KIND_NONE=0, KIND_SPHERE=1, KIND_BOX=2, KIND_CAPSULE=3, KIND_TORUS=4, KIND_MOBIUS=5, KIND_SUPERELLIPSOID=6, KIND_QUASICRYSTAL=7, KIND_TORUS4D=8, KIND_MANDELBULB=9, KIND_KLEIN=10, KIND_MENGER=11, KIND_HYPERBOLIC=12, KIND_GYROID=13, KIND_TREFOIL=14, KIND_HELICOID=15, KIND_ORBITAL=16, KIND_PI_BLOOM=18;
 const int OP_SOLID=0, OP_SUB=1, OP_INT=2;
 
 const float PI = 3.14159265359;
@@ -330,6 +330,34 @@ float sd_trefoil_knot(vec3 p, float scale, float tube, float samples){
     return best * scale - tube;
 }
 
+float sd_pi_bloom(vec3 p, float radius, float bloom, float petals, float crown){
+    float r = length(p);
+    float petalsN = max(2.0, floor(petals + 0.5));
+    float bloomRaw = max(0.0, bloom);
+    float crownRaw = crown;
+    float bloomGain = bloomRaw * max(0.0, 1.0 - 0.3 * bloomRaw * bloomRaw);
+    if(r < 1e-6){
+        float core = max(0.2, 1.0 - 0.35 * bloomGain + 0.25 * crownRaw);
+        return -radius * core;
+    }
+
+    float theta = acos(clamp(p.z / r, -1.0, 1.0));
+    float phi = atan(p.y, p.x);
+    float sinT = sin(theta);
+    float equator = sinT * sinT;
+    float petalBand = equator * (0.5 + 0.5 * equator);
+    float twistGate = sqrt(max(sinT, 0.0));
+
+    float petalWave = sin(petalsN * phi + PI * crownRaw * cos(theta));
+    float crownWave = cos((0.5 * petalsN + 1.0) * theta - 0.5 * phi);
+    float seamWave = sin((petalsN - 1.0) * phi + 2.0 * theta);
+
+    float local = 1.0 + bloomGain * petalBand * petalWave;
+    local += crownRaw * (0.55 * twistGate * crownWave + 0.25 * twistGate * seamWave + 0.2 * cos(PI * cos(theta)));
+    local = clamp(local, 0.2, 2.5);
+    return r - radius * local;
+}
+
 // Quasi-crystal value and conservative bound
 float qc_value(vec3 p, float scale){
     // 7 directions via Fibonacci sphere
@@ -568,6 +596,13 @@ float map_scene(vec3 pw, out vec3 outColor, out int outId){
             float iso = u_params[i].w;
             float thickness = u_beta[i];
             di = sd_hydrogenic_orbital(pl, n, l, m, iso, thickness);
+        }
+        else if(u_kind[i]==KIND_PI_BLOOM){
+            float radius = pia_scale(u_params[i].x, u_beta[i]);
+            float bloom = u_params[i].y;
+            float petals = u_params[i].z;
+            float crown = u_params[i].w;
+            di = sd_pi_bloom(pl, radius, bloom, petals, crown);
         }
         // --- Post-SDF modifiers ---
         // Round: shrink the iso-surface inward

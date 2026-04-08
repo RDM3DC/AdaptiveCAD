@@ -93,6 +93,7 @@ from adaptivecad.aacore.sdf import (
     KIND_MENGER,
     KIND_MOBIUS,
     KIND_ORBITAL,
+    KIND_PI_BLOOM,
     KIND_QUASICRYSTAL,
     KIND_SPHERE,
     KIND_SUPERELLIPSOID,
@@ -191,6 +192,20 @@ SHAPE_DEFINITIONS: Dict[str, ShapeDefinition] = {
             ShapeParam("turns", "Turns", 2.0, 0.5, 10.0, 0.5),
         ],
         color=(0.4, 0.6, 0.8),
+    ),
+    "pi_bloom": ShapeDefinition(
+        kind=KIND_PI_BLOOM,
+        name="Pi Bloom",
+        category=ShapeCategory.ADVANCED,
+        icon="🌺",
+        description="Adaptive-π bloom shell with equatorial petals and a twisted polar crown.",
+        params=[
+            ShapeParam("radius", "Radius", 0.9, 0.1, 4.0, 0.05),
+            ShapeParam("bloom", "Bloom", 0.32, 0.0, 0.95, 0.02, tooltip="Petal amplitude around the equator"),
+            ShapeParam("petals", "Petals", 7, 2, 16, 1, is_int=True, tooltip="Number of major bloom petals"),
+            ShapeParam("crown", "Crown", 0.24, 0.0, 0.8, 0.02, tooltip="Polar curl and crown twist strength"),
+        ],
+        color=(0.96, 0.42, 0.58),
     ),
     
     # Mathematical Shapes
@@ -743,6 +758,13 @@ def create_prim_from_definition(shape_key: str, params: dict):
             params.get("r_outer", 0.55),
             params.get("pitch", 0.35),
             params.get("turns", 2.0)
+        ]
+    elif shape_key == "pi_bloom":
+        prim_params = [
+            params.get("radius", 0.9),
+            params.get("bloom", 0.32),
+            params.get("petals", 7),
+            params.get("crown", 0.24),
         ]
     elif shape_key == "trefoil":
         prim_params = [params.get("scale", 0.3), params.get("tube", 0.05), 96, 0]

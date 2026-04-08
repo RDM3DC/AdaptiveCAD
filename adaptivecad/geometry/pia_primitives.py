@@ -3,6 +3,8 @@
 import math
 from typing import Any, Dict, List, Tuple
 
+from adaptivecad.pi.kernel import PiAParams, make_polar_adaptive_circle
+
 
 def pi_circle_points(
     radius: float, cx: float = 0.0, cy: float = 0.0, segments: int = 256
@@ -31,6 +33,90 @@ def make_pi_circle_profile(
         "metric": "pi_a",
         "closed": True,
         "points": pi_circle_points(radius, cx, cy, segments),
+    }
+
+
+def polar_pi_circle_points(
+    radius: float,
+    cx: float = 0.0,
+    cy: float = 0.0,
+    segments: int = 256,
+    *,
+    kappa: float = 0.0,
+    scale: float | None = None,
+    params: PiAParams | None = None,
+    angular_amplitude: float = 0.3,
+    angular_frequency: int = 3,
+    phase: float = 0.0,
+) -> List[Tuple[float, float]]:
+    """Sample a polar adaptive π circle into points for sketch/profile consumers."""
+
+    params = params or PiAParams()
+    pts = make_polar_adaptive_circle(
+        radius,
+        n=int(segments),
+        kappa=float(kappa),
+        scale=float(radius if scale is None else scale),
+        params=params,
+        angular_amplitude=float(angular_amplitude),
+        angular_frequency=int(angular_frequency),
+        phase=float(phase),
+    )
+    return [(float(cx + x), float(cy + y)) for x, y in pts]
+
+
+def make_polar_pi_circle_profile(
+    radius: float,
+    cx: float = 0.0,
+    cy: float = 0.0,
+    segments: int = 256,
+    *,
+    kappa: float = 0.0,
+    scale: float | None = None,
+    params: PiAParams | None = None,
+    angular_amplitude: float = 0.3,
+    angular_frequency: int = 3,
+    phase: float = 0.0,
+) -> Dict[str, Any]:
+    """Build a profile dict for a polar-adaptive π shape.
+
+    This is a first-class analytic profile rather than a generic circle tagged with
+    pi_a metadata, so downstream tools can distinguish a warped boundary from a
+    uniform metric circle.
+    """
+
+    params = params or PiAParams()
+    resolved_scale = float(radius if scale is None else scale)
+    return {
+        "type": "profile",
+        "family": "pi_a:polar_circle",
+        "params": {
+            "radius": radius,
+            "cx": cx,
+            "cy": cy,
+            "kappa": kappa,
+            "scale": resolved_scale,
+            "beta": params.beta,
+            "s0": params.s0,
+            "clamp": params.clamp,
+            "angular_amplitude": angular_amplitude,
+            "angular_frequency": angular_frequency,
+            "phase": phase,
+        },
+        "metric": "pi_a",
+        "closed": True,
+        "points": polar_pi_circle_points(
+            radius,
+            cx,
+            cy,
+            segments,
+            kappa=kappa,
+            scale=resolved_scale,
+            params=params,
+            angular_amplitude=angular_amplitude,
+            angular_frequency=angular_frequency,
+            phase=phase,
+        ),
     }
 
 

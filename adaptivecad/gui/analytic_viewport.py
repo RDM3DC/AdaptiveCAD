@@ -71,6 +71,7 @@ from adaptivecad.aacore.sdf import (
     KIND_MANDELBULB,
     KIND_MENGER,
     KIND_MOBIUS,
+    KIND_PI_BLOOM,
     KIND_QUASICRYSTAL,
     KIND_SPHERE,
     KIND_SUPERELLIPSOID,
@@ -3619,6 +3620,9 @@ class AnalyticViewportPanel(QWidget):
                         ToolSpec("Capsule", "prim:capsule"),
                         ToolSpec("Torus", "prim:torus"),
                         ToolSpec("Mobius", "prim:mobius"),
+                        ToolSpec("Pi Bloom", "prim:pi_bloom"),
+                        ToolSpec("πₐ Circle", "prim:pia_circle"),
+                        ToolSpec("Polar πₐ", "prim:polar_pia"),
                         ToolSpec("Superellipsoid", "prim:superellipsoid"),
                         ToolSpec("Quasicrystal", "prim:quasicrystal"),
                         ToolSpec("Mandelbulb", "prim:mandelbulb"),
@@ -6880,7 +6884,9 @@ class AnalyticViewportPanel(QWidget):
         _add_grid = QGridLayout(); _add_grid.setSpacing(3)
         _prim_defs = [
             ("Sphere", 'sphere'), ("Box", 'box'), ("Capsule", 'capsule'),
-            ("Torus", 'torus'), ("Mobius", 'mobius'), ("Superellipsoid", 'superellipsoid'),
+            ("Torus", 'torus'), ("Mobius", 'mobius'), ("Pi Bloom", 'pi_bloom'),
+            ("πₐ Circle", 'pia_circle'),
+            ("Polar πₐ", 'polar_pia'), ("Superellipsoid", 'superellipsoid'),
             ("QuasiCrystal", 'quasicrystal'), ("4D Torus", 'torus4d'), ("Mandelbulb", 'mandelbulb'),
             ("Klein Bottle", 'klein'), ("Menger", 'menger'), ("Hyperbolic", 'hyperbolic'),
             ("Gyroid", 'gyroid'), ("Trefoil Knot", 'trefoil'),
@@ -6892,6 +6898,34 @@ class AnalyticViewportPanel(QWidget):
             _add_grid.addWidget(_pb, _pi // 3, _pi % 3)
         vp.addWidget(self._prim_list_label)
         vp.addLayout(_add_grid)
+
+        gb_pi_bloom = QGroupBox("Pi Bloom Builder")
+        fb_bloom = QFormLayout()
+        gb_pi_bloom.setLayout(fb_bloom)
+        lbl_bloom_hint = QLabel("Tune before insertion. If a Pi Bloom is selected, these controls update it live.")
+        lbl_bloom_hint.setWordWrap(True)
+        fb_bloom.addRow(lbl_bloom_hint)
+
+        self._pi_bloom_radius = QDoubleSpinBox(); self._pi_bloom_radius.setRange(0.1, 4.0); self._pi_bloom_radius.setSingleStep(0.05); self._pi_bloom_radius.setDecimals(3); self._pi_bloom_radius.setValue(0.9)
+        self._pi_bloom_bloom = QDoubleSpinBox(); self._pi_bloom_bloom.setRange(0.0, 0.95); self._pi_bloom_bloom.setSingleStep(0.02); self._pi_bloom_bloom.setDecimals(3); self._pi_bloom_bloom.setValue(0.32)
+        self._pi_bloom_petals = QSpinBox(); self._pi_bloom_petals.setRange(2, 16); self._pi_bloom_petals.setValue(7)
+        self._pi_bloom_crown = QDoubleSpinBox(); self._pi_bloom_crown.setRange(0.0, 0.8); self._pi_bloom_crown.setSingleStep(0.02); self._pi_bloom_crown.setDecimals(3); self._pi_bloom_crown.setValue(0.24)
+
+        fb_bloom.addRow("Radius", self._pi_bloom_radius)
+        fb_bloom.addRow("Bloom", self._pi_bloom_bloom)
+        fb_bloom.addRow("Petals", self._pi_bloom_petals)
+        fb_bloom.addRow("Crown", self._pi_bloom_crown)
+
+        btn_add_pi_bloom = QPushButton("Add Pi Bloom")
+        btn_add_pi_bloom.clicked.connect(self._add_pi_bloom_from_builder)
+        fb_bloom.addRow(btn_add_pi_bloom)
+
+        self._pi_bloom_radius.valueChanged.connect(self._on_pi_bloom_builder_changed)
+        self._pi_bloom_bloom.valueChanged.connect(self._on_pi_bloom_builder_changed)
+        self._pi_bloom_petals.valueChanged.connect(self._on_pi_bloom_builder_changed)
+        self._pi_bloom_crown.valueChanged.connect(self._on_pi_bloom_builder_changed)
+
+        vp.addWidget(gb_pi_bloom)
         vb_holder = QWidget(); vb_holder.setLayout(self._prim_buttons_box); vp.addWidget(vb_holder)
         # Edit group
         self._edit_group = QGroupBox("Edit Selected"); fe2 = QFormLayout(); self._edit_group.setLayout(fe2)
@@ -7675,6 +7709,37 @@ class AnalyticViewportPanel(QWidget):
         elif kind=='mobius':
             # params: [R, width]
             self.view.scene.add(Prim(KIND_MOBIUS, [1.2, 0.25, 0, 0], beta=0.02, color=(0.7,0.5,0.9)))
+        elif kind=='pi_bloom':
+            self._add_pi_bloom_from_builder()
+            return
+        elif kind=='pia_circle':
+            from adaptivecad.app.phase_tools import build_pi_a_adaptive_circle_prims
+
+            available = MAX_PRIMS - len(self.view.scene.prims)
+            for pr in build_pi_a_adaptive_circle_prims(
+                radius=1.0,
+                tube_radius=0.05,
+                kappa=0.9,
+                scale=1.0,
+                n=42,
+                available=available,
+            ):
+                self.view.scene.add(pr)
+        elif kind=='polar_pia':
+            from adaptivecad.app.phase_tools import build_polar_pi_adaptive_circle_prims
+
+            available = MAX_PRIMS - len(self.view.scene.prims)
+            for pr in build_polar_pi_adaptive_circle_prims(
+                radius=1.0,
+                tube_radius=0.05,
+                kappa=0.45,
+                scale=1.0,
+                n=72,
+                angular_amplitude=0.28,
+                angular_frequency=3,
+                available=available,
+            ):
+                self.view.scene.add(pr)
         elif kind=='superellipsoid':
             # params: [radius, power]
             self.view.scene.add(Prim(KIND_SUPERELLIPSOID, [1.2, 4.0, 0, 0], beta=0.0, color=(0.95,0.9,0.85)))
@@ -7796,7 +7861,8 @@ class AnalyticViewportPanel(QWidget):
             w = it.widget()
             if w: w.deleteLater()
         for idx, pr in enumerate(self.view.scene.prims):
-            b = QPushButton(f"#{idx} {self._kind_name(pr.kind)}")
+            name = getattr(pr, "display_name", None) or self._kind_name(pr.kind)
+            b = QPushButton(f"#{idx} {name}")
             b.setCheckable(True)
             if idx == self._current_sel: b.setChecked(True)
             def make_cb(i):
@@ -7806,7 +7872,7 @@ class AnalyticViewportPanel(QWidget):
         self._prim_buttons_box.addStretch(1)
 
     def _kind_name(self, k):
-        return {KIND_SPHERE:"Sphere",KIND_BOX:"Box",KIND_CAPSULE:"Capsule",KIND_TORUS:"Torus", KIND_MOBIUS: "Mobius", KIND_SUPERELLIPSOID:"Superellipsoid", KIND_QUASICRYSTAL:"QuasiCrystal", KIND_TORUS4D:"4D Torus", KIND_MANDELBULB:"Mandelbulb", KIND_KLEIN:"Klein Bottle", KIND_MENGER:"Menger Sponge", KIND_HYPERBOLIC:"Hyperbolic Tiling", KIND_GYROID:"Gyroid", KIND_TREFOIL:"Trefoil Knot"}.get(k,str(k))
+        return {KIND_SPHERE:"Sphere",KIND_BOX:"Box",KIND_CAPSULE:"Capsule",KIND_TORUS:"Torus", KIND_MOBIUS: "Mobius", KIND_PI_BLOOM:"Pi Bloom", KIND_SUPERELLIPSOID:"Superellipsoid", KIND_QUASICRYSTAL:"QuasiCrystal", KIND_TORUS4D:"4D Torus", KIND_MANDELBULB:"Mandelbulb", KIND_KLEIN:"Klein Bottle", KIND_MENGER:"Menger Sponge", KIND_HYPERBOLIC:"Hyperbolic Tiling", KIND_GYROID:"Gyroid", KIND_TREFOIL:"Trefoil Knot"}.get(k,str(k))
 
     def _make_row(self, widgets):
         box = QWidget(); hl = QHBoxLayout(box); hl.setContentsMargins(0,0,0,0)
@@ -7840,6 +7906,80 @@ class AnalyticViewportPanel(QWidget):
                         top.setGeometry(new_x, new_y, fg.width(), fg.height())
                     except Exception:
                         pass
+        except Exception:
+            pass
+
+    def _pi_bloom_builder_values(self):
+        return (
+            float(self._pi_bloom_radius.value()),
+            float(self._pi_bloom_bloom.value()),
+            float(self._pi_bloom_petals.value()),
+            float(self._pi_bloom_crown.value()),
+        )
+
+    def _sync_pi_bloom_builder(self, radius: float, bloom: float, petals: float, crown: float):
+        widgets = (
+            (self._pi_bloom_radius, radius),
+            (self._pi_bloom_bloom, bloom),
+            (self._pi_bloom_petals, int(round(petals))),
+            (self._pi_bloom_crown, crown),
+        )
+        for widget, value in widgets:
+            widget.blockSignals(True)
+            widget.setValue(value)
+            widget.blockSignals(False)
+
+    def _sync_pi_bloom_builder_from_prim(self, pr):
+        if getattr(pr, 'kind', None) != KIND_PI_BLOOM:
+            return
+        params = np.asarray(getattr(pr, 'params', [0.9, 0.32, 7.0, 0.24]), dtype=float)
+        radius = float(params[0]) if params.size > 0 else 0.9
+        bloom = float(params[1]) if params.size > 1 else 0.32
+        petals = float(params[2]) if params.size > 2 else 7.0
+        crown = float(params[3]) if params.size > 3 else 0.24
+        self._sync_pi_bloom_builder(radius, bloom, petals, crown)
+
+    def _apply_pi_bloom_builder_to_selected(self):
+        if not (0 <= self._current_sel < len(self.view.scene.prims)):
+            return False
+        pr = self.view.scene.prims[self._current_sel]
+        if pr.kind != KIND_PI_BLOOM:
+            return False
+
+        radius, bloom, petals, crown = self._pi_bloom_builder_values()
+        pr.params[0] = radius
+        pr.params[1] = bloom
+        pr.params[2] = petals
+        pr.params[3] = crown
+
+        self._sp_param[0].blockSignals(True)
+        self._sp_param[0].setValue(radius)
+        self._sp_param[0].blockSignals(False)
+        self._sp_param[1].blockSignals(True)
+        self._sp_param[1].setValue(bloom)
+        self._sp_param[1].blockSignals(False)
+
+        try:
+            self.view.scene._notify()
+        except Exception:
+            pass
+        self._refresh_prim_label()
+        self.view.update()
+        return True
+
+    def _on_pi_bloom_builder_changed(self, _value=None):
+        self._apply_pi_bloom_builder_to_selected()
+
+    def _add_pi_bloom_from_builder(self):
+        if len(self.view.scene.prims) >= MAX_PRIMS:
+            print(f"[prims] Max {MAX_PRIMS} reached")
+            return
+
+        radius, bloom, petals, crown = self._pi_bloom_builder_values()
+        self.view.scene.add(Prim(KIND_PI_BLOOM, [radius, bloom, petals, crown], beta=0.04, color=(0.96,0.42,0.58)))
+        self._refresh_prim_label(); self.view.update()
+        try:
+            self._select_prim(len(self.view.scene.prims) - 1)
         except Exception:
             pass
 
@@ -7883,6 +8023,8 @@ class AnalyticViewportPanel(QWidget):
             except Exception:
                 pass
         self._edit_group.setEnabled(True)
+        if pr.kind == KIND_PI_BLOOM:
+            self._sync_pi_bloom_builder_from_prim(pr)
         # Update parameter tooltips / semantic hints
         try:
             kind_name = self._kind_name(pr.kind)
@@ -7894,6 +8036,8 @@ class AnalyticViewportPanel(QWidget):
                 a_tt = 'Major Radius'; b_tt = 'Minor Radius'
             elif kind_name == 'Mobius':
                 a_tt = 'Ring Radius R'; b_tt = 'Strip Half-Width'
+            elif kind_name == 'Pi Bloom':
+                a_tt = 'Radius'; b_tt = 'Bloom Amplitude'
             elif kind_name == 'Box':
                 a_tt = 'Half-Extent X'; b_tt = 'Half-Extent Y (Z via scale)'
             elif kind_name == 'Superellipsoid':
@@ -7958,6 +8102,8 @@ class AnalyticViewportPanel(QWidget):
         pr.beta = self._sp_beta.value()
         pr.op = ['solid', 'subtract', 'intersect'][min(self._op_box.currentIndex(), 2)]
         pr.color[:3] = np.array(self._current_color[:3])
+        if pr.kind == KIND_PI_BLOOM:
+            self._sync_pi_bloom_builder_from_prim(pr)
         # translation driven by move spinners
         if hasattr(self, '_sp_move'):
             pos = [self._sp_move[i].value() for i in range(3)]

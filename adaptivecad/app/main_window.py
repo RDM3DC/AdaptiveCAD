@@ -577,6 +577,10 @@ class AdaptiveCADApp(QMainWindow):
         pia_circle_action.triggered.connect(self._add_pia_adaptive_circle_demo)
         phase_menu.addAction(pia_circle_action)
 
+        polar_pia_circle_action = QAction("Add Polar πₐ Shape (Tube)", self)
+        polar_pia_circle_action.triggered.connect(self._add_polar_pia_adaptive_circle_demo)
+        phase_menu.addAction(polar_pia_circle_action)
+
         torus_path_action = QAction("Add Torus Phase Path (Tube)", self)
         torus_path_action.triggered.connect(self._add_torus_phase_path_demo)
         phase_menu.addAction(torus_path_action)
@@ -1616,6 +1620,29 @@ class AdaptiveCADApp(QMainWindow):
                 self.statusBar().showMessage(f"Added πₐ adaptive circle ({added} prims)", 3000)
         except Exception as e:
             QMessageBox.warning(self, "πₐ Demo Failed", f"Could not add πₐ demo: {e}")
+
+    def _add_torus_phase_path_demo(self):
+        """Add a torus-parameter path tube to the scene."""
+
+    def _add_polar_pia_adaptive_circle_demo(self):
+        """Add a polar adaptive-π tube where the boundary changes with angle."""
+
+        try:
+            from adaptivecad.app.phase_tools import add_polar_pi_adaptive_circle_demo
+
+            added = add_polar_pi_adaptive_circle_demo(self.scene)
+            self._update_scene_display()
+            self._fit_all()
+            if added <= 0:
+                QMessageBox.information(
+                    self,
+                    "Polar πₐ Shape",
+                    "Could not add the polar πₐ shape (primitive budget may be full).",
+                )
+            else:
+                self.statusBar().showMessage(f"Added polar πₐ shape ({added} prims)", 3000)
+        except Exception as e:
+            QMessageBox.warning(self, "Polar πₐ Shape Failed", f"Could not add polar πₐ shape: {e}")
 
     def _add_torus_phase_path_demo(self):
         """Add a torus-parameter path tube to the scene."""

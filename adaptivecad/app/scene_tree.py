@@ -65,6 +65,7 @@ SHAPE_ICONS = {
     "gyroid": "🧽",
     "trefoil": "🎀",
     "helicoid": "🌪️",
+    "pi_bloom": "🌺",
     "group": "📁",
     "unknown": "❓",
 }
@@ -197,6 +198,7 @@ class SceneTreeWidget(QTreeWidget):
             KIND_MANDELBULB,
             KIND_MENGER,
             KIND_MOBIUS,
+            KIND_PI_BLOOM,
             KIND_QUASICRYSTAL,
             KIND_SPHERE,
             KIND_SUPERELLIPSOID,
@@ -221,6 +223,7 @@ class SceneTreeWidget(QTreeWidget):
             KIND_GYROID: "gyroid",
             KIND_TREFOIL: "trefoil",
             KIND_HELICOID: "helicoid",
+            KIND_PI_BLOOM: "pi_bloom",
         }
         
         if isinstance(kind, str):

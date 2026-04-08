@@ -25,7 +25,8 @@ MAX_PRIMS = 48  # keep in sync with shader arrays
     KIND_HELICOID,
     KIND_ORBITAL,
     KIND_MESH_IMPORT,
-) = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
+    KIND_PI_BLOOM,
+) = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18)
 OP_SOLID, OP_SUBTRACT, OP_INTERSECT = 0, 1, 2
 
 
@@ -598,6 +599,43 @@ def sd_trefoil_knot(p, scale=1.0, tube=0.1, samples=96):
     return best * float(scale) - float(tube)
 
 
+def sd_pi_bloom(p, radius=1.0, bloom=0.28, petals=7.0, crown=0.22):
+    """Adaptive-π bloom shell with equatorial petals and a twisted polar crown."""
+
+    import math
+
+    q = np.asarray(p, dtype=np.float64)
+    r = float(np.linalg.norm(q))
+    petals_n = max(2, int(round(float(petals))))
+    bloom_raw = max(0.0, float(bloom))
+    crown_raw = float(crown)
+    bloom_gain = bloom_raw * max(0.0, 1.0 - 0.3 * bloom_raw * bloom_raw)
+
+    if r < 1e-9:
+        core = max(0.2, 1.0 - 0.35 * bloom_gain + 0.25 * crown_raw)
+        return -float(radius) * core
+
+    theta = math.acos(max(-1.0, min(1.0, q[2] / r)))
+    phi = math.atan2(q[1], q[0])
+    sin_t = math.sin(theta)
+    equator = sin_t * sin_t
+    petal_band = equator * (0.5 + 0.5 * equator)
+    twist_gate = math.sqrt(max(sin_t, 0.0))
+
+    petal_wave = math.sin(float(petals_n) * phi + math.pi * crown_raw * math.cos(theta))
+    crown_wave = math.cos((0.5 * float(petals_n) + 1.0) * theta - 0.5 * phi)
+    seam_wave = math.sin((float(petals_n) - 1.0) * phi + 2.0 * theta)
+
+    local = 1.0 + bloom_gain * petal_band * petal_wave
+    local += crown_raw * (
+        0.55 * twist_gate * crown_wave
+        + 0.25 * twist_gate * seam_wave
+        + 0.2 * math.cos(math.pi * math.cos(theta))
+    )
+    local = max(0.2, min(2.5, local))
+    return r - float(radius) * local
+
+
 class Prim:
     def __init__(
         self, kind, params, xform=None, beta=0.0, pid=0, op="solid", color=(0.8, 0.7, 0.6)
@@ -773,6 +811,13 @@ class Scene:
                 iso = float(pr.params[3]) if len(pr.params) > 3 else 0.02
                 thickness = max(1e-6, pr.beta)
                 di = sd_hydrogenic_orbital(pl, n, l, m, iso, thickness)
+            elif pr.kind in (KIND_PI_BLOOM, "pi_bloom"):
+                # Params: [radius, bloom, petals, crown]
+                radius = pia_scale(pr.params[0], pr.beta + self.global_beta) if len(pr.params) > 0 else 1.0
+                bloom = float(pr.params[1]) if len(pr.params) > 1 else 0.28
+                petals = float(pr.params[2]) if len(pr.params) > 2 else 7.0
+                crown = float(pr.params[3]) if len(pr.params) > 3 else 0.22
+                di = sd_pi_bloom(pl, radius, bloom, petals, crown)
             elif pr.kind in (KIND_MESH_IMPORT, "mesh_import"):
                 # Imported mesh SDF
                 if pr.mesh_sdf is not None:
@@ -887,6 +932,13 @@ class Scene:
                 m = float(pr.params[2]) if len(pr.params) > 2 else 0.0
                 iso = float(pr.params[3]) if len(pr.params) > 3 else 0.02
                 params[i] = [n, l, m, iso]
+            elif pr.kind in (KIND_PI_BLOOM, "pi_bloom"):
+                kind[i] = KIND_PI_BLOOM
+                radius = float(pr.params[0]) if len(pr.params) > 0 else 1.0
+                bloom = float(pr.params[1]) if len(pr.params) > 1 else 0.28
+                petals = float(pr.params[2]) if len(pr.params) > 2 else 7.0
+                crown = float(pr.params[3]) if len(pr.params) > 3 else 0.22
+                params[i] = [radius, bloom, petals, crown]
             else:
                 kind[i] = KIND_NONE
 
