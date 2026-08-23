@@ -1,11 +1,10 @@
-"""AdaptiveCAD Direct SDF Slicer
+"""AdaptiveCAD rasterized SDF slicer.
 
-Generates G-code directly from SDF (Signed Distance Function) representations
-without converting to triangle meshes. This enables:
-- Perfect accuracy (no approximation errors from triangulation)
-- Infinite resolution at any scale
-- Direct support for mathematical surfaces
-- Faster slicing for complex fractals and TPMS structures
+This legacy route samples a signed-distance field on a uniform grid, extracts
+contours with marching squares, and emits G1 line motion without first creating
+a triangle mesh.  Its accuracy is bounded by the sampling resolution and
+linear contour approximation; it is distinct from the curve-native direct
+manufacturing pipeline in :mod:`adaptivecad.manufacturing`.
 """
 
 from __future__ import annotations
