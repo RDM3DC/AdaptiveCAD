@@ -63,6 +63,14 @@ The module `adaptivecad.geometry.infinity_root` provides:
 - `compare_fractional_gauge_curvature` — a direct gauge-survival audit;
 - `infinity_root_book_obj` — quad-only OBJ preview export.
 
+The companion module `adaptivecad.geometry.infinity_root_sculpture` adds a
+fabrication layer without changing those descriptors:
+
+- `InfinityRootSculptureSpec` — millimetre-scale page, tilt, rail, and base settings;
+- `make_infinity_root_sculpture` — thick canonical/gauge page solids plus a display base;
+- `infinity_root_sculpture_obj` — colored, quad-only native geometry;
+- `infinity_root_sculpture_stl` — conventional single- or two-channel slicer export.
+
 Every generated profile uses:
 
 ```text
@@ -144,6 +152,23 @@ tolerance and which changed.
 
 Use `--integer-only` to generate only the canonical pages.
 
+## Build the printable desk sculpture
+
+```text
+python demo/infinity_root_sculpture.py --output-dir infinity_root_sculpture
+```
+
+The sculpture stands the page stack nearly upright, makes the canonical pages
+thicker than the fractional views, joins them with a concealed lower rail, and
+adds a broad flat plinth. It writes a colored quad-only OBJ, a single-color STL,
+two aligned blue/gold STLs for a toolchanger, a fabrication JSON audit, a PNG
+preview, print notes, and a ZIP containing the complete package.
+
+The OBJ remains quad-only. STL requires triangles by definition, so triangles
+are introduced only in the compatibility export. Each source component is a
+closed edge-manifold shell; the shells overlap at structural joints for slicer
+union.
+
 ## Numerical boundary
 
 There are two distinct routes:
@@ -162,9 +187,11 @@ profile does not satisfy the positive-admissibility requirement.
 ## Verification
 
 ```text
-python -m pytest -q tests/test_infinity_root_geometry.py
+python -m pytest -q tests/test_infinity_root_geometry.py tests/test_infinity_root_sculpture.py
 ```
 
 The focused suite checks root-jet reconstruction, basepoint transport,
 serialization, sampled root estimation, gauge enforcement, curvature survival,
 profile metadata, and quad-only Infinity Book topology.
+The sculpture tests additionally check page provenance, closed component shells,
+flat-base placement, quad-only OBJ output, and aligned two-channel STL export.

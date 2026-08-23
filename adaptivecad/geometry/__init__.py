@@ -15,6 +15,13 @@ from .infinity_root import (
     root_operator_samples,
     tower_from_profile_samples,
 )
+from .infinity_root_sculpture import (
+    InfinityRootSculptureSpec,
+    infinity_root_sculpture_mtl,
+    infinity_root_sculpture_obj,
+    infinity_root_sculpture_stl,
+    make_infinity_root_sculpture,
+)
 from .pia_primitives import (
     make_pi_circle_profile,
     make_polar_pi_circle_profile,
@@ -31,9 +38,14 @@ __all__ = [
     "ProfileLevel",
     "RootJetSamples",
     "infinity_root_book_obj",
+    "InfinityRootSculptureSpec",
+    "infinity_root_sculpture_mtl",
+    "infinity_root_sculpture_obj",
+    "infinity_root_sculpture_stl",
     "make_exact_lift_tower",
     "make_infinity_root_book",
     "make_infinity_root_profile",
+    "make_infinity_root_sculpture",
     "profile_curvature_metrics",
     "root_operator_samples",
     "tower_from_profile_samples",
