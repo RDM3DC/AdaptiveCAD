@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adaptivecad.dev/schema/manufacturing-curves-1.0.json",
+  "title": "AdaptiveCAD Triangle-Free Manufacturing Curve IR 1.0",
+  "description": "Machine-neutral analytic manufacturing curves. Triangle and facet entities are intentionally absent.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "kind",
+    "triangle_mesh_input",
+    "job_id",
+    "process",
+    "source_id",
+    "units",
+    "tolerance_mm",
+    "settings",
+    "source_provenance",
+    "layers"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "adaptivecad.manufacturing.curves/1.0"
+    },
+    "kind": {
+      "const": "curve_manufacturing_job"
+    },
+    "triangle_mesh_input": {
+      "const": false
+    },
+    "job_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "process": {
+      "enum": ["additive", "subtractive"]
+    },
+    "source_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "units": {
+      "const": "mm"
+    },
+    "tolerance_mm": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "settings": {
+      "type": "object"
+    },
+    "source_provenance": {
+      "type": "object",
+      "required": ["source_id", "native_representation", "mesh_created"],
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "native_representation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mesh_created": {
+          "const": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "layers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/layer"
+      }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "point2": {
+      "type": "array",
+      "prefixItems": [
+        {"type": "number"},
+        {"type": "number"}
+      ],
+      "items": false
+    },
+    "line": {
+      "type": "object",
+      "required": ["kind", "start", "end"],
+      "properties": {
+        "kind": {"const": "line"},
+        "start": {"$ref": "#/$defs/point2"},
+        "end": {"$ref": "#/$defs/point2"}
+      },
+      "additionalProperties": true
+    },
+    "circular_arc": {
+      "type": "object",
+      "required": ["kind", "center", "radius", "start_angle", "sweep_angle"],
+      "properties": {
+        "kind": {"const": "circular_arc"},
+        "center": {"$ref": "#/$defs/point2"},
+        "radius": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "start_angle": {"type": "number"},
+        "sweep_angle": {
+          "type": "number",
+          "not": {"const": 0}
+        }
+      },
+      "additionalProperties": true
+    },
+    "cubic_bezier": {
+      "type": "object",
+      "required": ["kind", "p0", "p1", "p2", "p3"],
+      "properties": {
+        "kind": {"const": "cubic_bezier"},
+        "p0": {"$ref": "#/$defs/point2"},
+        "p1": {"$ref": "#/$defs/point2"},
+        "p2": {"$ref": "#/$defs/point2"},
+        "p3": {"$ref": "#/$defs/point2"}
+      },
+      "additionalProperties": true
+    },
+    "segment": {
+      "oneOf": [
+        {"$ref": "#/$defs/line"},
+        {"$ref": "#/$defs/circular_arc"},
+        {"$ref": "#/$defs/cubic_bezier"}
+      ]
+    },
+    "path": {
+      "type": "object",
+      "required": [
+        "kind",
+        "closed",
+        "role",
+        "channel",
+        "feed_mm_min",
+        "metadata",
+        "segments"
+      ],
+      "properties": {
+        "kind": {"const": "curve_path"},
+        "closed": {"type": "boolean"},
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "channel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "feed_mm_min": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "metadata": {"type": "object"},
+        "segments": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/segment"}
+        }
+      },
+      "additionalProperties": true
+    },
+    "layer": {
+      "type": "object",
+      "required": ["kind", "z", "metadata", "paths"],
+      "properties": {
+        "kind": {"const": "manufacturing_layer"},
+        "z": {"type": "number"},
+        "metadata": {"type": "object"},
+        "paths": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/path"}
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

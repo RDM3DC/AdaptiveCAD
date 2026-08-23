@@ -66,6 +66,8 @@ playground_debug.log
 
 # Generated CAD / export artifacts
 adaptivecad/exports/
+triangle_free_full_stack_output/
+triangle_free_engineering_bracket_output/
 *.ama
 *.stl
 *.step

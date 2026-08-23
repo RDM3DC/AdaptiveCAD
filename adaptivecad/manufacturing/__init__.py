@@ -1,5 +1,13 @@
 """Curve-native, triangle-free manufacturing tools for AdaptiveCAD."""
 
+from .contract import (
+    CONTRACT_VERSION,
+    ContractError,
+    audit_job,
+    scale_invariance_gate,
+    validate_shared_source,
+    verification_suite,
+)
 from .curve_ir import (
     MANUFACTURING_SCHEMA_VERSION,
     CircularArc2D,
@@ -9,6 +17,15 @@ from .curve_ir import (
     ManufacturingJob,
     ManufacturingLayer,
     audit_triangle_free_job,
+)
+from .engineering_bracket import (
+    BracketAdditiveSettings,
+    BracketSubtractiveSettings,
+    CircleSpec,
+    EngineeringBracketSource,
+    RoundedRectangleSpec,
+    plan_engineering_bracket_additive,
+    plan_engineering_bracket_subtractive,
 )
 from .gcode import (
     AdditivePostSettings,
@@ -42,4 +59,17 @@ __all__ = [
     "SubtractivePostSettings",
     "postprocess_additive_gcode",
     "postprocess_subtractive_gcode",
+    "CONTRACT_VERSION",
+    "ContractError",
+    "audit_job",
+    "scale_invariance_gate",
+    "validate_shared_source",
+    "verification_suite",
+    "RoundedRectangleSpec",
+    "CircleSpec",
+    "EngineeringBracketSource",
+    "BracketAdditiveSettings",
+    "BracketSubtractiveSettings",
+    "plan_engineering_bracket_additive",
+    "plan_engineering_bracket_subtractive",
 ]

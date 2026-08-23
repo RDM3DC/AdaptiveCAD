@@ -27,15 +27,18 @@ Fix non-manifold edges, normals, degenerate faces; optional smoothing with π₀
 ### 3D Printing Ready
 Export STL / 3MF / G-code with layer previews and basic time estimates.
 
-### Triangle-Free Direct Manufacturing (vertical-slice prototype)
-One periodic cubic-Bézier Infinity Root source can now drive both additive
-layers and compensated CNC finish waterlines without STL, OBJ, or a surface
-triangle mesh. The shared curve IR preserves lines, circular arcs, and cubic
-Béziers through planning; postprocessors emit native curve moves where the
-controller supports them or tolerance-controlled G1 compatibility motion.
+### Triangle-Free Direct Manufacturing (vertical-slice prototypes)
+The periodic Infinity Root loft and an ordinary engineering bracket can each
+drive additive layers and compensated CNC finish contours without STL, OBJ, or
+an authoritative surface triangle mesh. The bracket adds analytic Boolean cuts,
+four holes, and exact circular fillets. The shared curve IR preserves lines,
+circular arcs, and cubic Beziers through planning; postprocessors emit native
+curve moves where the controller supports them or tolerance-controlled G1
+compatibility motion.
 
 See [Triangle-Free Manufacturing](TRIANGLE_FREE_MANUFACTURING.md) for the demo,
-audit contract, controller caveats, and current scope.
+controller caveats, and current scope. The normative release and scale gate is
+defined by [Triangle-Free Geometry Contract 1.0](TRIANGLE_FREE_GEOMETRY_CONTRACT.md).
 
 ### FreeCAD Workbench + Blender Add-on
 Generate π₀ objects, import/export, and hand off assets to your DCC/CAD pipeline.

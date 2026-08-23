@@ -378,6 +378,8 @@ class CurvePath:
 
     @property
     def orientation(self) -> str:
+        if not self.closed:
+            return "open"
         area = self.signed_area()
         if abs(area) <= 1e-12:
             return "degenerate"

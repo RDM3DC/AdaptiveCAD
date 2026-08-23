@@ -17,11 +17,13 @@ from adaptivecad.manufacturing import (
     ManufacturingJob,
     SubtractivePlanSettings,
     SubtractivePostSettings,
+    audit_job,
     audit_triangle_free_job,
     plan_additive_loft,
     plan_subtractive_waterlines,
     postprocess_additive_gcode,
     postprocess_subtractive_gcode,
+    scale_invariance_gate,
 )
 from demo.triangle_free_infinity_root_manufacturing import _write_bundle
 
@@ -100,6 +102,25 @@ class TriangleFreeManufacturingTests(unittest.TestCase):
         restored = ManufacturingJob.from_dict(json.loads(json.dumps(job.to_dict())))
         self.assertEqual(restored.source_id, job.source_id)
         self.assertEqual(len(restored.layers), len(job.layers))
+
+    def test_infinity_root_job_passes_strict_contract_and_scale_gate(self) -> None:
+        job = plan_additive_loft(
+            self.source,
+            AdditivePlanSettings(
+                layer_height_mm=2.0,
+                perimeter_count=1,
+                infill_density=0.0,
+            ),
+        )
+        serialized = job.to_dict()
+        report = audit_job(serialized, name="Infinity Root additive")
+        self.assertTrue(report["passed"], report["errors"])
+        gate = scale_invariance_gate(
+            serialized,
+            factors=(0.001, 1000.0),
+            name="Infinity Root additive",
+        )
+        self.assertTrue(gate["passed"])
 
     def test_printer_native_and_linearized_backends_share_one_job(self) -> None:
         job = plan_additive_loft(
