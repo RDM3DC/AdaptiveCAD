@@ -330,6 +330,10 @@ Adaptive π (π₀) removes saw-tooth artifacts by operating directly on smooth 
 
 Hyperbolic geometry tooling includes geodesics/horocycles and basic tilings for curvature-aware designs.
 
+Infinity Root geometry is available as a descriptor layer with reconstructible root-jet data,
+canonical integer pages, explicitly tagged fractional gauge views, a curvature-survival audit,
+and a quad-only Infinity Book demo. See [`INFINITY_ROOT_ADAPTIVECAD.md`](INFINITY_ROOT_ADAPTIVECAD.md).
+
 Repair focuses on non-manifold edges, flipped normals, zero-area faces, and optional decimation before smoothing.
 
 Detailed references: `docs/MATH_REFERENCE.md`, `docs/HYPERBOLIC_GEOMETRY_IMPLEMENTATION.md`.
@@ -388,4 +392,3 @@ We’re preparing a Kickstarter to accelerate the Playground Suite to 1.0 (Windo
 ## 🙌 Credits
 
 AdaptiveCAD by Ryan McKenna (RDM3DC) and collaborators. Thanks to the open-source CAD/geometry community and everyone testing early builds.
-
