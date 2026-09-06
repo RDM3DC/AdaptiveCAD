@@ -1,0 +1,7 @@
+# Generated geometry/display assets are not source code.
+/model/
+/ARP_GT01_Viewer.html
+/ARP_GT01_*.png
+/preview_cache.npz
+/preview_metadata.json
+/__pycache__/
