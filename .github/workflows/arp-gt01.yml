@@ -1,0 +1,38 @@
+name: ARP GT-01 optional CAD bridge
+
+on:
+  pull_request:
+    paths:
+      - 'adaptivecad/geom/**'
+      - 'adaptivecad/linalg.py'
+      - 'examples/arp_gt01/**'
+      - 'tests/test_cadquery_bridge.py'
+      - 'tests/test_arp_gt01_tools.py'
+      - '.github/workflows/arp-gt01.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cadquery-bridge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: examples/arp_gt01/requirements.txt
+      - name: Install optional example and test dependencies
+        run: python -m pip install -r examples/arp_gt01/requirements.txt 'pytest>=8,<10'
+      - name: Focused bridge and CLI tests
+        run: python -m pytest -q tests/test_cadquery_bridge.py tests/test_arp_gt01_tools.py
+      - name: Rebuild and independently validate the 1-to-10 assembly
+        shell: bash
+        run: |
+          python examples/arp_gt01/build_car.py --scale 0.1 --out "$RUNNER_TEMP/arp-gt01/model"
+          python examples/arp_gt01/validate_car.py --model "$RUNNER_TEMP/arp-gt01/model"

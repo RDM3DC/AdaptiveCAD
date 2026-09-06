@@ -1,0 +1,6 @@
+# Optional car example. Keep separate from the pythonocc-core GUI environment.
+# Reproduced with CadQuery 2.8.0 / OCP 7.9.3.1.1. Python 3.11+ recommended.
+cadquery==2.8.0
+numpy>=1.26
+vtk>=9.3,<10
+Pillow>=10
