@@ -37,7 +37,7 @@ PRESETS = {
 }
 
 
-def create_workbench(parent=None, document=None):
+def create_workbench(parent=None, document=None, *, guard_unsaved=False):
     """Lazy Qt import keeps core geometry usable on headless machines."""
     try:
         from PySide6.QtCore import QSignalBlocker, Qt
@@ -53,9 +53,11 @@ def create_workbench(parent=None, document=None):
     class Workbench(QMainWindow):
         def __init__(self):
             super().__init__(parent)
-            self.setWindowTitle('AdaptiveCAD — Mesh-free Tool Workbench')
+            self.setWindowTitle('AdaptiveCAD — Mesh-free Tool Workbench[*]')
             self.resize(1180, 760)
             self.session = ToolSession(document)
+            self.guard_unsaved = bool(guard_unsaved)
+            self._saved_document = self.session.document
             root = QWidget()
             self.setCentralWidget(root)
             layout = QVBoxLayout(root)
@@ -153,6 +155,7 @@ def create_workbench(parent=None, document=None):
                     if row is None:
                         row = max(0, min(selected_row, self.listing.count()-1))
                     self.listing.setCurrentRow(row)
+            self.setWindowModified(self.has_unsaved_changes)
             self.statusBar().showMessage(f'{len(self.session.document.entities)} objects | unit: {self.session.document.unit}')
             self.draw(self.listing.currentRow(), fit=True)
 
@@ -251,10 +254,13 @@ def create_workbench(parent=None, document=None):
                 return
             try:
                 candidate = ToolDocument.load(path)
-                if self.session.document != ToolDocument() and QMessageBox.question(self, 'Replace workbench document?',
+                if self.guard_unsaved and not self.maybe_save_changes():
+                    return
+                if not self.guard_unsaved and self.session.document != ToolDocument() and QMessageBox.question(self, 'Replace workbench document?',
                     'Open replaces this workbench document. Unsaved changes are not saved automatically.') != QMessageBox.StandardButton.Yes:
                     return
                 self.session = ToolSession(candidate)
+                self._saved_document = candidate
                 self.refresh()
             except (ValueError, OSError, TypeError) as exc:
                 self.failure(exc)
@@ -264,21 +270,68 @@ def create_workbench(parent=None, document=None):
             if path:
                 try:
                     self.session.document.save(path, overwrite=True)  # dialog confirms overwriting
+                    self._saved_document = self.session.document
+                    self.setWindowModified(False)
+                    return True
                 except (ValueError, OSError) as exc:
                     self.report.setPlainText(f'Save failed: {exc}')
+            return False
+
+        @property
+        def has_unsaved_changes(self):
+            return self.session.document != self._saved_document
+
+        def maybe_save_changes(self):
+            if not self.has_unsaved_changes:
+                return True
+            choice = QMessageBox.question(
+                self, 'Unsaved mesh-free document',
+                'Save model changes? Command-template text is not part of the saved model.',
+                QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard |
+                QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Cancel)
+            if choice == QMessageBox.StandardButton.Discard:
+                return True
+            if choice == QMessageBox.StandardButton.Save:
+                return self.save_file() is True
+            return False
+
+        def closeEvent(self, event):
+            if self.guard_unsaved and not self.maybe_save_changes():
+                event.ignore()
+                return
+            super().closeEvent(event)
 
     return Workbench()
 
 
-def install_meshfree_tools(window):
+def install_meshfree_tools(window, *, guard_unsaved=False):
     """Explicit opt-in menu bridge; retain one workbench per parent window."""
+    from PySide6.QtCore import QEvent, QObject
     from PySide6.QtGui import QAction
+    window = getattr(window, 'win', window)
+    if guard_unsaved:
+        window._meshfree_guard_unsaved = True
+        child = getattr(window, '_meshfree_window', None)
+        if child is not None:
+            child.guard_unsaved = True
+        if getattr(window, '_meshfree_close_guard', None) is None:
+            class ChildCloseGuard(QObject):
+                def eventFilter(self, watched, event):
+                    if watched is window and event.type() == QEvent.Type.Close:
+                        child = getattr(window, '_meshfree_window', None)
+                        if child is not None and not child.maybe_save_changes():
+                            event.ignore()
+                            return True
+                    return super().eventFilter(watched, event)
+            window._meshfree_close_guard = ChildCloseGuard(window)
+            window.installEventFilter(window._meshfree_close_guard)
     if getattr(window, '_meshfree_action', None) is not None:
         return window._meshfree_action
     action = QAction('Mesh-free Tool Workbench', window)
     def show():
         if getattr(window, '_meshfree_window', None) is None:
-            window._meshfree_window = create_workbench(window)
+            window._meshfree_window = create_workbench(
+                window, guard_unsaved=getattr(window, '_meshfree_guard_unsaved', False))
         window._meshfree_window.show()
         window._meshfree_window.raise_()
     action.triggered.connect(show)

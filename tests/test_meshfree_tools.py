@@ -11,7 +11,7 @@ from adaptivecad.geom.meshfree_tools import (
 )
 from adaptivecad.geom.tool_document import ToolDocument, ToolSession, strict_json
 from adaptivecad.geom.directional_metric import NormalMetricPatch, balanced_directional_patch
-from adaptivecad.geom.metric_tools import (
+from adaptivecad.geom.meshfree_metric_tools import (
     angle_between, area_radius, connection, disk_area, metric_derivatives,
     segment_length, trace_geodesic,
 )

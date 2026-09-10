@@ -2,6 +2,9 @@
 
 ## Status and launch
 
+For both workbenches in one window, use `python run_workbenches.py`; see
+`integrated_workbenches.md` for the namespace migration and save boundaries.
+
 This is an **additive workbench/API** layered on PR #72's directional metric
 module. It does not replace existing GUI commands, scenes, AMA files, or solids.
 The top-level roadmap is not complete; see `TOOL_COMPLETION_MATRIX.md`.
@@ -45,8 +48,8 @@ or GUI file is changed automatically.
 
 PR #74's `install_metric_workbench(window)` attaches a `QDockWidget` to an
 existing Playground or SDF host and owns an independent `MetricProject`. This
-mesh-free launcher owns a `ToolDocument` and its own undo/save history. Later
-integration should install both tools additively in the existing host: retain
+mesh-free launcher owns a `ToolDocument` and its own undo/save history. The combined
+integration installs both tools additively in the existing host: retain
 this launcher, attach the metric dock once, and do not replace either document
 model or create another host application.
 
@@ -120,7 +123,7 @@ retired unit in a new regulated survey.
 
 ## Directional metric tools
 
-`adaptivecad.geom.metric_tools` provides:
+`adaptivecad.geom.meshfree_metric_tools` provides:
 
 - Analytic Cartesian metric derivatives and Christoffel connection.
 - Metric angle between tangent vectors at one point.
@@ -130,7 +133,7 @@ retired unit in a new regulated survey.
 
 ```python
 from adaptivecad.geom.directional_metric import balanced_directional_patch
-from adaptivecad.geom.metric_tools import trace_geodesic, disk_area
+from adaptivecad.geom.meshfree_metric_tools import trace_geodesic, disk_area
 
 patch = balanced_directional_patch(length_scale=1.0, unit="mm")
 ray = trace_geodesic(patch, (-0.2, 0.2), (1, 0.1), 0.5,
