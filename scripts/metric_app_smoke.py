@@ -40,11 +40,15 @@ def main():
     else:
         from adaptivecad.command_defs import DOCUMENT
         before = [id(p) for p in DOCUMENT]
-    dock.show()
-    dock.raise_()
     host.resize(1700, 1000)
     host.show()
     app.processEvents()
+    metric_menu = next(a.menu() for a in host.menuBar().actions()
+                       if a.menu() and a.menu().objectName() == "AdaptiveCADMetricToolsMenu")
+    metric_menu.actions()[-1].trigger()  # Same action the user invokes after startup.
+    app.processEvents()
+    if not dock.isVisible():
+        raise AssertionError("Metric menu did not show its dock")
     dock.preset.setCurrentIndex(1)
     dock.use_preset()
     dock.new_curve()
@@ -67,6 +71,7 @@ def main():
     if not host.grab().save(str(args.output / (args.ui + '.png'))):
         raise AssertionError('Screenshot failed')
     report = {'status': 'PASS', 'ui': args.ui, 'menus': menu_names,
+              'dock_visible_after_menu': dock.isVisible(),
               'scene_object_count': len(before), 'scene_membership_unchanged': True,
               'trace_status': dock.trace.status,
               'project_sha256': hashlib.sha256(project_path.read_bytes()).hexdigest(),
