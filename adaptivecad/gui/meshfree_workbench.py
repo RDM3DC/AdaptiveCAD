@@ -86,7 +86,7 @@ def create_workbench(parent=None, document=None):
             self.report = QTextEdit()
             self.report.setReadOnly(True)
             col.addWidget(self.report)
-            self.scene = QGraphicsScene()
+            self.scene = QGraphicsScene(self)
             self.scene.selectionChanged.connect(self.select_scene_item)
             self.view = QGraphicsView(self.scene)
             split.addWidget(self.view)

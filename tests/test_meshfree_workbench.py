@@ -10,6 +10,29 @@ from adaptivecad.geom.tool_document import ToolDocument
 from examples.meshfree_toolkit_demo import demo_session, preview_html
 
 
+@pytest.fixture(scope='module')
+def _qt_application():
+    # QApplication must outlive every graphics item and every Qt test window.
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    widgets = pytest.importorskip('PySide6.QtWidgets')
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    yield app
+
+
+@pytest.fixture
+def qt_app(_qt_application):
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    yield _qt_application
+    # close() only hides a window. Destroy Qt-owned children while the app lives,
+    # rather than depending on Python/Qt garbage-collection order at test return.
+    for widget in _qt_application.topLevelWidgets():
+        widget.close()
+        widget.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    _qt_application.processEvents()
+
+
 def test_demo_roundtrip_and_preview_escaping():
     session = demo_session()
     doc = session.document
@@ -37,11 +60,11 @@ def test_cli_real_files_and_no_overwrite(tmp_path):
     assert (tmp_path/'document.json').read_bytes() == before
 
 
-def test_real_qt_workbench_commands_and_menu_bridge(tmp_path, monkeypatch):
+def test_real_qt_workbench_commands_and_menu_bridge(tmp_path, monkeypatch, qt_app):
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     widgets = pytest.importorskip('PySide6.QtWidgets')
     from adaptivecad.gui.meshfree_workbench import create_workbench, install_meshfree_tools
-    app = widgets.QApplication.instance() or widgets.QApplication([])
+    app = qt_app
     window = create_workbench(document=demo_session().document)
     window.show()
     app.processEvents()
@@ -143,7 +166,7 @@ def test_real_qt_workbench_commands_and_menu_bridge(tmp_path, monkeypatch):
     window.close()
 
 
-def test_selection_keeps_event_targets_alive_and_does_not_rebuild(monkeypatch):
+def test_selection_keeps_event_targets_alive_and_does_not_rebuild(monkeypatch, qt_app):
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     widgets = pytest.importorskip('PySide6.QtWidgets')
     from PySide6.QtCore import QPoint, Qt
@@ -157,7 +180,7 @@ def test_selection_keeps_event_targets_alive_and_does_not_rebuild(monkeypatch):
         {'op': 'line', 'name': 'first', 'start': [0, 0, 0], 'end': [10, -10, 0]},
         {'op': 'line', 'name': 'second', 'start': [0, 0, 20], 'end': [10, -10, 20]},
     ])
-    app = widgets.QApplication.instance() or widgets.QApplication([])
+    app = qt_app
     window = workbench.create_workbench(document=session.document)
     window.show()
     app.processEvents()
@@ -205,7 +228,7 @@ def test_selection_keeps_event_targets_alive_and_does_not_rebuild(monkeypatch):
         window.close()
 
 
-def test_model_refresh_blocks_selection_signals_through_empty_and_undo():
+def test_model_refresh_blocks_selection_signals_through_empty_and_undo(qt_app):
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
     widgets = pytest.importorskip('PySide6.QtWidgets')
     from adaptivecad.geom.tool_document import ToolSession
@@ -213,7 +236,7 @@ def test_model_refresh_blocks_selection_signals_through_empty_and_undo():
 
     session = ToolSession()
     session.execute({'op': 'line', 'name': 'only', 'start': [0, 0, 0], 'end': [1, 1, 0]})
-    app = widgets.QApplication.instance() or widgets.QApplication([])
+    app = qt_app
     window = create_workbench(document=session.document)
     callbacks = []
     window.scene.selectionChanged.connect(lambda: callbacks.append(True))
