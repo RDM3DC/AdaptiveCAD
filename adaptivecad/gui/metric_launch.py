@@ -10,16 +10,19 @@ import sys
 
 
 def build_window(ui="playground"):
+    from .metric_dock_layout import prepare_metric_dock
     from .metric_workbench import install_metric_workbench
     if ui == "playground":
         from .playground import MainWindow
         window = MainWindow()
-        install_metric_workbench(window)
+        dock = install_metric_workbench(window)
+        prepare_metric_dock(getattr(window, "win", window), dock)
         return window
     if ui == "sdf":
         from adaptivecad.app.main_window import AdaptiveCADApp
         window = AdaptiveCADApp()
-        install_metric_workbench(window)
+        dock = install_metric_workbench(window)
+        prepare_metric_dock(getattr(window, "win", window), dock)
         return window
     raise ValueError("Unknown UI: use playground or sdf")
 

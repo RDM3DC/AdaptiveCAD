@@ -41,6 +41,7 @@ def main():
         from adaptivecad.command_defs import DOCUMENT
         before = [id(p) for p in DOCUMENT]
     dock.show()
+    dock.raise_()
     host.resize(1700, 1000)
     host.show()
     app.processEvents()

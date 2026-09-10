@@ -45,7 +45,7 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install numpy scipy pytest pytest-timeout PySide6 PyOpenGL ruff
       - name: Core and real Qt tests
-        run: python -m pytest -q --noconftest tests/test_directional_metric.py tests/test_metric_tools.py tests/test_metric_project.py tests/test_metric_workbench.py --timeout=60 --junitxml=test-results/tests.xml
+        run: python -m pytest -q --noconftest tests/test_directional_metric.py tests/test_metric_tools.py tests/test_metric_project.py tests/test_metric_workbench.py tests/test_metric_layout.py --timeout=60 --junitxml=test-results/tests.xml
       - name: Dependency record
         if: always()
         run: python -m pip freeze
@@ -54,7 +54,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p test-results
-          python -m ruff check adaptivecad/geom/metric_tools.py adaptivecad/geom/metric_geodesic.py adaptivecad/metric_project.py adaptivecad/gui/metric_workbench.py adaptivecad/gui/metric_launch.py tests/test_metric_tools.py tests/test_metric_project.py tests/test_metric_workbench.py scripts/metric_app_smoke.py --output-format json > test-results/lint.json
+          python -m ruff check adaptivecad/geom/metric_tools.py adaptivecad/geom/metric_geodesic.py adaptivecad/metric_project.py adaptivecad/gui/metric_workbench.py adaptivecad/gui/metric_launch.py adaptivecad/gui/metric_dock_layout.py tests/test_metric_layout.py tests/test_metric_tools.py tests/test_metric_project.py tests/test_metric_workbench.py scripts/metric_app_smoke.py --output-format json > test-results/lint.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
