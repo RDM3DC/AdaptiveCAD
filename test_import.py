@@ -11,20 +11,21 @@ if str(project_root) not in sys.path:
 # Try to import the required modules
 try:
     import numpy as np
+    _retained_import_contract = (np,)
 
     print("✓ NumPy is available")
 except ImportError:
     print("✗ NumPy is not installed!")
 
 try:
-    from PySide6 import QtWidgets
+    from PySide6 import QtWidgets as QtWidgets
 
     print("✓ PySide6 is available")
 except ImportError:
     print("✗ PySide6 is not installed!")
 
 try:
-    from OCC.Core.TopoDS import TopoDS_Shape
+    from OCC.Core.TopoDS import TopoDS_Shape as TopoDS_Shape
 
     print("✓ PythonOCC is available")
 except ImportError:
@@ -33,21 +34,24 @@ except ImportError:
 print("\nTrying to import AdaptiveCAD modules...")
 
 try:
-    from adaptivecad import settings
+    from adaptivecad import settings as settings
 
     print("✓ adaptivecad.settings imported")
 except ImportError as e:
     print(f"✗ Failed to import adaptivecad.settings: {e}")
 
 try:
-    from adaptivecad.geom import pi_a_over_pi
+    from adaptivecad.geom import pi_a_over_pi as pi_a_over_pi
 
     print("✓ adaptivecad.geom.pi_a_over_pi function imported")
 except ImportError as e:
     print(f"✗ Failed to import pi_a_over_pi: {e}")
 
 try:
-    from adaptivecad.command_defs import DOCUMENT, BaseCmd, Feature, rebuild_scene
+    from adaptivecad.command_defs import DOCUMENT as DOCUMENT
+    from adaptivecad.command_defs import BaseCmd as BaseCmd
+    from adaptivecad.command_defs import Feature as Feature
+    from adaptivecad.command_defs import rebuild_scene as rebuild_scene
 
     print("✓ adaptivecad.command_defs imported")
 except ImportError as e:

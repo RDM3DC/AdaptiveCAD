@@ -38,6 +38,8 @@ extend-exclude = "^blender_addons/|^freecad/"
 [tool.isort]
 profile = "black"
 line_length = 100
+# External host modules, not the repository's lowercase freecad directory.
+known_third_party = ["FreeCAD", "FreeCADGui", "Part", "PySide"]
 skip_glob = [
 	"blender_addons/*",
 	"freecad/*",
@@ -68,6 +70,10 @@ ignore = [
 	"F403",  # star imports - valid for OCC patterns
 	"E402",  # module import not at top - often intentional for conditional imports
 ]
+
+[tool.ruff.lint.isort]
+# Keep host-module classification stable on case-insensitive Windows filesystems.
+known-third-party = ["FreeCAD", "FreeCADGui", "Part", "PySide"]
 
 [tool.ruff.lint.per-file-ignores]
 # Shader and graphics code often needs dense syntax

@@ -221,7 +221,7 @@ class TestPerformanceBenchmark:
         for r, k in test_cases:
             try:
                 naive_pi_a_over_pi(r, k)
-            except:
+            except BaseException:
                 pass  # Ignore errors in naive version
         naive_time = time.time() - start
 

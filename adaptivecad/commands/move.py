@@ -1,6 +1,6 @@
 import numpy as np
 
-from .base import BaseCmd
+from ..command_defs import BaseCmd
 
 
 class MoveWithSnapCmd(BaseCmd):
@@ -12,11 +12,15 @@ class MoveWithSnapCmd(BaseCmd):
             mw.statusBar().showMessage("Select object to move")
             return
 
+        preview = getattr(mw, "show_move_preview", None)
+        if not callable(preview):
+            raise RuntimeError("Move (Snap) needs a host show_move_preview callback")
         orig_ref = feat.get_reference_point()
 
         def on_mouse_move(world_pt):
             snapped, label = mw.snap_manager.snap(world_pt, mw.view)
-            show_move_preview(feat, snapped or world_pt, label)
+            dest = snapped if snapped is not None else world_pt
+            preview(feat, dest, label)
 
         def on_mouse_release(world_pt):
             snapped, label = mw.snap_manager.snap(world_pt, mw.view)

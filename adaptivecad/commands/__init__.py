@@ -31,7 +31,7 @@ from ..command_defs import (
 
 try:
     from .draped_sheet_cmd import DrapedSheetCmd
-    from .import_conformal import ImportConformalCmd
+    from .import_conformal import ImportConformalCmd as ImportConformalCmd
     from .pi_square_cmd import PiSquareCmd
 except Exception:  # optional OCC deps may be missing
     PiSquareCmd = None

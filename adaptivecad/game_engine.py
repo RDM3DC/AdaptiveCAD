@@ -20,7 +20,7 @@ from adaptivecad.aacore.sdf import (
 )
 
 try:
-    from PySide6.QtCore import QTimer, Qt
+    from PySide6.QtCore import Qt, QTimer
     from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QVBoxLayout, QWidget
 
     from adaptivecad.app.interactive_viewport import InteractiveViewport

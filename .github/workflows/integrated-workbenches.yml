@@ -1,0 +1,63 @@
+name: Integrated workbenches
+on:
+  pull_request:
+    paths:
+      - 'adaptivecad/**'
+      - 'examples/meshfree_toolkit_demo.py'
+      - 'run_workbenches.py'
+      - 'tests/test_*metric*.py'
+      - 'tests/test_meshfree*.py'
+      - 'tests/test_integrated_workbench.py'
+      - '.github/workflows/integrated-workbenches.yml'
+permissions:
+  contents: read
+jobs:
+  combined:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            python: '3.10'
+          - os: ubuntu-latest
+            python: '3.13'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    env:
+      QT_QPA_PLATFORM: offscreen
+      INTEGRATED_SCREENSHOT: test-results/integrated-workbench.png
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Linux Qt libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libegl1 libopengl0 libgl1 libxkbcommon-x11-0
+      - name: Test dependencies
+        run: python -m pip install numpy scipy pytest pytest-timeout PySide6 PyOpenGL ruff
+      - name: Require real Qt and SciPy
+        run: python -c "from PySide6 import QtWidgets; import scipy.integrate; print(QtWidgets.__name__)"
+      - name: Both prior suites and integration regressions
+        run: python -m pytest -v -ra --noconftest tests/test_directional_metric.py tests/test_meshfree_tools.py tests/test_meshfree_workbench.py tests/test_metric_tools.py tests/test_metric_project.py tests/test_metric_workbench.py tests/test_metric_layout.py tests/test_integrated_workbench.py --timeout=60 --junitxml=test-results/combined.xml
+      - name: Headless demo and launch help
+        run: |
+          python -m examples.meshfree_toolkit_demo --out integrated_ci_demo
+          python run_workbenches.py --help
+      - name: Lint integration additions
+        run: python -m ruff check adaptivecad/gui/integrated_workbench.py adaptivecad/gui/metric_launch.py run_workbenches.py tests/test_integrated_workbench.py
+      - name: Record dependencies and source for independent inspection
+        if: always()
+        run: |
+          python -m pip freeze
+          python -c "import pathlib, shutil; p=pathlib.Path('test-results/source'); p.mkdir(parents=True, exist_ok=True); [shutil.copytree(n,p/n,ignore=lambda d,names: [f for f in names if f == '__pycache__' or (pathlib.Path(d,f).is_file() and not f.endswith('.py'))],dirs_exist_ok=True) for n in ('adaptivecad','tests','examples')]; shutil.copy2('run_workbenches.py',p)"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integrated-${{ matrix.os }}-${{ matrix.python }}
+          path: test-results
+          retention-days: 7

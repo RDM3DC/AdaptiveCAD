@@ -16,12 +16,13 @@ bounded radial prototype for ``pi_f`` so the user can explore comparisons now
 without pretending the formal pi_f kernel is finalized.
 """
 
-from dataclasses import dataclass
 import math
-from typing import Callable, Iterable
+from dataclasses import dataclass
+from typing import Callable
+from typing import Iterable as Iterable
 
 try:
-    from PySide6.QtCore import Qt
+    from PySide6.QtCore import Qt as Qt
     from PySide6.QtGui import QFont
     from PySide6.QtWidgets import (
         QApplication,
@@ -44,7 +45,6 @@ except Exception as exc:  # pragma: no cover - runtime dependency path
     raise RuntimeError("PySide6 is required to run the metric comparison panel") from exc
 
 from adaptivecad.pi.kernel import PiAParams, adaptive_arc_length, pi_a
-
 
 PHI = (1.0 + math.sqrt(5.0)) / 2.0
 

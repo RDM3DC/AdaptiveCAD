@@ -1,0 +1,64 @@
+name: Release readiness
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '**.py'
+      - 'pyproject.toml'
+      - '.github/workflows/release-readiness.yml'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install runtime and audit dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libegl1 libopengl0 libgl1 libxkbcommon-x11-0
+          python -m pip install -e .
+          python -m pip install pytest pytest-timeout ruff black isort mypy PySide6 PyOpenGL scipy
+      - name: Run every existing gate and fail if any gate fails
+        shell: python
+        run: |
+          import json
+          import pathlib
+          import subprocess
+          import sys
+          root = pathlib.Path('readiness')
+          root.mkdir(exist_ok=True)
+          checks = {
+              'ruff': ['ruff', 'check', '.', '--output-format=json'],
+              'black': ['black', '--check', '.'],
+              'isort': ['isort', '--check-only', '.'],
+              'mypy': ['mypy', 'adaptivecad'],
+              'fast-tests': ['pytest', '-q', 'adaptivecad/aacore/tests', 'adaptivecad/ui/tests/test_radial_tool_wheel.py', '--timeout=60', '--junitxml=readiness/fast-tests.xml'],
+          }
+          status = {}
+          for name, args in checks.items():
+              with (root / (name + '.log')).open('w', encoding='utf-8') as log:
+                  try:
+                      result = subprocess.run([sys.executable, '-m', *args], stdout=log, stderr=subprocess.STDOUT, timeout=360, check=False)
+                      status[name] = result.returncode
+                  except subprocess.TimeoutExpired:
+                      status[name] = 124
+              print(name, status[name], flush=True)
+          (root / 'summary.json').write_text(json.dumps(status, indent=2), encoding='utf-8')
+          with (root / 'dependencies.txt').open('w', encoding='utf-8') as log:
+              subprocess.run([sys.executable, '-m', 'pip', 'freeze'], stdout=log, check=True)
+          raise SystemExit(int(any(status.values())))
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-readiness
+          path: readiness
+          retention-days: 7

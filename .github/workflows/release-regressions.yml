@@ -1,0 +1,54 @@
+name: Release regressions
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '**.py'
+      - 'pyproject.toml'
+      - '.github/workflows/release-regressions.yml'
+permissions:
+  contents: read
+jobs:
+  regression:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.13'
+          - os: windows-latest
+            python: '3.10'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      QT_QPA_PLATFORM: offscreen
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Linux Qt runtime
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libegl1 libopengl0 libgl1 libxkbcommon-x11-0
+      - name: Dependencies
+        run: python -m pip install numpy scipy pytest pytest-timeout PySide6 PyOpenGL ruff matplotlib pandas pillow
+      - name: Require real Qt and numerical reference
+        run: python -c "from PySide6 import QtWidgets; import scipy.integrate; print(QtWidgets.__name__)"
+      - name: Entire repository Ruff gate
+        run: python -m ruff check .
+      - name: Prior features, runtime fixes, and conditioning experiment
+        run: python -m pytest -q -ra --noconftest tests/test_directional_metric.py tests/test_meshfree_tools.py tests/test_meshfree_workbench.py tests/test_metric_tools.py tests/test_metric_project.py tests/test_metric_workbench.py tests/test_metric_layout.py tests/test_integrated_workbench.py tests/test_metric_curve_transfer.py tests/test_curve_transfer_ui.py tests/test_release_cleanup.py tests/test_metric_conditioning_probe.py --timeout=60 --junitxml=release-results/regressions.xml
+      - name: Dependency versions
+        if: always()
+        run: python -m pip freeze
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-regressions-${{ matrix.os }}-${{ matrix.python }}
+          path: release-results
+          retention-days: 7

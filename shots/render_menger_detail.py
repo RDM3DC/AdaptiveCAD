@@ -157,7 +157,7 @@ class MengerZoomRunner:
             try:
                 font_large = ImageFont.truetype("arial.ttf", 52)
                 font_small = ImageFont.truetype("arial.ttf", 36)
-            except:
+            except BaseException:
                 font_large = ImageFont.load_default()
                 font_small = ImageFont.load_default()
 

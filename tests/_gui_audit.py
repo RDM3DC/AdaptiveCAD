@@ -174,14 +174,26 @@ else:
 # ---- 6. SDF/aacore ----
 section("6. SDF/aacore scene operations")
 try:
-    from adaptivecad.aacore.sdf import (
-        KIND_BOX, KIND_SPHERE, KIND_TORUS, KIND_CAPSULE,
-        KIND_MANDELBULB, KIND_GYROID, KIND_KLEIN, KIND_TREFOIL,
-        KIND_MOBIUS, KIND_SUPERELLIPSOID, KIND_MENGER, KIND_HELICOID,
-        KIND_ORBITAL, KIND_HYPERBOLIC,
-        Prim, Scene,
-    )
     import numpy as np
+
+    from adaptivecad.aacore.sdf import (
+        KIND_BOX,
+        KIND_CAPSULE,
+        KIND_GYROID,
+        KIND_HELICOID,
+        KIND_HYPERBOLIC,
+        KIND_KLEIN,
+        KIND_MANDELBULB,
+        KIND_MENGER,
+        KIND_MOBIUS,
+        KIND_ORBITAL,
+        KIND_SPHERE,
+        KIND_SUPERELLIPSOID,
+        KIND_TORUS,
+        KIND_TREFOIL,
+        Prim,
+        Scene,
+    )
 
     sc = Scene()
     test_prims = [
@@ -216,7 +228,7 @@ try:
 
     try:
         d, _, _ = sc.sdf(np.array([0.0, 0.0, 0.0]))
-        ok(f"SDF:eval_at_origin", f"d={d:.4f}")
+        ok("SDF:eval_at_origin", f"d={d:.4f}")
     except Exception as e:
         fail("SDF:eval_at_origin", str(e)[:80])
 
@@ -231,7 +243,8 @@ except ImportError as e:
 # ---- 7. Sketch system ----
 section("7. Sketch constraint system")
 try:
-    from adaptivecad.sketch_solver import Sketch, FixedConstraint, DistanceConstraint
+    from adaptivecad.sketch_solver import DistanceConstraint, Sketch
+    from adaptivecad.sketch_solver import FixedConstraint as FixedConstraint
     sk = Sketch()
     p0 = sk.add_point(0, 0)
     p1 = sk.add_point(10, 0)
@@ -244,17 +257,19 @@ except Exception as e:
 # ---- 8. Export pipeline ----
 section("8. Export pipeline")
 try:
-    from adaptivecad.gcode_generator import generate_gcode_from_shape
+    from adaptivecad.gcode_generator import generate_gcode_from_shape as generate_gcode_from_shape
     ok("gcode_generator:import")
 except Exception as e:
     fail("gcode_generator:import", str(e)[:100])
 
 try:
-    from adaptivecad.aacore.ama_io import write_ama, read_ama
+    from adaptivecad.aacore.ama_io import read_ama as read_ama
+    from adaptivecad.aacore.ama_io import write_ama as write_ama
     ok("ama_io:import")
 except ImportError:
     try:
         import adaptivecad.aacore.ama_io
+        _retained_import_contract = (adaptivecad.aacore.ama_io,)
         ok("ama_io:import (partial)")
     except Exception as e:
         warn("ama_io:import", str(e)[:100])
@@ -321,9 +336,9 @@ if mw:
                 else:
                     unconnected.append(f"{menu_title} > {action.text()}")
 
-    ok(f"MenuActions", f"{connected_actions}/{total_actions} connected")
+    ok("MenuActions", f"{connected_actions}/{total_actions} connected")
     for u in unconnected:
-        warn(f"MenuAction:unconnected", u)
+        warn("MenuAction:unconnected", u)
 else:
     warn("MenuActions", "Skipped -- MainWindow not available")
 

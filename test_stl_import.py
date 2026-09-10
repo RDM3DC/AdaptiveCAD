@@ -10,7 +10,7 @@ print(f"Project root: {project_root}")
 
 try:
     print("Attempting to import adaptivecad...")
-    import adaptivecad
+    import adaptivecad as adaptivecad
 
     print("Successfully imported adaptivecad")
 except ImportError as e:

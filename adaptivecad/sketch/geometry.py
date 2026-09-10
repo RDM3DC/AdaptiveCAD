@@ -205,13 +205,18 @@ class Intersection:
         return Intersection("none")
 
     @staticmethod
-    def point(pt: Vec2) -> "Intersection":
+    def from_point(pt: Vec2) -> "Intersection":
         return Intersection("point", point=pt)
 
     @staticmethod
-    def segment(a: Vec2, b: Vec2) -> "Intersection":
+    def from_segment(a: Vec2, b: Vec2) -> "Intersection":
         return Intersection("segment", segment=(a, b))
 
+
+# Install compatibility factories after dataclass has captured real None defaults.
+# Instance payloads shadow these non-data descriptors, preserving both old APIs.
+setattr(Intersection, "point", staticmethod(Intersection.from_point))
+setattr(Intersection, "segment", staticmethod(Intersection.from_segment))
 
 def _clip_projection(t: float, eps: float = EPSILON) -> bool:
     return -eps <= t <= 1.0 + eps
@@ -236,7 +241,7 @@ def segment_intersection(
         if r_len_sq <= eps:
             # Both segments degenerately points
             if a0.almost_equals(b0, eps):
-                return Intersection.point(a0)
+                return Intersection.from_point(a0)
             return Intersection.none()
 
         t0 = qp.dot(r) / r_len_sq
@@ -251,13 +256,13 @@ def segment_intersection(
         i0 = a0 + r * clamp(t_min)
         i1 = a0 + r * clamp(t_max)
         if i0.distance_to(i1) <= eps:
-            return Intersection.point(i0)
-        return Intersection.segment(i0, i1)
+            return Intersection.from_point(i0)
+        return Intersection.from_segment(i0, i1)
 
     t = qp.cross(s) / denom
     u = qp.cross(r) / denom
     if _clip_projection(t, eps) and _clip_projection(u, eps):
-        return Intersection.point(a0 + r * t)
+        return Intersection.from_point(a0 + r * t)
     return Intersection.none()
 
 

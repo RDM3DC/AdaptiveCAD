@@ -76,7 +76,7 @@ def add_professional_overlay(draw, width, height, title, subtitle, t, extra_info
         font_subtitle = ImageFont.truetype("arial.ttf", 32)
         font_body = ImageFont.truetype("arial.ttf", 24)
         font_small = ImageFont.truetype("arial.ttf", 20)
-    except:
+    except BaseException:
         font_title = ImageFont.load_default()
         font_subtitle = ImageFont.load_default()
         font_body = ImageFont.load_default()

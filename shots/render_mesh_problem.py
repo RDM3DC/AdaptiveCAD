@@ -281,7 +281,7 @@ class MeshProblemRunner:
                 # Try to load a font
                 font_large = ImageFont.truetype("arial.ttf", 36)
                 font_small = ImageFont.truetype("arial.ttf", 28)
-            except:
+            except BaseException:
                 font_large = ImageFont.load_default()
                 font_small = ImageFont.load_default()
 
