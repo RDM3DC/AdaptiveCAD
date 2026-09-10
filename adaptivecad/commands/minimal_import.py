@@ -426,6 +426,6 @@ class MinimalImportCmd(BaseCmd):
                     self.import_thread.requestInterruption()
                     self.import_thread.wait(3000)
                 self.import_thread = None
-            except:
+            except BaseException:
                 pass
         print("[MinimalImportCmd] Cleanup complete")

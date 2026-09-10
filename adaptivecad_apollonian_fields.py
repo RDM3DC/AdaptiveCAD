@@ -53,8 +53,8 @@ current_dir = Path(__file__).parent
 sys.path.insert(0, str(current_dir))
 
 try:
-    from adaptivecad.aacore.sdf import mandelbulb_orbit
-    from adaptivecad_entangled_fields import AdaptiveField
+    from adaptivecad.aacore.sdf import mandelbulb_orbit as mandelbulb_orbit
+    from adaptivecad_entangled_fields import AdaptiveField as AdaptiveField
     HAVE_ADAPTIVECAD = True
 except ImportError:
     print("AdaptiveCAD core not found, using fallback implementations")
@@ -63,6 +63,7 @@ except ImportError:
 try:
     import cupy as cp
     import cupyx.scipy.ndimage as cp_ndimage
+    _retained_import_contract = (cp_ndimage,)
     HAVE_CUPY = True
     
     # Check for multiple GPUs and NVLink

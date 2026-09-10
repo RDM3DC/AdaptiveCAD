@@ -1,8 +1,7 @@
+import FreeCAD
 import FreeCADGui
 import Part
 from PySide import QtGui
-
-import FreeCAD
 
 # Ensure AdaptiveCAD is on sys.path (best to install/symlink repo instead of editing here)
 # Try relative path heuristic if running from inside the repo

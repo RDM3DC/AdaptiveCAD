@@ -136,7 +136,7 @@ class Torus4DRunner:
             try:
                 font_large = ImageFont.truetype("arial.ttf", 48)
                 font_small = ImageFont.truetype("arial.ttf", 32)
-            except:
+            except BaseException:
                 font_large = ImageFont.load_default()
                 font_small = ImageFont.load_default()
 

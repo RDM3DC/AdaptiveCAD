@@ -13,8 +13,15 @@ from pathlib import Path
 
 from .directional_metric import NormalMetricPatch
 from .meshfree_tools import (
-    Curve, Surface, conversion_factor, polar_array, rectangular_array,
-    reflection, rotation, scaling, translation,
+    Curve,
+    Surface,
+    conversion_factor,
+    polar_array,
+    rectangular_array,
+    reflection,
+    rotation,
+    scaling,
+    translation,
 )
 
 

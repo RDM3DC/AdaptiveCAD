@@ -299,7 +299,7 @@ class SimpleImportCmd(BaseCmd):
         if hasattr(self, "progress_dialog") and self.progress_dialog:
             try:
                 self.progress_dialog.close()
-            except:
+            except BaseException:
                 pass
             self.progress_dialog = None
 
@@ -309,5 +309,5 @@ class SimpleImportCmd(BaseCmd):
                     self.import_thread.requestInterruption()
                     self.import_thread.wait(3000)
                 self.import_thread = None
-            except:
+            except BaseException:
                 pass

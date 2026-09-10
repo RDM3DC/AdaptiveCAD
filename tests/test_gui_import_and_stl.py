@@ -22,17 +22,17 @@ def test_gui_import_system():
         print("Testing imports...")
 
         # Test importing the main module
-        import adaptivecad
+        import adaptivecad as adaptivecad
 
         print("✓ adaptivecad module imported successfully")
 
         # Test importing the gui module
-        from adaptivecad import gui
+        from adaptivecad import gui as gui
 
         print("✓ adaptivecad.gui module imported successfully")
 
         # Test importing the commands module which contains import_conformal
-        from adaptivecad import commands
+        from adaptivecad import commands as commands
 
         print("✓ adaptivecad.commands module imported successfully")
 
@@ -88,7 +88,7 @@ def test_gui_import_and_stl():
     try:
         # Try importing PySide6 and creating QApplication first
         try:
-            from PySide6.QtCore import QTimer
+            from PySide6.QtCore import QTimer as QTimer
             from PySide6.QtTest import QTest
             from PySide6.QtWidgets import QApplication
         except ImportError:

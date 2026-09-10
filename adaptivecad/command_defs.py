@@ -447,7 +447,7 @@ class ExportAmaCmd(BaseCmd):
 
     def run(self, mw) -> None:  # pragma: no cover - runtime GUI path
         (
-            _,
+            QInputDialog,
             QFileDialog,
             _,
             _,

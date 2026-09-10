@@ -19,7 +19,9 @@ __all__ = [
     "Face",
     "Solid",
 ]
-from .hyperbolic import HyperbolicConstraint, geodesic_distance, move_towards
+from .hyperbolic import HyperbolicConstraint as HyperbolicConstraint
+from .hyperbolic import geodesic_distance as geodesic_distance
+from .hyperbolic import move_towards as move_towards
 
 __all__.extend(
     [

@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Try to import PySide6
 try:
-    import PySide6
+    import PySide6 as PySide6
 except ImportError:
     print("PySide6 is not available. Please install it with:")
     print("conda install -c conda-forge pyside6")
@@ -29,7 +29,8 @@ except ImportError:
 
 try:
     # Import required modules
-    from adaptivecad.command_defs import DOCUMENT, Feature, MoveCmd, NewBoxCmd, UnionCmd
+    from adaptivecad.command_defs import DOCUMENT, MoveCmd, NewBoxCmd, UnionCmd
+    from adaptivecad.command_defs import Feature as Feature
     from adaptivecad.gui.playground import MainWindow
 
     print("Setting up test for modeling tools...")

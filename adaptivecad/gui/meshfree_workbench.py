@@ -43,9 +43,21 @@ def create_workbench(parent=None, document=None, *, guard_unsaved=False):
         from PySide6.QtCore import QSignalBlocker, Qt
         from PySide6.QtGui import QPainterPath, QPen
         from PySide6.QtWidgets import (
-            QComboBox, QFileDialog, QGraphicsScene, QGraphicsView, QHBoxLayout,
-            QGraphicsItem, QLabel, QListWidget, QMainWindow, QMessageBox, QPushButton,
-            QSplitter, QTextEdit, QVBoxLayout, QWidget,
+            QComboBox,
+            QFileDialog,
+            QGraphicsItem,
+            QGraphicsScene,
+            QGraphicsView,
+            QHBoxLayout,
+            QLabel,
+            QListWidget,
+            QMainWindow,
+            QMessageBox,
+            QPushButton,
+            QSplitter,
+            QTextEdit,
+            QVBoxLayout,
+            QWidget,
         )
     except ImportError as exc:
         raise RuntimeError('This workbench requires PySide6 in your AdaptiveCAD environment') from exc

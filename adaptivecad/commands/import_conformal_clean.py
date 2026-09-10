@@ -316,7 +316,7 @@ class ImportConformalCmd(BaseCmd):
         """Destructor to ensure thread cleanup when command object is destroyed."""
         try:
             self._cleanup_thread()
-        except:
+        except BaseException:
             pass  # Ignore any errors during cleanup in destructor
 
     def run(self, mw) -> None:  # pragma: no cover - GUI integration
@@ -384,7 +384,7 @@ class ImportConformalCmd(BaseCmd):
             self._cleanup_thread()  # Ensure cleanup on any error
             try:
                 QMessageBox.critical(mw.win, "Critical Error", f"Import command failed: {exc}")
-            except:
+            except BaseException:
                 print("Could not show error dialog")
                 pass
 
@@ -457,7 +457,7 @@ class ImportConformalCmd(BaseCmd):
                     self.import_thread.import_complete.disconnect()
                     if hasattr(self.import_thread, "shape_loaded"):
                         self.import_thread.shape_loaded.disconnect()
-                except:
+                except BaseException:
                     pass  # Ignore disconnect errors
 
                 # Request interruption if running
@@ -471,13 +471,13 @@ class ImportConformalCmd(BaseCmd):
                         try:
                             self.import_thread.terminate()
                             self.import_thread.wait(1000)  # Wait 1 more second
-                        except:
+                        except BaseException:
                             pass
 
                 # Clean up the thread object
                 try:
                     self.import_thread.deleteLater()
-                except:
+                except BaseException:
                     pass
 
             except Exception as e:

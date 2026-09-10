@@ -73,14 +73,14 @@ for dep in dependencies:
 # 5. Check if we can import the required modules
 print("\nChecking critical modules:")
 try:
-    from adaptivecad.gui import playground
+    from adaptivecad.gui import playground as playground
 
     print(f"  ✓ adaptivecad.gui.playground: {green('Available')}")
 except ImportError as e:
     print(f"  ✗ adaptivecad.gui.playground: {red(f'Not available - {e}')}")
 
 try:
-    from adaptivecad.commands.import_conformal import ImportConformalCmd
+    from adaptivecad.commands.import_conformal import ImportConformalCmd as ImportConformalCmd
 
     print(f"  ✓ adaptivecad.commands.import_conformal: {green('Available')}")
 except ImportError as e:

@@ -5,16 +5,32 @@ from dataclasses import FrozenInstanceError
 import numpy as np
 import pytest
 
-from adaptivecad.geom.meshfree_tools import (
-    Curve, Surface, apply, compose, conversion_factor, matrix, polar_array,
-    rectangular_array, reflection, rotation, scaling, translation, wireframe,
-)
-from adaptivecad.geom.tool_document import ToolDocument, ToolSession, strict_json
 from adaptivecad.geom.directional_metric import NormalMetricPatch, balanced_directional_patch
 from adaptivecad.geom.meshfree_metric_tools import (
-    angle_between, area_radius, connection, disk_area, metric_derivatives,
-    segment_length, trace_geodesic,
+    angle_between,
+    area_radius,
+    connection,
+    disk_area,
+    metric_derivatives,
+    segment_length,
+    trace_geodesic,
 )
+from adaptivecad.geom.meshfree_tools import (
+    Curve,
+    Surface,
+    apply,
+    compose,
+    conversion_factor,
+    matrix,
+    polar_array,
+    rectangular_array,
+    reflection,
+    rotation,
+    scaling,
+    translation,
+    wireframe,
+)
+from adaptivecad.geom.tool_document import ToolDocument, ToolSession, strict_json
 
 
 def eq(a, b, atol=1e-8):

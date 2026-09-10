@@ -173,7 +173,7 @@ class HyperbolicGeometryRunner:
                 font_large = ImageFont.truetype("arial.ttf", 48)
                 font_medium = ImageFont.truetype("arial.ttf", 32)
                 font_small = ImageFont.truetype("arial.ttf", 24)
-            except:
+            except BaseException:
                 font_large = ImageFont.load_default()
                 font_medium = ImageFont.load_default()
                 font_small = ImageFont.load_default()

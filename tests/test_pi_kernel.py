@@ -4,8 +4,14 @@ import numpy as np
 
 from adaptivecad.app.phase_tools import build_polar_pi_adaptive_circle_prims
 from adaptivecad.geometry import make_polar_pi_circle_profile
-from adaptivecad.pi.kernel import PiAParams, adaptive_arc_length, make_adaptive_circle, pi_a
-from adaptivecad.pi.kernel import make_polar_adaptive_circle, polar_pi_a
+from adaptivecad.pi.kernel import (
+    PiAParams,
+    adaptive_arc_length,
+    make_adaptive_circle,
+    make_polar_adaptive_circle,
+    pi_a,
+    polar_pi_a,
+)
 
 
 def test_pi_reduces_to_plain_when_kappa_zero():

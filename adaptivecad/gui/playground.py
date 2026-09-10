@@ -1,4 +1,4 @@
-﻿"""Simplified GUI playground with optional dependencies.
+"""Simplified GUI playground with optional dependencies.
 
 This playground implements advanced parametric shapes including Pi Curve Shell,
 Superellipse, Helix, Tapered Cylinder, Capsule and Ellipsoid that demonstrate the
@@ -120,20 +120,18 @@ if HAS_QT:
 
     # Feature modules from AdaptiveCAD-light (snaps, measurement, viewports)
     try:
-        from adaptivecad.gui.dim_draw import draw_angular_dim, draw_linear_dim, draw_radial_dim
-        from adaptivecad.gui.dim_tools import (
-            DimAngularTool,
-            DimLinearTool,
-            DimRadialTool,
-            MeasureTool,
-            ToolContext,
-        )
-        from adaptivecad.gui.dimensions import (
-            AngularDimension,
-            DimStyle,
-            LinearDimension,
-            RadialDimension,
-        )
+        from adaptivecad.gui.dim_draw import draw_angular_dim as draw_angular_dim
+        from adaptivecad.gui.dim_draw import draw_linear_dim as draw_linear_dim
+        from adaptivecad.gui.dim_draw import draw_radial_dim as draw_radial_dim
+        from adaptivecad.gui.dim_tools import DimAngularTool as DimAngularTool
+        from adaptivecad.gui.dim_tools import DimLinearTool as DimLinearTool
+        from adaptivecad.gui.dim_tools import DimRadialTool as DimRadialTool
+        from adaptivecad.gui.dim_tools import MeasureTool as MeasureTool
+        from adaptivecad.gui.dim_tools import ToolContext
+        from adaptivecad.gui.dimensions import AngularDimension as AngularDimension
+        from adaptivecad.gui.dimensions import DimStyle
+        from adaptivecad.gui.dimensions import LinearDimension as LinearDimension
+        from adaptivecad.gui.dimensions import RadialDimension as RadialDimension
         from adaptivecad.gui.osnap import osnap_pick
         FEATURES_AVAILABLE = True
     except ImportError as e:
@@ -1990,8 +1988,11 @@ class MainWindow:
 
         # Shared AACore analytic scene
         try:
-            from adaptivecad.aacore.sdf import KIND_CAPSULE, KIND_SPHERE, KIND_TORUS
+            from adaptivecad.aacore.sdf import KIND_CAPSULE as KIND_CAPSULE
+            from adaptivecad.aacore.sdf import KIND_SPHERE as KIND_SPHERE
+            from adaptivecad.aacore.sdf import KIND_TORUS as KIND_TORUS
             from adaptivecad.aacore.sdf import Prim as _Prim
+            _retained_import_contract = (_Prim,)
             from adaptivecad.aacore.sdf import Scene as _AACoreScene
 
             self.aacore_scene = _AACoreScene()

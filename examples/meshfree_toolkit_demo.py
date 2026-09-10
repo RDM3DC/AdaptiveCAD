@@ -12,8 +12,8 @@ import math
 from pathlib import Path
 
 from adaptivecad.geom.directional_metric import balanced_directional_patch
-from adaptivecad.geom.meshfree_tools import Surface, wireframe
 from adaptivecad.geom.meshfree_metric_tools import disk_area, trace_geodesic
+from adaptivecad.geom.meshfree_tools import Surface, wireframe
 from adaptivecad.geom.tool_document import ToolSession
 
 

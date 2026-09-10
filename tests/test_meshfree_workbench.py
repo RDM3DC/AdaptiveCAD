@@ -168,10 +168,11 @@ def test_real_qt_workbench_commands_and_menu_bridge(tmp_path, monkeypatch, qt_ap
 
 def test_selection_keeps_event_targets_alive_and_does_not_rebuild(monkeypatch, qt_app):
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-    widgets = pytest.importorskip('PySide6.QtWidgets')
+    pytest.importorskip('PySide6.QtWidgets')
     from PySide6.QtCore import QPoint, Qt
     from PySide6.QtTest import QTest
     from shiboken6 import isValid
+
     import adaptivecad.gui.meshfree_workbench as workbench
     from adaptivecad.geom.tool_document import ToolSession
 
@@ -230,7 +231,7 @@ def test_selection_keeps_event_targets_alive_and_does_not_rebuild(monkeypatch, q
 
 def test_model_refresh_blocks_selection_signals_through_empty_and_undo(qt_app):
     os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-    widgets = pytest.importorskip('PySide6.QtWidgets')
+    pytest.importorskip('PySide6.QtWidgets')
     from adaptivecad.geom.tool_document import ToolSession
     from adaptivecad.gui.meshfree_workbench import create_workbench
 

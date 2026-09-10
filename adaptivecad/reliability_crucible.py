@@ -107,6 +107,7 @@ def _require_occ() -> dict[str, Any]:
         from OCC.Core.BRepCheck import BRepCheck_Analyzer  # type: ignore
         from OCC.Core.BRepGProp import brepgprop  # type: ignore
         from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism  # type: ignore
+        from OCC.Core.gp import gp_Pnt, gp_Vec  # type: ignore
         from OCC.Core.GProp import GProp_GProps  # type: ignore
         from OCC.Core.IFSelect import IFSelect_RetDone  # type: ignore
         from OCC.Core.STEPControl import (  # type: ignore
@@ -121,7 +122,6 @@ def _require_occ() -> dict[str, Any]:
             TopAbs_SOLID,
         )
         from OCC.Core.TopExp import TopExp_Explorer  # type: ignore
-        from OCC.Core.gp import gp_Pnt, gp_Vec  # type: ignore
     except Exception as exc:
         raise RuntimeError(
             "pythonocc-core is required for boolean and STEP crucible checks"

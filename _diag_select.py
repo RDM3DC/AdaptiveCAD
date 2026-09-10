@@ -1,10 +1,13 @@
 """Diagnose selection in AnalyticViewport."""
-import os, sys, logging
+import logging
+import os
+import sys
 
 os.environ['QT_QPA_PLATFORM'] = 'offscreen'
 logging.basicConfig(level=logging.WARNING, stream=sys.stdout)
 
 from PySide6.QtWidgets import QApplication
+
 app = QApplication(sys.argv)
 
 from adaptivecad.gui.analytic_viewport import AnalyticViewportPanel
@@ -30,12 +33,14 @@ try:
     print(f"After pick: selected_index = {v.selected_index}")
 except Exception as e:
     print(f"Pick failed: {e}")
-    import traceback; traceback.print_exc()
+    import traceback
+
+    traceback.print_exc()
 
 # Try explicit GL context check
 try:
     v.makeCurrent()
-    from OpenGL.GL import glGetIntegerv, GL_FRAMEBUFFER_BINDING
+    from OpenGL.GL import GL_FRAMEBUFFER_BINDING, glGetIntegerv
     fbo = glGetIntegerv(GL_FRAMEBUFFER_BINDING)
     print(f"Current FBO binding: {fbo}")
 except Exception as e:

@@ -140,7 +140,7 @@ class MacroEngine:
     def __init__(self, bus):
         self.bus = bus
 
-    def run(self, macro: MacroDef, *, parent_widget: Optional[Widget] = None, params_values: Optional[Dict[str, Any]] = None) -> List[Any]:  # type: ignore[name-defined]
+    def run(self, macro: MacroDef, *, parent_widget: Optional[QWidget] = None, params_values: Optional[Dict[str, Any]] = None) -> List[Any]:
         values: Dict[str, Any] = dict(params_values or {})
         missing = [p for p in macro.params if p.name not in values]
         if missing:
@@ -157,4 +157,3 @@ class MacroEngine:
         return results
 
 
-# Note: the type hint Widget is only used in a kwarg comment; PySide6 QWidget will be provided at call‑site.

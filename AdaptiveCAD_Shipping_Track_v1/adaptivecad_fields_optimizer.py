@@ -157,7 +157,6 @@ def run_sweep(args):
     nx = ny = args.grid
     xs = np.linspace(-args.R, args.R, nx)
     ys = np.linspace(-args.R, args.R, ny)
-    import numpy as np
     import pandas as pd
 
     rows = []
@@ -261,10 +260,10 @@ def run_sweep(args):
     pd.DataFrame(sum_coarse).to_csv(outdir / "summary_coarse.csv", index=False)
     # One plot (ΔT vs rho) to keep this file compact
     xs_plot = [r["rho"] for r in sum_coarse]
-    ys = [r["DeltaT_mean"] for r in sum_coarse]
+    ys_plot = [r["DeltaT_mean"] for r in sum_coarse]
     es = [r["DeltaT_std"] for r in sum_coarse]
     fig = plt.figure(figsize=(7, 5))
-    plt.errorbar(xs_plot, ys, yerr=es, marker="o")
+    plt.errorbar(xs_plot, ys_plot, yerr=es, marker="o")
     plt.xlabel("ρ (correlation)")
     plt.ylabel("ΔT proxy (lower better)")
     plt.tight_layout()

@@ -14,7 +14,9 @@ import os
 import bmesh
 import bpy
 import numpy as np
-from mathutils import Vector
+
+_retained_import_contract = (np,)
+from mathutils import Vector as Vector
 
 # Shared config file (same as FreeCAD workbench)
 CFG_DIR = os.path.join(os.path.expanduser("~"), ".adaptivecad")
@@ -26,7 +28,7 @@ def load_cfg():
     try:
         if os.path.exists(CFG_PATH):
             return json.loads(open(CFG_PATH, "r").read())
-    except:
+    except BaseException:
         pass
     os.makedirs(CFG_DIR, exist_ok=True)
     with open(CFG_PATH, "w") as f:
