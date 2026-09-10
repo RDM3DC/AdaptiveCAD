@@ -7,8 +7,14 @@ from adaptivecad.geom.bezier import BezierCurve
 from adaptivecad.geom.directional_metric import NormalMetricPatch, balanced_directional_patch
 from adaptivecad.geom.metric_geodesic import trace_geodesic
 from adaptivecad.geom.metric_tools import (
-    analyze_bezier, angle_between, christoffel, disk_area, inner_product,
-    metric_derivatives, segment_length, unit_factor,
+    analyze_bezier,
+    angle_between,
+    christoffel,
+    disk_area,
+    inner_product,
+    metric_derivatives,
+    segment_length,
+    unit_factor,
 )
 from adaptivecad.linalg import Vec3
 

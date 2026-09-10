@@ -15,15 +15,38 @@ from pathlib import Path
 from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QAction, QColor, QPainterPath, QPen
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDockWidget, QFileDialog, QFormLayout, QGraphicsScene,
-    QGraphicsView, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPlainTextEdit,
-    QPushButton, QSplitter, QTabWidget, QToolBar, QVBoxLayout, QWidget,
+    QCheckBox,
+    QComboBox,
+    QDockWidget,
+    QFileDialog,
+    QFormLayout,
+    QGraphicsScene,
+    QGraphicsView,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPlainTextEdit,
+    QPushButton,
+    QSplitter,
+    QTabWidget,
+    QToolBar,
+    QVBoxLayout,
+    QWidget,
 )
 
-from adaptivecad.geom.directional_metric import NormalMetricPatch, _finite, balanced_directional_patch
+from adaptivecad.geom.directional_metric import (
+    NormalMetricPatch,
+    _finite,
+    balanced_directional_patch,
+)
 from adaptivecad.geom.metric_geodesic import trace_geodesic
 from adaptivecad.geom.metric_tools import (
-    METRES_PER_UNIT, analyze_bezier, angle_between, disk_area, point,
+    METRES_PER_UNIT,
+    analyze_bezier,
+    angle_between,
+    disk_area,
+    point,
 )
 from adaptivecad.metric_project import MetricCurve, MetricHistory, MetricProject, atomic_write
 
