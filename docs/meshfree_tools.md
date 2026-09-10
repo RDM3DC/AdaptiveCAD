@@ -24,6 +24,12 @@ and Apply. All public API and command angles are **radians**. A JSON array of
 commands executes as one atomic, undoable transaction. Name collisions fail
 unless `"replace": true` is supplied explicitly.
 
+The workbench displays every document entity in one shared projection and scale.
+Click a wireframe to select its document object; use **Fit all** to restore the
+whole-document view and **Delete selected** for an undoable deletion. Selection
+is retained by object name across commands and history changes when that object
+still exists.
+
 For an opt-in menu in an existing Qt window, after constructing the window:
 
 ```python
@@ -34,6 +40,20 @@ install_meshfree_tools(window)
 This adds a launcher for a **separate document**, not an automatic import of the
 main window's current selection. The bridge is idempotent. No existing launcher
 or GUI file is changed automatically.
+
+### Coexistence with the metric dock
+
+PR #74's `install_metric_workbench(window)` attaches a `QDockWidget` to an
+existing Playground or SDF host and owns an independent `MetricProject`. This
+mesh-free launcher owns a `ToolDocument` and its own undo/save history. Later
+integration should install both tools additively in the existing host: retain
+this launcher, attach the metric dock once, and do not replace either document
+model or create another host application.
+
+There is no implicit synchronization between the two documents. A future bridge
+may explicitly validate and copy compatible metric or curve data, but selection,
+undo/redo, dirty state, and persistence remain owned by their source workbench
+until a shared transaction and serialization contract is defined.
 
 ## Authoritative representations
 
