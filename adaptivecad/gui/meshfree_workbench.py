@@ -40,11 +40,11 @@ PRESETS = {
 def create_workbench(parent=None, document=None):
     """Lazy Qt import keeps core geometry usable on headless machines."""
     try:
-        from PySide6.QtCore import Qt
+        from PySide6.QtCore import QSignalBlocker, Qt
         from PySide6.QtGui import QPainterPath, QPen
         from PySide6.QtWidgets import (
             QComboBox, QFileDialog, QGraphicsScene, QGraphicsView, QHBoxLayout,
-            QLabel, QListWidget, QMainWindow, QMessageBox, QPushButton,
+            QGraphicsItem, QLabel, QListWidget, QMainWindow, QMessageBox, QPushButton,
             QSplitter, QTextEdit, QVBoxLayout, QWidget,
         )
     except ImportError as exc:
@@ -63,7 +63,8 @@ def create_workbench(parent=None, document=None):
             bar = QHBoxLayout()
             layout.addLayout(bar)
             for label, method in [('Open', self.load_file), ('Save as', self.save_file),
-                                  ('Undo', self.undo), ('Redo', self.redo), ('Measure selected', self.measure)]:
+                                  ('Undo', self.undo), ('Redo', self.redo), ('Fit all', self.fit_view),
+                                  ('Delete selected', self.delete_selected), ('Measure selected', self.measure)]:
                 button = QPushButton(label)
                 button.clicked.connect(method)
                 bar.addWidget(button)
@@ -85,18 +86,47 @@ def create_workbench(parent=None, document=None):
             self.report = QTextEdit()
             self.report.setReadOnly(True)
             col.addWidget(self.report)
-            self.scene = QGraphicsScene()
+            self.scene = QGraphicsScene(self)
+            self.scene.selectionChanged.connect(self.select_scene_item)
             self.view = QGraphicsView(self.scene)
             split.addWidget(self.view)
             self.view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
             split.setSizes([430, 750])
             self.templates.currentTextChanged.connect(self.template)
-            self.listing.currentRowChanged.connect(self.draw)
+            self.listing.currentRowChanged.connect(self.highlight_selection)
             self.template(self.templates.currentText())
             self.refresh()
 
         def template(self, label):
             self.editor.setPlainText(json.dumps(PRESETS[label], indent=2))
+
+        def select_scene_item(self):
+            selected = self.scene.selectedItems()
+            if not selected:
+                self.listing.setCurrentRow(-1)
+                return
+            current = self.listing.currentItem()
+            current_name = current.text() if current is not None else None
+            # setSelected(True) can add a second object; prefer the new object.
+            name = next((item.data(0) for item in selected
+                         if item.data(0) != current_name), selected[0].data(0))
+            for row in range(self.listing.count()):
+                if self.listing.item(row).text() == name:
+                    self.listing.setCurrentRow(row)
+                    self.highlight_selection(row)
+                    return
+
+        def highlight_selection(self, row):
+            """Change selection in place; never delete an active Qt event target."""
+            name = (self.listing.item(row).text()
+                    if 0 <= row < self.listing.count() else None)
+            normal_pen = QPen(Qt.GlobalColor.darkGray, 0)
+            selected_pen = QPen(Qt.GlobalColor.darkCyan, 2)
+            with QSignalBlocker(self.scene):
+                for item in self.scene.items():
+                    selected = item.data(0) == name
+                    item.setPen(selected_pen if selected else normal_pen)
+                    item.setSelected(selected)
 
         def failure(self, error):
             self.report.setPlainText(f'No command committed. {type(error).__name__}: {error}')
@@ -111,39 +141,71 @@ def create_workbench(parent=None, document=None):
                 self.failure(exc)
 
         def refresh(self):
-            selected = self.listing.currentRow()
-            self.listing.blockSignals(True)
-            self.listing.clear()
-            self.listing.addItems([n for n, _ in self.session.document.entities])
-            self.listing.blockSignals(False)
-            if self.listing.count():
-                self.listing.setCurrentRow(max(0, min(selected, self.listing.count()-1)))
-            else:
-                self.scene.clear()
+            current = self.listing.currentItem()
+            selected_name = current.text() if current is not None else None
+            selected_row = self.listing.currentRow()
+            with QSignalBlocker(self.listing):
+                self.listing.clear()
+                self.listing.addItems([n for n, _ in self.session.document.entities])
+                if self.listing.count():
+                    row = next((i for i in range(self.listing.count())
+                                if self.listing.item(i).text() == selected_name), None)
+                    if row is None:
+                        row = max(0, min(selected_row, self.listing.count()-1))
+                    self.listing.setCurrentRow(row)
             self.statusBar().showMessage(f'{len(self.session.document.entities)} objects | unit: {self.session.document.unit}')
+            self.draw(self.listing.currentRow(), fit=True)
 
-        def draw(self, row):
+        def draw(self, row, fit=False):
+            # Model edits rebuild items; selection callbacks must not run mid-clear.
+            with QSignalBlocker(self.scene):
+                self._rebuild_scene(row, fit)
+
+        def _rebuild_scene(self, row, fit):
             self.scene.clear()
-            if row < 0 or row >= len(self.session.document.entities):
+            entities = self.session.document.entities
+            if not entities:
                 return
             try:
-                entity = self.session.document.entities[row][1]
-                paths = wireframe(entity)
-                projected = [[(.8660254*(x-y), .5*(x+y)-z) for x, y, z in path] for path in paths]
-                values = [p for path in projected for p in path]
+                selected_name = (self.listing.item(row).text()
+                                 if 0 <= row < self.listing.count() else None)
+                projected_entities = []
+                for name, entity in entities:
+                    paths = wireframe(entity)
+                    projected = [[(.8660254*(x-y), .5*(x+y)-z) for x, y, z in path]
+                                  for path in paths if path]
+                    if projected:
+                        projected_entities.append((name, projected))
+                values = [p for _, paths in projected_entities for path in paths for p in path]
+                if not values:
+                    return
                 xmin, xmax = min(x for x, _ in values), max(x for x, _ in values)
                 ymin, ymax = min(y for _, y in values), max(y for _, y in values)
                 scale = max(xmax-xmin, ymax-ymin, 1e-100)
                 # Normalize huge/small model coordinates for stable display only.
-                for poly in projected:
-                    path = QPainterPath()
-                    for i, (x, y) in enumerate(poly):
-                        xy = ((x-xmin)/scale*500, (y-ymin)/scale*500)
-                        path.moveTo(*xy) if i == 0 else path.lineTo(*xy)
-                    self.scene.addPath(path, QPen(Qt.GlobalColor.darkBlue, 0))
-                self.view.fitInView(self.scene.itemsBoundingRect().adjusted(-20, -20, 20, 20), Qt.AspectRatioMode.KeepAspectRatio)
+                normal_pen = QPen(Qt.GlobalColor.darkGray, 0)
+                selected_pen = QPen(Qt.GlobalColor.darkCyan, 2)
+                for name, paths in projected_entities:
+                    pen = selected_pen if name == selected_name else normal_pen
+                    for poly in paths:
+                        path = QPainterPath()
+                        for i, (x, y) in enumerate(poly):
+                            xy = ((x-xmin)/scale*500, (y-ymin)/scale*500)
+                            path.moveTo(*xy) if i == 0 else path.lineTo(*xy)
+                        item = self.scene.addPath(path, pen)
+                        item.setData(0, name)
+                        item.setToolTip(name)
+                        item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+                self.highlight_selection(row)
+                if fit:
+                    self.fit_view()
             except (ValueError, ArithmeticError) as exc:
                 self.report.setPlainText(f'Display failed; geometry preserved: {exc}')
+
+        def fit_view(self):
+            bounds = self.scene.itemsBoundingRect()
+            if not bounds.isEmpty():
+                self.view.fitInView(bounds.adjusted(-20, -20, 20, 20), Qt.AspectRatioMode.KeepAspectRatio)
 
         def measure(self):
             row = self.listing.currentRow()
@@ -162,6 +224,18 @@ def create_workbench(parent=None, document=None):
                 self.report.setPlainText(json.dumps(report, indent=2, allow_nan=False))
             except (ValueError, ArithmeticError) as exc:
                 self.report.setPlainText(f'Measurement unavailable: {exc}')
+
+        def delete_selected(self):
+            row = self.listing.currentRow()
+            if row < 0:
+                return
+            name = self.listing.item(row).text()
+            try:
+                self.session.execute({'op': 'delete', 'source': name})
+                self.refresh()
+                self.report.setPlainText(f'Deleted {name}. Undo restores the complete previous document.')
+            except (ValueError, TypeError, ArithmeticError, KeyError) as exc:
+                self.failure(exc)
 
         def undo(self):
             self.session.undo()
