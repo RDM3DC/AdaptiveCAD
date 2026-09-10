@@ -1,0 +1,43 @@
+name: Mesh-free toolkit tests
+
+on:
+  push:
+    paths:
+      - 'adaptivecad/**'
+      - 'tests/test_meshfree*.py'
+      - 'examples/meshfree_toolkit_demo.py'
+      - '.github/workflows/meshfree-toolkit.yml'
+  pull_request:
+    paths:
+      - 'adaptivecad/**'
+      - 'tests/test_meshfree*.py'
+      - 'examples/meshfree_toolkit_demo.py'
+      - '.github/workflows/meshfree-toolkit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  toolkit:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.10', '3.13']
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install test dependencies including real Qt
+        run: python -m pip install numpy scipy pytest PySide6
+      - name: Test actual checkout, including workbench and previous metric tools
+        run: python -m pytest -q --noconftest tests/test_directional_metric.py tests/test_meshfree_tools.py tests/test_meshfree_workbench.py
+      - name: Run headless demo
+        run: python -m examples.meshfree_toolkit_demo --out meshfree_ci_demo
