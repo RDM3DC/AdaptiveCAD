@@ -1,0 +1,72 @@
+name: Model workspace UI
+on:
+  pull_request:
+    paths:
+      - 'adaptivecad/**'
+      - 'tests/test_workbench*'
+      - 'tests/test_integrated_workbench.py'
+      - 'tests/test_curve_transfer_ui.py'
+      - 'pyproject.toml'
+      - '.github/workflows/model-workspace-ui.yml'
+permissions:
+  contents: read
+jobs:
+  workspace:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.13'
+          - os: windows-latest
+            python: '3.10'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      QT_QPA_PLATFORM: offscreen
+      MPLBACKEND: Agg
+      WORKBENCH_UI_SCREENSHOT: workspace-results/model-workspace.png
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Linux Qt runtime
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libegl1 libopengl0 libgl1 libxkbcommon-x11-0
+      - name: Dependencies
+        id: deps
+        run: python -m pip install numpy scipy pytest pytest-timeout PySide6 PyOpenGL ruff black isort matplotlib pandas pillow
+      - name: Require real Qt and numerical reference
+        run: python -c "from PySide6 import QtWidgets; import scipy.integrate; print(QtWidgets.__name__)"
+      - name: Entire repository Ruff
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: python -m ruff check .
+      - name: New UI code formatting
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: python -m black --check --diff adaptivecad/gui/workbench_commands.py adaptivecad/gui/workbench_ui.py tests/test_workbench_commands.py tests/test_workbench_ui.py
+      - name: New UI import order
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: python -m isort --check-only --diff adaptivecad/gui/workbench_commands.py adaptivecad/gui/workbench_ui.py tests/test_workbench_commands.py tests/test_workbench_ui.py
+      - name: Previous 329 cases plus new form and real Qt UI regressions
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: python -m pytest -q -ra --noconftest tests/test_directional_metric.py tests/test_meshfree_tools.py tests/test_meshfree_workbench.py tests/test_metric_tools.py tests/test_metric_project.py tests/test_metric_workbench.py tests/test_metric_layout.py tests/test_integrated_workbench.py tests/test_metric_curve_transfer.py tests/test_curve_transfer_ui.py tests/test_release_cleanup.py tests/test_metric_conditioning_probe.py tests/test_workbench_commands.py tests/test_workbench_ui.py --timeout=60 --junitxml=workspace-results/workspace.xml
+      - name: Launcher help
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: python run_workbenches.py --help
+      - name: Dependency versions
+        if: always()
+        run: python -m pip freeze
+      - name: Capture reviewed source
+        if: always()
+        run: python -c "import pathlib,zipfile; out=pathlib.Path('workspace-results/source.zip'); out.parent.mkdir(parents=True,exist_ok=True); z=zipfile.ZipFile(out,'w'); paths=['adaptivecad/gui/workbench_commands.py','adaptivecad/gui/workbench_ui.py','adaptivecad/gui/integrated_workbench.py','tests/test_workbench_commands.py','tests/test_workbench_ui.py']; [z.write(p,p) for p in paths]; z.close()"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: model-workspace-${{ matrix.os }}-${{ matrix.python }}
+          path: workspace-results
+          retention-days: 7

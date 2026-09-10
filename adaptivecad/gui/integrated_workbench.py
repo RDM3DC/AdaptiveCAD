@@ -15,6 +15,7 @@ def install_integrated_tools(window):
     from .meshfree_workbench import install_meshfree_tools
     from .metric_dock_layout import prepare_metric_dock
     from .metric_workbench import install_metric_workbench
+    from .workbench_ui import install_workbench_ui
 
     host = getattr(window, "win", window)
     dock = install_metric_workbench(host)
@@ -26,20 +27,23 @@ def install_integrated_tools(window):
     if not getattr(host, "_curve_transfer_child_hook", None):
         def attach_transfer():
             install_curve_transfer(host._meshfree_window, dock)
+            install_workbench_ui(host._meshfree_window)
         action.triggered.connect(attach_transfer)
         host._curve_transfer_child_hook = attach_transfer
     child = getattr(host, "_meshfree_window", None)
     if child is not None:
         install_curve_transfer(child, dock)
+        install_workbench_ui(child)
     return dock
 
 
-def create_integrated_workbench(document=None, metric_project=None):
+def create_integrated_workbench(document=None, metric_project=None, *, professional_ui=True):
     """Reuse the stable modeling window as host; the dock owns its own project."""
     from .curve_transfer import install_curve_transfer
     from .meshfree_workbench import create_workbench
     from .metric_dock_layout import prepare_metric_dock
     from .metric_workbench import install_metric_workbench
+    from .workbench_ui import install_workbench_ui
 
     window = create_workbench(document=document, guard_unsaved=True)
     dock = install_metric_workbench(window)
@@ -52,6 +56,8 @@ def create_integrated_workbench(document=None, metric_project=None):
         dock.history.reset(metric_project)
         dock._refresh()
     install_curve_transfer(window, dock)
+    if professional_ui:
+        install_workbench_ui(window)
     # No second modeling child window is installed into the modeling window.
     window.resize(1520, 860)
     return window
@@ -62,6 +68,7 @@ def main(argv=None):
     parser.add_argument("--document", help="Existing mesh-free document JSON")
     parser.add_argument("--metric-project", help="Existing .acmetric.json project")
     parser.add_argument("--demo", action="store_true", help="Load an in-memory modeling demo; writes no files")
+    parser.add_argument("--classic-ui", action="store_true", help="Use the previous command-first layout")
     args = parser.parse_args(argv)
     if args.demo and args.document:
         parser.error("Use --demo or --document, not both")
@@ -76,7 +83,7 @@ def main(argv=None):
             document = demo_session().document
         from PySide6.QtWidgets import QApplication
         app = QApplication.instance() or QApplication([sys.argv[0]])
-        window = create_integrated_workbench(document, project)
+        window = create_integrated_workbench(document, project, professional_ui=not args.classic_ui)
         if args.demo:
             window._saved_document = ToolDocument()
             window.refresh()
