@@ -50,6 +50,28 @@ from adaptivecad.gui.workbench_commands import (
 
 STYLE = """
 QMainWindow#AdaptiveCADModelWorkspace { background: #17212e; }
+QMainWindow#AdaptiveCADModelWorkspace QMenuBar { background: #17212e; color: #e2ebf5; }
+QMainWindow#AdaptiveCADModelWorkspace QMenuBar::item:selected { background: #386b96; }
+QMainWindow#AdaptiveCADModelWorkspace QStatusBar { background: #17212e; color: #c3d1e1; }
+QLabel#ModelStatus { color: #c3d1e1; padding: 4px; }
+QToolBar#ModelRibbonToolbar { background: #223145; border: 0; }
+QDockWidget#ModelBrowser, QDockWidget#ModelInspector,
+QDockWidget#ModelConsole { color: #e2ebf5; }
+QWidget#ModelPanel QHeaderView::section {
+    background: #30445d; color: #e2ebf5; padding: 5px; border: 0;
+}
+QDialog#ModelParameterDialog { background: #eef3f8; color: #283a50; }
+QDialog#ModelParameterDialog QScrollArea, QDialog#ModelParameterDialog QScrollArea QWidget {
+    background: #eef3f8; color: #283a50;
+}
+QDialog#ModelParameterDialog QLineEdit, QDialog#ModelParameterDialog QComboBox,
+QDialog#ModelParameterDialog QPlainTextEdit {
+    background: white; color: #17212e; border: 1px solid #acbed2; border-radius: 4px; padding: 7px;
+}
+QDialog#ModelParameterDialog QPushButton {
+    background: #30445d; color: white; border: 0; border-radius: 4px; padding: 8px 12px;
+}
+QDialog#ModelParameterDialog QPushButton:hover { background: #386b96; }
 QWidget#ModelCanvas { background: #f1f4f8; }
 QWidget#ModelCanvas QLabel { color: #283a50; }
 QWidget#ModelRibbon, QWidget#ModelCanvasHeader { background: #223145; color: #edf3fb; }
@@ -103,7 +125,8 @@ class CommandDialog(QDialog):
         self.fields = {}
         self.setObjectName("ModelParameterDialog")
         self.setWindowTitle(label + " — model parameters")
-        self.resize(590, 600)
+        height = 240 + len(self.defaults) * 42 + (100 if "points" in self.defaults else 0)
+        self.resize(620, min(720, max(340, height)))
         layout = QVBoxLayout(self)
         note = _label(
             f"Model unit: {self.snapshot.unit}  |  Angles: radians\n"
@@ -179,9 +202,7 @@ class CommandDialog(QDialog):
             text = (
                 widget.currentText()
                 if kind in ("entity", "unit")
-                else widget.toPlainText()
-                if kind == "points"
-                else widget.text()
+                else widget.toPlainText() if kind == "points" else widget.text()
             )
             try:
                 command[key] = parse_field(kind, text)
@@ -285,9 +306,13 @@ class WorkbenchUI(QObject):
         header = QWidget()
         header.setObjectName("ModelCanvasHeader")
         head = QHBoxLayout(header)
-        head.addWidget(_label("MODEL WORKSPACE  /  NATIVE CURVES + SHEETS"))
+        title = _label("MODEL  /  NATIVE CURVES + SHEETS")
+        title.setWordWrap(False)
+        head.addWidget(title)
         head.addStretch()
-        head.addWidget(_label("Isometric wireframe"))
+        projection = _label("Isometric wireframe")
+        projection.setWordWrap(False)
+        head.addWidget(projection)
         layout.addWidget(header)
         layout.addWidget(
             _label(
@@ -373,6 +398,8 @@ class WorkbenchUI(QObject):
         for key in ("reset_layout", "save_layout", "restore_layout"):
             workspace.addAction(self.actions[key])
         self.status = _label("")
+        self.status.setObjectName("ModelStatus")
+        self.status.setWordWrap(False)
         w.statusBar().addPermanentWidget(self.status)
         # Model-only keys: never steal text editor or metric-dock undo/delete.
         self.shortcuts = []
@@ -492,7 +519,7 @@ class WorkbenchUI(QObject):
             self.actions[key].setEnabled(name is not None)
         self.status.setText(
             f"MODEL: {len(doc.entities)} objects  |  {doc.unit}  |  "
-            f"{'Modified' if w.has_unsaved_changes else 'Saved snapshot'}  |  Metric file/history separate"
+            f"{'Modified' if w.has_unsaved_changes else 'Saved snapshot'}  |  Metric document separate"
         )
         self.selection_title.setText(name or "Nothing selected")
         self.properties.clear()
@@ -594,11 +621,18 @@ class WorkbenchUI(QObject):
             Qt.Orientation.Horizontal,
         )
         self.window.resizeDocks([self.docks["ModelConsole"]], [230], Qt.Orientation.Vertical)
+        metric = getattr(self.window, "_curve_transfer_target", None)
+        if metric is not None and metric.parentWidget() is self.window:
+            self.window.tabifyDockWidget(metric, self.docks["ModelInspector"])
+            self.docks["ModelInspector"].raise_()
         self.toolbar.show()
         self.ribbon.setCurrentIndex(0)
 
+    def _layout_settings(self):
+        return QSettings("AdaptiveCAD", "ModelWorkspace")
+
     def save_layout(self):
-        settings = QSettings("AdaptiveCAD", "ModelWorkspace")
+        settings = self._layout_settings()
         settings.setValue("dockStateV1", self.window.saveState(1))
         settings.sync()
         if settings.status() != QSettings.Status.NoError:
@@ -611,7 +645,7 @@ class WorkbenchUI(QObject):
             )
 
     def restore_layout(self):
-        settings = QSettings("AdaptiveCAD", "ModelWorkspace")
+        settings = self._layout_settings()
         state = settings.value("dockStateV1")
         if state is None or not self.window.restoreState(state, 1):
             self.window.statusBar().showMessage(

@@ -209,6 +209,38 @@ def test_model_shortcuts_cannot_steal_metric_editor_undo(app):
     assert not w._metric_workbench.findChildren(QShortcut)
 
 
+def test_metric_text_undo_leaves_model_history_untouched(app):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QTextCursor
+    from PySide6.QtTest import QTest
+
+    w = create(app)
+    w.session.execute({"op": "copy", "source": "first", "name": "keep_me"})
+    w.refresh()
+    before = w.session.document
+    w._workbench_ui.show_metrics()
+    w.activateWindow()
+    editor = w._metric_workbench.patch_editor
+    editor.setFocus()
+    editor.moveCursor(QTextCursor.MoveOperation.End)
+    original = editor.toPlainText()
+    app.processEvents()
+    QTest.keyClicks(editor, " ")
+    assert editor.toPlainText() != original
+    QTest.keyClick(editor, Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier)
+    assert editor.toPlainText() == original
+    assert w.session.document is before
+
+
+def test_metric_dock_uses_full_height_tab_with_inspector(app):
+    w = create(app)
+    ui = w._workbench_ui
+    ui.show_metrics()
+    app.processEvents()
+    assert w._metric_workbench in w.tabifiedDockWidgets(ui.docks["ModelInspector"])
+    assert w._metric_workbench.isVisible()
+
+
 def test_transfer_action_reuses_original_guarded_dialog(app):
     w = create(app)
     ui, metric = w._workbench_ui, w._metric_workbench
@@ -239,23 +271,28 @@ def test_draft_metric_and_dirty_model_still_block_close(app):
     assert not w.close()
 
 
-def test_layout_save_restore_does_not_write_document(app, tmp_path):
+def test_layout_save_restore_does_not_write_document(app, tmp_path, monkeypatch):
     from PySide6.QtCore import QSettings
 
     w = create(app)
     ui = w._workbench_ui
     before = w.session.document, w._metric_workbench.history.current
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-    QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path))
-    try:
-        ui.save_layout()
-        ui.docks["ModelBrowser"].hide()
-        ui.restore_layout()
-        assert not ui.docks["ModelBrowser"].isHidden()
-        assert (w.session.document, w._metric_workbench.history.current) == before
-        assert list(tmp_path.rglob("*.ini"))
-    finally:
-        QSettings.setDefaultFormat(QSettings.Format.NativeFormat)
+    target = tmp_path / "layout.ini"
+    # The organization/application QSettings constructor always uses native
+    # storage. Inject real file-backed settings instead of changing global Qt
+    # defaults (which that constructor ignores, and other suites may use).
+    monkeypatch.setattr(
+        ui, "_layout_settings", lambda: QSettings(str(target), QSettings.Format.IniFormat)
+    )
+    ui.save_layout()
+    assert target.is_file()
+    stored = QSettings(str(target), QSettings.Format.IniFormat)
+    assert stored.contains("dockStateV1")
+    ui.docks["ModelBrowser"].hide()
+    ui.restore_layout()
+    assert not ui.docks["ModelBrowser"].isHidden()
+    assert (w.session.document, w._metric_workbench.history.current) == before
+    assert {p.name for p in tmp_path.iterdir()} == {"layout.ini"}
 
 
 def test_command_search_opens_a_real_parameter_form(app):
