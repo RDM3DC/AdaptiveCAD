@@ -1,0 +1,37 @@
+name: Metric workbench
+on:
+  push:
+    branches: ['feat/metric-workbench-tools']
+  pull_request:
+    paths:
+      - 'adaptivecad/geom/directional_metric.py'
+      - 'adaptivecad/geom/metric_tools.py'
+      - 'adaptivecad/gui/metric_workbench.py'
+      - 'adaptivecad/gui/playground.py'
+      - 'tests/test_metric_*.py'
+      - '.github/workflows/metric-workbench.yml'
+permissions:
+  contents: read
+jobs:
+  source-snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Pack tracked source for reproducible integration tests
+        run: |
+          python - <<'PY'
+          import pathlib, subprocess, zipfile
+          with zipfile.ZipFile('source_snapshot.zip', 'w', zipfile.ZIP_DEFLATED) as out:
+              for name in subprocess.check_output(['git', 'ls-files'], text=True).splitlines():
+                  p = pathlib.Path(name)
+                  if p.suffix in {'.py', '.md', '.toml', '.yml', '.yaml', '.qss', '.bat'} and p.is_file() and p.stat().st_size < 2000000:
+                      out.write(p, name)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: metric-workbench-source
+          path: source_snapshot.zip
+          retention-days: 2
