@@ -40,7 +40,7 @@ PRESETS = {
 def create_workbench(parent=None, document=None):
     """Lazy Qt import keeps core geometry usable on headless machines."""
     try:
-        from PySide6.QtCore import Qt
+        from PySide6.QtCore import QSignalBlocker, Qt
         from PySide6.QtGui import QPainterPath, QPen
         from PySide6.QtWidgets import (
             QComboBox, QFileDialog, QGraphicsScene, QGraphicsView, QHBoxLayout,
@@ -93,7 +93,7 @@ def create_workbench(parent=None, document=None):
             self.view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
             split.setSizes([430, 750])
             self.templates.currentTextChanged.connect(self.template)
-            self.listing.currentRowChanged.connect(self.draw)
+            self.listing.currentRowChanged.connect(self.highlight_selection)
             self.template(self.templates.currentText())
             self.refresh()
 
@@ -103,12 +103,30 @@ def create_workbench(parent=None, document=None):
         def select_scene_item(self):
             selected = self.scene.selectedItems()
             if not selected:
+                self.listing.setCurrentRow(-1)
                 return
-            name = selected[0].data(0)
+            current = self.listing.currentItem()
+            current_name = current.text() if current is not None else None
+            # setSelected(True) can add a second object; prefer the new object.
+            name = next((item.data(0) for item in selected
+                         if item.data(0) != current_name), selected[0].data(0))
             for row in range(self.listing.count()):
                 if self.listing.item(row).text() == name:
                     self.listing.setCurrentRow(row)
+                    self.highlight_selection(row)
                     return
+
+        def highlight_selection(self, row):
+            """Change selection in place; never delete an active Qt event target."""
+            name = (self.listing.item(row).text()
+                    if 0 <= row < self.listing.count() else None)
+            normal_pen = QPen(Qt.GlobalColor.darkGray, 0)
+            selected_pen = QPen(Qt.GlobalColor.darkCyan, 2)
+            with QSignalBlocker(self.scene):
+                for item in self.scene.items():
+                    selected = item.data(0) == name
+                    item.setPen(selected_pen if selected else normal_pen)
+                    item.setSelected(selected)
 
         def failure(self, error):
             self.report.setPlainText(f'No command committed. {type(error).__name__}: {error}')
@@ -126,20 +144,24 @@ def create_workbench(parent=None, document=None):
             current = self.listing.currentItem()
             selected_name = current.text() if current is not None else None
             selected_row = self.listing.currentRow()
-            self.listing.blockSignals(True)
-            self.listing.clear()
-            self.listing.addItems([n for n, _ in self.session.document.entities])
-            self.listing.blockSignals(False)
-            if self.listing.count():
-                row = next((i for i in range(self.listing.count())
-                            if self.listing.item(i).text() == selected_name), None)
-                if row is None:
-                    row = max(0, min(selected_row, self.listing.count()-1))
-                self.listing.setCurrentRow(row)
+            with QSignalBlocker(self.listing):
+                self.listing.clear()
+                self.listing.addItems([n for n, _ in self.session.document.entities])
+                if self.listing.count():
+                    row = next((i for i in range(self.listing.count())
+                                if self.listing.item(i).text() == selected_name), None)
+                    if row is None:
+                        row = max(0, min(selected_row, self.listing.count()-1))
+                    self.listing.setCurrentRow(row)
             self.statusBar().showMessage(f'{len(self.session.document.entities)} objects | unit: {self.session.document.unit}')
             self.draw(self.listing.currentRow(), fit=True)
 
         def draw(self, row, fit=False):
+            # Model edits rebuild items; selection callbacks must not run mid-clear.
+            with QSignalBlocker(self.scene):
+                self._rebuild_scene(row, fit)
+
+        def _rebuild_scene(self, row, fit):
             self.scene.clear()
             entities = self.session.document.entities
             if not entities:
@@ -174,6 +196,7 @@ def create_workbench(parent=None, document=None):
                         item.setData(0, name)
                         item.setToolTip(name)
                         item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+                self.highlight_selection(row)
                 if fit:
                     self.fit_view()
             except (ValueError, ArithmeticError) as exc:

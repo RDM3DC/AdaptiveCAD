@@ -141,3 +141,96 @@ def test_real_qt_workbench_commands_and_menu_bridge(tmp_path, monkeypatch):
     parent._meshfree_window.close()
     parent.close()
     window.close()
+
+
+def test_selection_keeps_event_targets_alive_and_does_not_rebuild(monkeypatch):
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    widgets = pytest.importorskip('PySide6.QtWidgets')
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+    from shiboken6 import isValid
+    import adaptivecad.gui.meshfree_workbench as workbench
+    from adaptivecad.geom.tool_document import ToolSession
+
+    session = ToolSession()
+    session.execute_many([
+        {'op': 'line', 'name': 'first', 'start': [0, 0, 0], 'end': [10, -10, 0]},
+        {'op': 'line', 'name': 'second', 'start': [0, 0, 20], 'end': [10, -10, 20]},
+    ])
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    window = workbench.create_workbench(document=session.document)
+    window.show()
+    app.processEvents()
+    items = {item.data(0): item for item in window.scene.items()}
+    document = window.session.document
+    transform = window.view.transform()
+
+    def unexpected_rebuild(*args, **kwargs):
+        pytest.fail('Selection must not regenerate wireframes or replace scene items')
+
+    monkeypatch.setattr(workbench, 'wireframe', unexpected_rebuild)
+    try:
+        for name in ('second', 'first') * 5:
+            items[name].setSelected(True)
+            assert all(isValid(item) for item in items.values())
+            assert window.listing.currentItem().text() == name
+            assert {item.data(0) for item in window.scene.selectedItems()} == {name}
+            assert all(window.scene.items().count(item) == 1 for item in items.values())
+            row = 0 if name == 'second' else 1
+            window.listing.setCurrentRow(row)
+            assert all(isValid(item) for item in items.values())
+            assert {item.data(0) for item in window.scene.selectedItems()} == {
+                window.listing.currentItem().text()
+            }
+
+        # Exercise real press/release dispatch, not only setSelected() signals.
+        for name in ('second', 'first') * 3:
+            item = items[name]
+            center = window.view.mapFromScene(item.mapToScene(item.path().pointAtPercent(.5)))
+            hits = [center + QPoint(dx, dy) for dx in range(-2, 3) for dy in range(-2, 3)
+                    if window.view.itemAt(center + QPoint(dx, dy)) is item]
+            assert hits, f'No clickable viewport point for {name}'
+            QTest.mouseClick(window.view.viewport(), Qt.MouseButton.LeftButton,
+                             Qt.KeyboardModifier.NoModifier, hits[0])
+            app.processEvents()
+            assert all(isValid(target) for target in items.values())
+            assert window.listing.currentItem().text() == name
+        assert window.session.document == document
+        assert window.view.transform() == transform
+        window.scene.clearSelection()
+        assert window.listing.currentRow() == -1
+        assert not window.scene.selectedItems()
+        assert all(isValid(item) for item in items.values())
+    finally:
+        window.close()
+
+
+def test_model_refresh_blocks_selection_signals_through_empty_and_undo():
+    os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+    widgets = pytest.importorskip('PySide6.QtWidgets')
+    from adaptivecad.geom.tool_document import ToolSession
+    from adaptivecad.gui.meshfree_workbench import create_workbench
+
+    session = ToolSession()
+    session.execute({'op': 'line', 'name': 'only', 'start': [0, 0, 0], 'end': [1, 1, 0]})
+    app = widgets.QApplication.instance() or widgets.QApplication([])
+    window = create_workbench(document=session.document)
+    callbacks = []
+    window.scene.selectionChanged.connect(lambda: callbacks.append(True))
+    try:
+        for _ in range(3):
+            window.delete_selected()
+            assert window.listing.count() == 0
+            assert not window.scene.items()
+            assert not window.scene.signalsBlocked()
+            assert not window.listing.signalsBlocked()
+            window.undo()
+            assert window.listing.currentItem().text() == 'only'
+            assert {item.data(0) for item in window.scene.selectedItems()} == {'only'}
+            window.redo()
+            assert not window.scene.items()
+            window.undo()
+            app.processEvents()
+        assert not callbacks, 'No selection callbacks may escape a scene rebuild'
+    finally:
+        window.close()
