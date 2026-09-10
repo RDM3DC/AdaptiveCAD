@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0"
 :: Set the environment variables for Qt plugins
 call D:\Mconda\Scripts\activate.bat adaptivecad
 :: Get the correct Python site-packages path
@@ -26,5 +27,5 @@ echo.
 echo Qt plugin paths:
 echo QT_PLUGIN_PATH=%QT_PLUGIN_PATH%
 echo QT_QPA_PLATFORM_PLUGIN_PATH=%QT_QPA_PLATFORM_PLUGIN_PATH%
-python -m adaptivecad.gui.playground
+python -m adaptivecad.gui.metric_launch
 pause
