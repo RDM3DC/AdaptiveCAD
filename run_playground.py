@@ -1,15 +1,6 @@
 #!/usr/bin/env python
-# Simple launcher for AdaptiveCAD playground
-
-import os
-import sys
-
-# Add the project directory to the path if needed
-sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
-
-# Import and run the playground module
-from adaptivecad.gui.playground import MainWindow
+"""Launch the existing Playground with the integrated metric tool workbench."""
+from adaptivecad.gui.metric_launch import main
 
 if __name__ == "__main__":
-    app = MainWindow(None)
-    app.run()
+    raise SystemExit(main())
