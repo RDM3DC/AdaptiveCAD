@@ -16,8 +16,33 @@ def application():
     global _APP
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     widgets = pytest.importorskip("PySide6.QtWidgets")
+    from PySide6.QtGui import QFont, QFontDatabase, QRawFont
+
     _APP = widgets.QApplication.instance() or widgets.QApplication([])
-    return _APP
+    original_font = _APP.font()
+    font_id = -1
+    # The Windows offscreen plugin does not discover native desktop fonts.
+    # Register an existing OS font only for this test module, then restore it.
+    # No font bytes are downloaded, committed, or included in artifacts.
+    if os.name == "nt" and os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+        folder = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts"
+        path = next(
+            (folder / name for name in ("segoeui.ttf", "arial.ttf") if (folder / name).is_file()),
+            None,
+        )
+        assert path is not None, "A readable installed Windows font is required"
+        font_id = QFontDatabase.addApplicationFont(str(path))
+        assert font_id >= 0, "Could not load the installed font for offscreen rendering"
+        _APP.setFont(QFont(QFontDatabase.applicationFontFamilies(font_id)[0], 9))
+    try:
+        physical = QRawFont.fromFont(_APP.font())
+        assert physical.isValid()
+        assert all(physical.supportsCharacter(ord(char)) for char in "AdaptiveCAD 0123456789")
+        yield _APP
+    finally:
+        _APP.setFont(original_font)
+        if font_id >= 0:
+            QFontDatabase.removeApplicationFont(font_id)
 
 
 @pytest.fixture
