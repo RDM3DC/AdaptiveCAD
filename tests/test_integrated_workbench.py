@@ -23,24 +23,34 @@ def application():
 
 @pytest.fixture
 def qt_app(application, monkeypatch):
-    from PySide6.QtWidgets import QMessageBox
+    from PySide6.QtWidgets import QMessageBox, QGraphicsScene, QWidget
     from PySide6.QtCore import QCoreApplication, QEvent
+    from shiboken6 import isValid
+    # Own only windows created by this test. Other suites can retain hidden
+    # windows; deleting those here violates their Python/Qt ownership boundary.
+    existing = tuple(application.topLevelWidgets())
     monkeypatch.setattr(QMessageBox, 'question', lambda *a, **k: QMessageBox.StandardButton.Cancel)
     yield application
-    # No modal dialogs or C++ children may survive the application during teardown.
-    for widget in application.allWidgets():
-        if hasattr(widget, 'guard_unsaved'):
-            widget.guard_unsaved = False
-            widget._saved_document = widget.session.document
-        if hasattr(widget, 'drafts_dirty') and hasattr(widget, 'history'):
-            widget.history.mark_saved()
-            widget.patch_editor.document().setModified(False)
-            widget.curve_editor.document().setModified(False)
-    for widget in application.topLevelWidgets():
-        widget.close()
-        widget.deleteLater()
+    roots = [w for w in application.topLevelWidgets()
+             if w.parentWidget() is None and all(w is not old for old in existing)]
+    for root in roots:
+        for widget in [root] + root.findChildren(QWidget):
+            if hasattr(widget, 'guard_unsaved'):
+                widget.guard_unsaved = False
+                widget._saved_document = widget.session.document
+            if hasattr(widget, 'drafts_dirty') and hasattr(widget, 'history'):
+                widget.history.mark_saved()
+                widget.patch_editor.document().setModified(False)
+                widget.curve_editor.document().setModified(False)
+        # Destruction may emit selection signals after sibling widgets die.
+        # Tests run with signals enabled; block only at the ownership teardown.
+        for scene in root.findChildren(QGraphicsScene):
+            scene.blockSignals(True)
+        root.close()
+        root.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     application.processEvents()
+    assert all(not isValid(root) for root in roots)
 
 
 def edit_model(window, name='test_line'):
