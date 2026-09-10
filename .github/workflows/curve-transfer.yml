@@ -1,0 +1,57 @@
+name: Curve transfer
+on:
+  pull_request:
+    paths:
+      - 'adaptivecad/metric_curve_transfer.py'
+      - 'adaptivecad/gui/curve_transfer.py'
+      - 'adaptivecad/gui/integrated_workbench.py'
+      - 'tests/test_metric_curve_transfer.py'
+      - 'tests/test_curve_transfer_ui.py'
+      - '.github/workflows/curve-transfer.yml'
+permissions:
+  contents: read
+jobs:
+  transfer:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.13'
+          - os: windows-latest
+            python: '3.10'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    env:
+      QT_QPA_PLATFORM: offscreen
+      CURVE_TRANSFER_SCREENSHOT: test-results/curve-transfer.png
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Linux Qt runtime
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libegl1 libopengl0 libgl1 libxkbcommon-x11-0
+      - name: Install dependencies
+        run: python -m pip install numpy scipy pytest pytest-timeout PySide6 PyOpenGL ruff
+      - name: Require Qt and independent SciPy reference
+        run: python -c "from PySide6 import QtWidgets; import scipy.integrate; print(QtWidgets.__name__)"
+      - name: Prior integrated suites and transfer regressions together
+        run: python -m pytest -v -ra --noconftest tests/test_directional_metric.py tests/test_meshfree_tools.py tests/test_meshfree_workbench.py tests/test_metric_tools.py tests/test_metric_project.py tests/test_metric_workbench.py tests/test_metric_layout.py tests/test_integrated_workbench.py tests/test_metric_curve_transfer.py tests/test_curve_transfer_ui.py --timeout=60 --junitxml=test-results/transfer.xml
+      - name: Scoped lint
+        if: always()
+        run: python -m ruff check adaptivecad/metric_curve_transfer.py adaptivecad/gui/curve_transfer.py adaptivecad/gui/integrated_workbench.py tests/test_metric_curve_transfer.py tests/test_curve_transfer_ui.py
+      - name: Dependency record
+        if: always()
+        run: python -m pip freeze
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: curve-transfer-${{ matrix.os }}-${{ matrix.python }}
+          path: test-results
+          retention-days: 7

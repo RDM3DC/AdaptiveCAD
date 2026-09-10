@@ -1,6 +1,6 @@
 """One launch for the existing mesh-free window and independent metric dock.
 
-No chart/world conversion, shared undo history, or automatic file migration.
+No implicit chart/world conversion, shared undo history, or automatic file migration.
 Qt is loaded only when a window is constructed, not on module import.
 """
 from __future__ import annotations
@@ -11,6 +11,7 @@ import sys
 
 def install_integrated_tools(window):
     """Add both tools once to an existing QMainWindow or Playground controller."""
+    from .curve_transfer import install_curve_transfer
     from .meshfree_workbench import install_meshfree_tools
     from .metric_dock_layout import prepare_metric_dock
     from .metric_workbench import install_metric_workbench
@@ -21,12 +22,21 @@ def install_integrated_tools(window):
         prepare_metric_dock(host, dock)
         dock.setStyleSheet(dock.styleSheet() + "\nQDockWidget::title { background: #303c4c; color: #dce5ef; padding: 4px; }")
         host._integrated_metric_layout_ready = True
-    install_meshfree_tools(host, guard_unsaved=True)
+    action = install_meshfree_tools(host, guard_unsaved=True)
+    if not getattr(host, "_curve_transfer_child_hook", None):
+        def attach_transfer():
+            install_curve_transfer(host._meshfree_window, dock)
+        action.triggered.connect(attach_transfer)
+        host._curve_transfer_child_hook = attach_transfer
+    child = getattr(host, "_meshfree_window", None)
+    if child is not None:
+        install_curve_transfer(child, dock)
     return dock
 
 
 def create_integrated_workbench(document=None, metric_project=None):
     """Reuse the stable modeling window as host; the dock owns its own project."""
+    from .curve_transfer import install_curve_transfer
     from .meshfree_workbench import create_workbench
     from .metric_dock_layout import prepare_metric_dock
     from .metric_workbench import install_metric_workbench
@@ -41,6 +51,7 @@ def create_integrated_workbench(document=None, metric_project=None):
     if metric_project is not None:
         dock.history.reset(metric_project)
         dock._refresh()
+    install_curve_transfer(window, dock)
     # No second modeling child window is installed into the modeling window.
     window.resize(1520, 860)
     return window
