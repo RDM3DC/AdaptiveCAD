@@ -7,13 +7,14 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 
 def replace_once(path, old, new):
-    text = path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8-sig")
     if text.count(old) != 1:
         raise RuntimeError(f"Expected exactly one matching block in {path}")
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
@@ -30,7 +31,7 @@ def diagnostics():
 
 
 def preserve_import_contracts(path, rows):
-    text = path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8-sig")
     lines = text.splitlines(keepends=True)
     replacements = []
     for node in ast.walk(ast.parse(text)):
@@ -79,8 +80,7 @@ def main():
         if rows:
             preserve_import_contracts(path, rows)
         if any(Path(d["filename"]).resolve() == path and d["code"] == "E722" for d in before):
-            text = path.read_text(encoding="utf-8")
-            import re
+            text = path.read_text(encoding="utf-8-sig")
             text = re.sub(r"(?m)^([ \t]*)except:([^\n]*)$", r"\1except BaseException:\2", text)
             path.write_text(text, encoding="utf-8")
 
@@ -95,12 +95,12 @@ def main():
     replace_once(root / "adaptivecad/plugins/macro_engine.py",
                  "parent_widget: Optional[Widget]", "parent_widget: Optional[QWidget]")
     path = root / "adaptivecad/plugins/macro_engine.py"
-    text = path.read_text(encoding="utf-8").replace("  # type: ignore[name-defined]", "")
+    text = path.read_text(encoding="utf-8-sig").replace("  # type: ignore[name-defined]", "")
     text = "\n".join(line for line in text.splitlines() if not line.startswith("# Note: the type hint Widget")) + "\n"
     path.write_text(text, encoding="utf-8")
 
     path = root / "adaptivecad/gui/analytic_viewport.py"
-    text = path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8-sig")
     lines = text.splitlines(keepends=True)
     remove = []
     active = {}
@@ -124,7 +124,7 @@ def main():
                  '    def from_point(pt: Vec2) -> "Intersection":')
     replace_once(path, '    def segment(a: Vec2, b: Vec2) -> "Intersection":',
                  '    def from_segment(a: Vec2, b: Vec2) -> "Intersection":')
-    text = path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8-sig")
     text = text.replace("Intersection.point(", "Intersection.from_point(")
     text = text.replace("Intersection.segment(", "Intersection.from_segment(")
     marker = "\ndef _clip_projection("
@@ -150,7 +150,7 @@ def main():
                  "            preview(feat, dest, label)")
 
     path = root / "tests/test_meshfree_workbench.py"
-    text = path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8-sig")
     lines = text.splitlines(keepends=True)
     rows = [d for d in before if Path(d["filename"]).resolve() == path and d["code"] == "F841"]
     for row in sorted({d["location"]["row"] for d in rows}, reverse=True):
@@ -160,7 +160,7 @@ def main():
         lines[row - 1] = line.replace("widgets = ", "", 1)
     path.write_text("".join(lines), encoding="utf-8")
     path = root / "_diag_select.py"
-    text = path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8-sig")
     text = text.replace("    import traceback; traceback.print_exc()", "    import traceback\n\n    traceback.print_exc()")
     path.write_text(text, encoding="utf-8")
     subprocess.run([sys.executable, "-m", "ruff", "check", "--select", "I,E401,F541", "--fix",
