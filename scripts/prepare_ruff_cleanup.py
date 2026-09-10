@@ -104,8 +104,11 @@ def main():
     lines = text.splitlines(keepends=True)
     remove = []
     active = {}
+    owner = next(n for n in ast.walk(ast.parse(text))
+                 if isinstance(n, ast.FunctionDef) and n.name == "_cupy_available")
     for name in ("Line2D", "Arc2D", "Circle2D", "Rect2D"):
-        nodes = sorted((n for n in ast.walk(ast.parse(text)) if isinstance(n, ast.ClassDef) and n.name == name), key=lambda n: n.lineno)
+        nodes = sorted((n for n in owner.body if isinstance(n, ast.ClassDef) and n.name == name),
+                       key=lambda n: n.lineno)
         if len(nodes) != 2 or any(n.decorator_list for n in nodes):
             raise RuntimeError(f"Unexpected class structure for {name}")
         remove.append((nodes[0].lineno - 1, nodes[0].end_lineno))
@@ -116,7 +119,7 @@ def main():
     for name, dump in active.items():
         node = next(n for n in ast.walk(ast.parse(text)) if isinstance(n, ast.ClassDef) and n.name == name)
         if ast.dump(node, include_attributes=False) != dump:
-            raise RuntimeError("Active viewport class changed")
+            raise RuntimeError("Retained viewport class changed")
     path.write_text(text, encoding="utf-8")
 
     path = root / "adaptivecad/sketch/geometry.py"
