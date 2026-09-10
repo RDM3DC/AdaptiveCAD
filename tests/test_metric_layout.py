@@ -29,6 +29,14 @@ def test_layout_is_scrolled_tabbed_and_idempotent(with_peer):
     assert dock.history.current is project
     assert prepare_metric_dock(host, dock) is dock
     assert dock.widget().widget() is root
+    # Qt builds the tab bar after layout activation; hidden windows have no
+    # visible tab membership to query. Exercise the actual shown state.
+    host.resize(1200, 900)
+    host.show()
+    dock.show()
+    dock.raise_()
+    host.layout().activate()
+    app.processEvents()
     if peer:
         assert dock in host.tabifiedDockWidgets(peer)
     dock.new_curve()
