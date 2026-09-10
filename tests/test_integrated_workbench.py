@@ -2,9 +2,9 @@
 import json
 import math
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -23,8 +23,8 @@ def application():
 
 @pytest.fixture
 def qt_app(application, monkeypatch):
-    from PySide6.QtWidgets import QMessageBox, QGraphicsScene, QWidget
     from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QGraphicsScene, QMessageBox, QWidget
     from shiboken6 import isValid
     # Own only windows created by this test. Other suites can retain hidden
     # windows; deleting those here violates their Python/Qt ownership boundary.
@@ -73,9 +73,9 @@ def test_import_and_help_do_not_load_qt():
 
 @pytest.mark.parametrize('xy', [(0, 0), (.4, .2), (-.3, .1)])
 def test_both_metric_namespaces_preserve_equivalent_quantities(xy):
-    from adaptivecad.geom.directional_metric import balanced_directional_patch
     from adaptivecad.geom import meshfree_metric_tools as toolkit
     from adaptivecad.geom import metric_tools as dock
+    from adaptivecad.geom.directional_metric import balanced_directional_patch
     patch = balanced_directional_patch()
     np.testing.assert_allclose(toolkit.metric_derivatives(patch, *xy), dock.metric_derivatives(patch, *xy))
     np.testing.assert_allclose(toolkit.connection(patch, *xy), dock.christoffel(patch, *xy), atol=1e-14)
@@ -128,7 +128,8 @@ def test_one_existing_window_two_independent_histories(qt_app):
 
 
 def test_installers_idempotent_preserve_existing_host(qt_app):
-    from PySide6.QtWidgets import QLabel, QMainWindow, QDockWidget
+    from PySide6.QtWidgets import QDockWidget, QLabel, QMainWindow
+
     from adaptivecad.gui.integrated_workbench import install_integrated_tools
     host = QMainWindow()
     central = QLabel('Existing solid scene')
@@ -161,6 +162,7 @@ def test_close_cancel_preserves_both_documents(qt_app):
 
 def test_cancelled_save_blocks_close(qt_app, monkeypatch):
     from PySide6.QtWidgets import QFileDialog, QMessageBox
+
     from adaptivecad.gui.integrated_workbench import create_integrated_workbench
     window = create_integrated_workbench()
     window.show()
@@ -173,8 +175,9 @@ def test_cancelled_save_blocks_close(qt_app, monkeypatch):
 
 def test_failed_save_keeps_dirty_state_and_contents(qt_app, monkeypatch, tmp_path):
     from PySide6.QtWidgets import QFileDialog
-    from adaptivecad.gui.integrated_workbench import create_integrated_workbench
+
     from adaptivecad.geom.tool_document import ToolDocument
+    from adaptivecad.gui.integrated_workbench import create_integrated_workbench
     window = create_integrated_workbench()
     edit_model(window)
     path = tmp_path / 'existing.json'
@@ -190,8 +193,9 @@ def test_failed_save_keeps_dirty_state_and_contents(qt_app, monkeypatch, tmp_pat
 
 def test_successful_saves_and_undo_have_independent_dirty_states(qt_app, monkeypatch, tmp_path):
     from PySide6.QtWidgets import QFileDialog
-    from adaptivecad.gui.integrated_workbench import create_integrated_workbench
+
     from adaptivecad.geom.tool_document import ToolDocument
+    from adaptivecad.gui.integrated_workbench import create_integrated_workbench
     from adaptivecad.metric_project import MetricProject
     window = create_integrated_workbench()
     dock = window._metric_workbench
@@ -216,6 +220,7 @@ def test_successful_saves_and_undo_have_independent_dirty_states(qt_app, monkeyp
 
 def test_invalid_open_validates_before_any_save_prompt(qt_app, monkeypatch, tmp_path):
     from PySide6.QtWidgets import QFileDialog, QMessageBox
+
     from adaptivecad.gui.integrated_workbench import create_integrated_workbench
     window = create_integrated_workbench()
     edit_model(window)
@@ -232,6 +237,7 @@ def test_invalid_open_validates_before_any_save_prompt(qt_app, monkeypatch, tmp_
 
 def test_host_close_cannot_discard_dirty_model_child(qt_app):
     from PySide6.QtWidgets import QMainWindow
+
     from adaptivecad.gui.integrated_workbench import install_integrated_tools
     host = QMainWindow()
     install_integrated_tools(host)
@@ -266,6 +272,8 @@ def test_real_combined_preview(qt_app):
     dock.raise_()
     qt_app.processEvents()
     assert window.listing.count() == 9 and dock.isVisible()
+    assert window.centralWidget().layout().stretch(2) == 1
+    assert "QDockWidget::title" in dock.styleSheet()
     assert len(dock.history.current.curves) == 1
     assert {item.data(0) for item in window.scene.items()} == {
         n for n, _ in window.session.document.entities

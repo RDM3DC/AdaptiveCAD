@@ -19,6 +19,7 @@ def install_integrated_tools(window):
     dock = install_metric_workbench(host)
     if not getattr(host, "_integrated_metric_layout_ready", False):
         prepare_metric_dock(host, dock)
+        dock.setStyleSheet(dock.styleSheet() + "\nQDockWidget::title { background: #303c4c; color: #dce5ef; padding: 4px; }")
         host._integrated_metric_layout_ready = True
     install_meshfree_tools(host, guard_unsaved=True)
     return dock
@@ -33,6 +34,9 @@ def create_integrated_workbench(document=None, metric_project=None):
     window = create_workbench(document=document, guard_unsaved=True)
     dock = install_metric_workbench(window)
     prepare_metric_dock(window, dock)
+    dock.setStyleSheet(dock.styleSheet() + "\nQDockWidget::title { background: #303c4c; color: #dce5ef; padding: 4px; }")
+    # Give extra height to the modeling area, not the header label or button bar.
+    window.centralWidget().layout().setStretch(2, 1)
     window._integrated_metric_layout_ready = True
     if metric_project is not None:
         dock.history.reset(metric_project)
